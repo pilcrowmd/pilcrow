@@ -1,0 +1,80 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:Editor.kt$@Composable fun MarkdownEditor( modifier: Modifier = Modifier, content: String, onContentChange: (String) -&gt; Unit, lineNumbersEnabled: Boolean = true, fontScale: Float = 1.0f, fontSet: FontSet = FontSets.DEFAULT, themeMode: ThemeMode = ThemeMode.DARK, scrollPosition: Int = 0, onScrollChanged: (Int) -&gt; Unit = {}, initialCursor: Int = 0, onCursorChange: (Int) -&gt; Unit = {}, onUndo: () -&gt; Unit = {}, onRedo: () -&gt; Unit = {}, codeEditorInstance: CodeEditor? = null, )</ID>
+    <ID>CyclomaticComplexMethod:MainScreen.kt$@Composable fun MainScreen( modifier: Modifier = Modifier, viewModel: MarkdownViewModel, context: Context, renderer: MarkwonRenderer, )</ID>
+    <ID>CyclomaticComplexMethod:Preview.kt$@Composable fun MarkdownPreview( modifier: Modifier = Modifier, content: String, renderer: MarkwonRenderer, fontScale: Float = 1.0f, fontSet: FontSet = FontSets.DEFAULT, mermaidCloudEnabled: Boolean = false, scrollPosition: ScrollAnchor = ScrollAnchor(), onScrollChanged: (ScrollAnchor) -&gt; Unit = {}, onFontScaleChange: (Float) -&gt; Unit = {}, searchMatches: List&lt;SearchMatch&gt; = emptyList(), currentMatchIndex: Int = 0, jumpPosition: Int = -1, jumpSeq: Int = 0, )</ID>
+    <ID>CyclomaticComplexMethod:Prism4jTheme.kt$PilcrowTheme$private fun mapTokenTypeToColor(tokenType: String): Int</ID>
+    <ID>CyclomaticComplexMethod:TableBlockEntry.kt$TableBlockEntry$override fun bindHolder(markwon: Markwon, holder: Holder, node: TableBlock)</ID>
+    <ID>ImplicitDefaultLocale:FencedCodeBlockEntry.kt$FencedCodeBlockEntry$String.format("%06X", colorScheme.primaryBackground.toArgb() and 0xFFFFFF)</ID>
+    <ID>LongMethod:LocalFileRepository.kt$LocalFileRepository$override suspend fun saveFile(uri: Uri, content: String): Result&lt;Unit&gt;</ID>
+    <ID>LongParameterList:Editor.kt$( modifier: Modifier = Modifier, content: String, onContentChange: (String) -&gt; Unit, lineNumbersEnabled: Boolean = true, fontScale: Float = 1.0f, fontSet: FontSet = FontSets.DEFAULT, themeMode: ThemeMode = ThemeMode.DARK, scrollPosition: Int = 0, onScrollChanged: (Int) -&gt; Unit = {}, initialCursor: Int = 0, onCursorChange: (Int) -&gt; Unit = {}, onUndo: () -&gt; Unit = {}, onRedo: () -&gt; Unit = {}, codeEditorInstance: CodeEditor? = null, )</ID>
+    <ID>LongParameterList:Preview.kt$( modifier: Modifier = Modifier, content: String, renderer: MarkwonRenderer, fontScale: Float = 1.0f, fontSet: FontSet = FontSets.DEFAULT, mermaidCloudEnabled: Boolean = false, scrollPosition: ScrollAnchor = ScrollAnchor(), onScrollChanged: (ScrollAnchor) -&gt; Unit = {}, onFontScaleChange: (Float) -&gt; Unit = {}, searchMatches: List&lt;SearchMatch&gt; = emptyList(), currentMatchIndex: Int = 0, jumpPosition: Int = -1, jumpSeq: Int = 0, )</ID>
+    <ID>LongParameterList:RecyclerAdapterEntries.kt$RecyclerAdapterEntries$( context: Context, markwon: Markwon, fontScale: Float = 1.0f, fontSet: FontSet = FontSets.DEFAULT, mermaidCloudEnabled: Boolean = false, searchHighlight: SearchHighlight = SearchHighlight(), colorScheme: PilcrowColorScheme = DarkColorScheme, )</ID>
+    <ID>LongParameterList:SearchBar.kt$( modifier: Modifier = Modifier, query: String = "", onQueryChange: (String) -&gt; Unit = {}, matchCount: Int = 0, currentIndex: Int = 0, onPrevious: () -&gt; Unit = {}, onNext: () -&gt; Unit = {}, onClose: () -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:SettingsScreen.kt$( modifier: Modifier = Modifier, fontSetId: String = "source", onFontSetSelected: (String) -&gt; Unit = {}, previewFontScale: Float = 1.0f, onPreviewFontScaleChanged: (Float) -&gt; Unit = {}, editorFontScale: Float = 1.0f, onEditorFontScaleChanged: (Float) -&gt; Unit = {}, lineNumbersEnabled: Boolean = true, onLineNumbersChanged: (Boolean) -&gt; Unit = {}, mermaidCloudEnabled: Boolean = false, onMermaidCloudChanged: (Boolean) -&gt; Unit = {}, appVersion: String = "", onClose: () -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:Toolbar.kt$( modifier: Modifier = Modifier, currentMode: ViewMode = ViewMode.READER, onModeSelected: (ViewMode) -&gt; Unit = {}, onSave: () -&gt; Unit = {}, onSaveACopy: () -&gt; Unit = {}, onClose: () -&gt; Unit = {}, onSearch: () -&gt; Unit = {}, onTOC: () -&gt; Unit = {}, onExportPdf: () -&gt; Unit = {}, isSaving: Boolean = false, onUndo: (() -&gt; Unit)? = null, onRedo: (() -&gt; Unit)? = null, )</ID>
+    <ID>LongParameterList:WelcomeScreen.kt$( modifier: Modifier = Modifier, recentFiles: List&lt;RecentFileUi&gt; = emptyList(), onOpenFile: () -&gt; Unit = {}, onOpenAnyFile: () -&gt; Unit = {}, onOpenRecent: (Uri) -&gt; Unit = {}, onRemoveRecent: (Uri) -&gt; Unit = {}, onClearRecents: () -&gt; Unit = {}, onOpenSettings: () -&gt; Unit = {}, )</ID>
+    <ID>MagicNumber:FencedCodeBlockEntry.kt$FencedCodeBlockEntry$0xFFFFFF</ID>
+    <ID>MagicNumber:FencedCodeBlockEntry.kt$FencedCodeBlockEntry$14f</ID>
+    <ID>MagicNumber:FencedCodeBlockEntry.kt$FencedCodeBlockEntry$4f</ID>
+    <ID>MagicNumber:FencedCodeBlockEntry.kt$FencedCodeBlockEntry$6f</ID>
+    <ID>MagicNumber:FrontmatterBlockEntry.kt$FrontmatterBlockEntry$14f</ID>
+    <ID>MagicNumber:FrontmatterBlockEntry.kt$FrontmatterBlockEntry$4f</ID>
+    <ID>MagicNumber:FrontmatterBlockEntry.kt$FrontmatterBlockEntry$6f</ID>
+    <ID>MagicNumber:LatexBlockEntry.kt$LatexBlockEntry$14f</ID>
+    <ID>MagicNumber:LatexBlockEntry.kt$LatexBlockEntry$6f</ID>
+    <ID>MagicNumber:LocalStorageManager.kt$LocalStorageManager$0.85f</ID>
+    <ID>MagicNumber:LocalStorageManager.kt$LocalStorageManager$1.6f</ID>
+    <ID>MagicNumber:LocalStorageManager.kt$LocalStorageManager$3</ID>
+    <ID>MagicNumber:MarkdownViewModel.kt$MarkdownViewModel$0.85f</ID>
+    <ID>MagicNumber:MarkdownViewModel.kt$MarkdownViewModel$1.6f</ID>
+    <ID>MagicNumber:MarkwonRenderer.kt$MarkwonRenderer$17f</ID>
+    <ID>MagicNumber:Prism4jTheme.kt$255</ID>
+    <ID>MagicNumber:ProseBlockEntry.kt$ProseBlockEntry$17f</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0.05f</ID>
+    <ID>MagicNumber:TableBlockEntry.kt$TableBlockEntry$10f</ID>
+    <ID>MagicNumber:TableBlockEntry.kt$TableBlockEntry$15f</ID>
+    <ID>MagicNumber:TableBlockEntry.kt$TableBlockEntry$240f</ID>
+    <ID>MagicNumber:TableBlockEntry.kt$TableBlockEntry$6f</ID>
+    <ID>MatchingDeclarationName:Prism4jTheme.kt$PilcrowTheme : Prism4jTheme</ID>
+    <ID>MatchingDeclarationName:Spacing.kt$PilcrowSpacing</ID>
+    <ID>MaxLineLength:LocalFileRepository.kt$LocalFileRepository$"CRITICAL: Write failed and restore also failed. File may be corrupted. Original error: ${e.message}, Restore error: ${restoreError.message}"</ID>
+    <ID>MaxLineLength:MainScreen.kt$gesturesEnabled = gesturesReady</ID>
+    <ID>NestedBlockDepth:TableBlockEntry.kt$TableBlockEntry$override fun bindHolder(markwon: Markwon, holder: Holder, node: TableBlock)</ID>
+    <ID>SwallowedException:LocalFileRepository.kt$LocalFileRepository$e: Exception</ID>
+    <ID>SwallowedException:TableBlockEntry.kt$TableBlockEntry$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:Editor.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:FencedCodeBlockEntry.kt$FencedCodeBlockEntry$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:FrontmatterBlockEntry.kt$FrontmatterBlockEntry$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LatexBlockEntry.kt$LatexBlockEntry$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LocalFileRepository.kt$LocalFileRepository$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LocalFileRepository.kt$LocalFileRepository$restoreError: Exception</ID>
+    <ID>TooGenericExceptionCaught:MainActivity.kt$MainActivity$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:MainScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:MarkwonRenderer.kt$MarkwonRenderer$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:MarkwonRenderer.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:EditorController.kt$EditorController$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ParseMarkdownHeadingsUseCase.kt$ParseMarkdownHeadingsUseCase$ignored: Exception</ID>
+    <ID>TooGenericExceptionCaught:TableBlockEntry.kt$TableBlockEntry$e: Exception</ID>
+    <ID>TooManyFunctions:LocalFileRepository.kt$LocalFileRepository : FileRepository</ID>
+    <ID>TooManyFunctions:LocalStorageManager.kt$LocalStorageManager : StorageManager</ID>
+    <ID>TooManyFunctions:MarkdownViewModel.kt$MarkdownViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:SettingsScreen.kt$com.pilcrowmd.ui.components.SettingsScreen.kt</ID>
+    <ID>TooManyFunctions:StorageManager.kt$StorageManager</ID>
+    <ID>UnusedParameter:Editor.kt$onRedo: () -&gt; Unit = {}</ID>
+    <ID>UnusedParameter:Editor.kt$onScrollChanged: (Int) -&gt; Unit = {}</ID>
+    <ID>UnusedParameter:Editor.kt$onUndo: () -&gt; Unit = {}</ID>
+    <ID>UnusedParameter:Editor.kt$scrollPosition: Int = 0</ID>
+    <ID>UnusedParameter:FencedCodeBlockEntry.kt$FencedCodeBlockEntry$markwon: Markwon</ID>
+    <ID>UnusedParameter:RecyclerAdapterEntries.kt$RecyclerAdapterEntries$markwon: Markwon</ID>
+    <ID>UnusedPrivateProperty:Editor.kt$val density = LocalDensity.current</ID>
+    <ID>UnusedPrivateProperty:LatexBlockEntry.kt$LatexBlockEntry$private val nodeClass: Class&lt;out Node&gt;</ID>
+    <ID>UnusedPrivateProperty:MarkdownViewModel.kt$MarkdownViewModel$// Per-file scroll-position memory (keyed by document URI) private val _fileScrollPositions = mutableMapOf&lt;String, Int&gt;()</ID>
+    <ID>WildcardImport:HeadingsDrawer.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:LocalStorageManager.kt$import androidx.datastore.preferences.core.*</ID>
+    <ID>WildcardImport:MarkdownViewModel.kt$import kotlinx.coroutines.flow.*</ID>
+    <ID>WildcardImport:SearchBar.kt$import androidx.compose.foundation.layout.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

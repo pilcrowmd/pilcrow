@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<baseline version="1.0">
+    <file name="src/main/java/com/pilcrowmd/storage/LocalStorageManager.kt">
+        <error line="11" column="1" source="standard:no-wildcard-imports" />
+    </file>
+    <file name="src/main/java/com/pilcrowmd/ui/components/HeadingsDrawer.kt">
+        <error line="8" column="1" source="standard:no-wildcard-imports" />
+    </file>
+    <file name="src/main/java/com/pilcrowmd/ui/components/SearchBar.kt">
+        <error line="7" column="1" source="standard:no-wildcard-imports" />
+    </file>
+    <file name="src/main/java/com/pilcrowmd/ui/screen/MainScreen.kt">
+        <error line="263" column="121" source="standard:max-line-length" />
+    </file>
+    <file name="src/main/java/com/pilcrowmd/ui/theme/Spacing.kt">
+        <error line="1" column="1" source="standard:filename" />
+    </file>
+    <file name="src/main/java/com/pilcrowmd/ui/theme/Typography.kt">
+        <error line="38" column="11" source="standard:property-naming" />
+    </file>
+    <file name="src/main/java/com/pilcrowmd/viewmodel/MarkdownViewModel.kt">
+        <error line="19" column="1" source="standard:no-wildcard-imports" />
+        <error line="151" column="17" source="standard:backing-property-naming" />
+    </file>
+</baseline>

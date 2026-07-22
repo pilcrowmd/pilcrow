@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon background: warm near-black anchored on #1a1714, full-bleed
+     (Android masks the corners). Subtle radial glow echoes the Pilcrow ¶ artwork. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="70%p"
+        android:centerX="50%"
+        android:centerY="50%"
+        android:startColor="#241F1B"
+        android:centerColor="#1A1714"
+        android:endColor="#131110" />
+</shape>

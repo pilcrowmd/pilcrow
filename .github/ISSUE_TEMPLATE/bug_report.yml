@@ -1,0 +1,62 @@
+name: Bug report
+description: Report something that is broken or behaving incorrectly in Pilcrow.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please **do not** use this form for security
+        issues — follow [SECURITY.md](../../SECURITY.md) and report them privately instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected to happen instead.
+      placeholder: When I open a file with…, Pilcrow…
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps so we can see it too.
+      placeholder: |
+        1. Open '...'
+        2. Tap '...'
+        3. See the problem
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample Markdown (if relevant)
+      description: The smallest Markdown snippet or file that triggers the issue. Paste it here.
+      render: markdown
+    validations:
+      required: false
+  - type: input
+    id: pilcrow-version
+    attributes:
+      label: Pilcrow version
+      description: See the about/settings screen (e.g. 1.0.0).
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      description: Device model and Android/OS version.
+      placeholder: "Pixel 7, Android 14"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability (those go through SECURITY.md).
+          required: true

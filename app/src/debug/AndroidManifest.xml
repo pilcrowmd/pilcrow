@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Debug-only manifest. Merged into debug builds ONLY; absent from release. Registers the
+     crash-injection receiver (save crash-recovery demo), the fail-next-save receiver
+     (failed-save UX demo) and the strand receiver (stranded-WAL-slot escape-hatch demo)
+     used to verify the Essential Safeguards on a device. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".debug.DebugWalReceiver"
+            android:exported="true" />
+        <receiver
+            android:name=".debug.DebugFailSaveReceiver"
+            android:exported="true" />
+        <receiver
+            android:name=".debug.DebugStrandReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

@@ -1,0 +1,33 @@
+# detekt config — builds upon the bundled default rules (buildUponDefaultConfig = true).
+# Only deviations from the defaults are listed here. Formatting rules are intentionally
+# left to ktlint; detekt owns code smells / complexity.
+
+naming:
+  FunctionNaming:
+    # @Composable functions are PascalCase by convention.
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][_A-Za-z0-9]*'
+
+complexity:
+  LongMethod:
+    # Compose UI builders and adapter binding are legitimately long.
+    ignoreAnnotated: ['Composable']
+  TooManyFunctions:
+    ignoreAnnotated: ['Composable']
+
+style:
+  MagicNumber:
+    # Design tokens, dp/sp values, and UI math read fine inline.
+    ignoreAnnotated: ['Composable', 'Preview']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+  ReturnCount:
+    max: 4
+
+# Surface findings without failing the build until the baseline is established;
+# the Quality Gate flips this to fail via the CLI exit code on new findings.
+build:
+  maxIssues: 0

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Code block: horizontally scrollable code with a Copy button pinned top-right OUTSIDE the
+     scroll region so it stays reachable while long lines pan. Wrapped in a vertical
+     LinearLayout so an optional caption (the Mermaid-off hint) can sit BELOW the block. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginStart="20dp"
+    android:layout_marginEnd="20dp"
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="4dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <HorizontalScrollView
+            android:id="@+id/code_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fillViewport="true"
+            android:scrollbars="horizontal">
+
+            <TextView
+                android:id="@+id/code_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp" />
+        </HorizontalScrollView>
+
+        <!-- Mermaid diagram: shown instead of code_scroll when a ```mermaid block
+             renders via the opt-in cloud renderer; gone for normal code/yaml blocks. Fills the card
+             width: the PNG is requested from mermaid.ink pre-sized to the card width (crisp, no
+             upscale blur), and drawn at match_parent + fitCenter so it fills the width and grows tall
+             (scrolls) rather than being capped/shrunk. minHeight is a stable load placeholder. -->
+        <ImageView
+            android:id="@+id/mermaid_image"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            android:minHeight="120dp"
+            android:scaleType="fitCenter"
+            android:padding="12dp"
+            android:visibility="gone"
+            android:contentDescription="Mermaid diagram" />
+
+        <TextView
+            android:id="@+id/code_copy"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="6dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="Copy"
+            android:textSize="12sp" />
+    </FrameLayout>
+
+    <!-- Mermaid-off hint. Shown (text + token color set in code) ONLY when a ```mermaid
+         block is displayed as raw source because cloud rendering is OFF; GONE for every other
+         block and in the PDF export. Small + subtle. -->
+    <TextView
+        android:id="@+id/mermaid_caption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="4dp"
+        android:paddingTop="4dp"
+        android:textSize="11sp"
+        android:visibility="gone" />
+</LinearLayout>

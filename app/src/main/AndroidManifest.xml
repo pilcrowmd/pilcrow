@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- No storage permissions: all document access is SAF (per-URI content grants) and the
+         crash-recovery WAL lives in internal noBackupFilesDir — neither needs READ/WRITE_EXTERNAL_STORAGE
+         at any API level (SAF is permission-free; WRITE_EXTERNAL_STORAGE is a modern no-op). -->
+    <!-- Used only by the opt-in Mermaid cloud renderer (default OFF). No other
+         feature performs network I/O — the reader/editor are fully offline. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:name=".PilcrowApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Pilcrow">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Pilcrow.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Handle .md files opened from a file manager (ACTION_VIEW) -->
+            <!-- tools:ignore AppLinkUrlError — this is a mimeType-only file-association filter, not
+                 a web App Link, so it intentionally declares no URL scheme/host. BROWSABLE lets
+                 "open downloaded file" / browser contexts match it. Build-time lint suppression
+                 only; the shipped manifest and runtime behaviour are unchanged. -->
+            <intent-filter tools:ignore="AppLinkUrlError">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+
+            <!-- Handle files shared via the share sheet (ACTION_SEND) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/markdown" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary_background">#2C2C2B</color>
+
+    <!-- Splash colours — FIXED brand-dark for BOTH system appearances (no -night divergence). The
+         app defaults to Dark and Dark is the brand identity (launcher-icon anchor #1A1714, welcome
+         wordmark), so the splash is one coherent brand-dark launcher→splash→app entry and there is
+         no system-light→dark-app first-frame palette handoff. These are the pre-Compose "token
+         layer" for window chrome, resolved before any app code runs (Safeguard 4 — no inline hex
+         in the AVD/theme). -->
+    <color name="splash_background">#1A1714</color>
+    <color name="splash_glyph">#8E7CD6</color>
+    <color name="splash_lines">#E4E1DC</color>
+</resources>

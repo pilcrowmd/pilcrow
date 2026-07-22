@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ¶ settles in with a gentle overshoot scale (pivot = canvas centre, set on the group). -->
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <objectAnimator
+        android:propertyName="scaleX"
+        android:valueFrom="0.72"
+        android:valueTo="1"
+        android:startOffset="500"
+        android:duration="500"
+        android:valueType="floatType"
+        android:interpolator="@android:anim/overshoot_interpolator" />
+    <objectAnimator
+        android:propertyName="scaleY"
+        android:valueFrom="0.72"
+        android:valueTo="1"
+        android:startOffset="500"
+        android:duration="500"
+        android:valueType="floatType"
+        android:interpolator="@android:anim/overshoot_interpolator" />
+</set>

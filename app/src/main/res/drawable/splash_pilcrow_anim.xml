@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Animated splash mark (~1s, single legible morph beat): the markdown lines draw in top-to-
+     bottom, then fade and lift as the Source Serif 4 ¶ fades + settles in. Played by the system
+     SplashScreen in the animated-icon slot; never artificially held (dismisses at first frame). -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_pilcrow">
+    <target
+        android:name="lines"
+        android:animation="@animator/splash_lines" />
+    <target
+        android:name="lines_group"
+        android:animation="@animator/splash_lines_group" />
+    <target
+        android:name="glyph"
+        android:animation="@animator/splash_glyph" />
+    <target
+        android:name="glyph_group"
+        android:animation="@animator/splash_glyph_group" />
+</animated-vector>

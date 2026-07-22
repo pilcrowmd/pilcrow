@@ -1,0 +1,54 @@
+name: CI
+
+# Quality gate for Pilcrow. Runs on every push + PR to main.
+#
+# Kotlin is pinned to 2.3.10 to match the metadata version of the Sora editor dependency
+# (editor-bom:0.24.5). That toolchain carries a known incremental-compiler quirk that can cache a
+# stale state and emit phantom "Unresolved reference" errors on valid code — a false negative,
+# never a false pass. So CI builds from a clean state (the mandatory, separate `clean` step) and
+# `--rerun-tasks` defeats Gradle task-output caching; a from-scratch compile is the only result we
+# trust.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Pinned to an immutable runner image (not the floating `ubuntu-latest`) for reproducible CI.
+    runs-on: ubuntu-24.04
+    steps:
+      # Third-party actions are pinned to immutable commit SHAs (supply-chain hardening); the
+      # trailing comment records the human-readable version each SHA corresponds to.
+      # MAINTENANCE (post-launch, by 2026-09-16): these pinned versions run on Node.js 20, which
+      # GitHub removes from runners on 2026-09-16 (forced to Node 24 from 2026-06-16). Bump each pin
+      # to a newer SHA whose release supports Node 24, re-verify the version comments, keep the SHA pin.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+
+      - name: Clean (mandatory — defeats the Kotlin 2.3.10 incremental-cache bug)
+        run: ./gradlew clean
+
+      # The gate also exercises the RELEASE variant: bundleRelease builds the upload .aab
+      # (release manifest merge + license/SPDX asset wiring + packaging), and lintRelease runs
+      # Android lint on the release variant. The Play upload is a release .aab, so a release-only
+      # break must fail CI here, not Play review. No upload keystore exists in CI (and must not):
+      # app/build.gradle.kts leaves the release signingConfig null when no keystore is configured,
+      # so bundleRelease here produces an UNSIGNED bundle. The signed upload build stays a local step.
+      # Kept in this one job so the single mandatory clean step + --rerun-tasks cover both variants
+      # (the Kotlin 2.3.10 cache-bug rule) without duplicating checkout/JDK/Gradle setup.
+      - name: Build, lint, unit tests, screenshot gate (debug + release variant)
+        run: ./gradlew assembleDebug ktlintCheck detekt testDebugUnitTest verifyRoborazziDebug bundleRelease lintRelease --rerun-tasks

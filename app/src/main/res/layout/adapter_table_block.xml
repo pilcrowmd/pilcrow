@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Table: a vertical LinearLayout of horizontal LinearLayout rows (cells sized to explicit,
+     pre-measured per-column widths) inside a HorizontalScrollView, so a table wider than the
+     screen scrolls sideways on its own while surrounding prose stays wrapped. A
+     LinearLayout is used instead of TableLayout because TableLayout shrinks/redistributes its
+     columns to fit the viewport and cannot grow wider than the screen. -->
+<HorizontalScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:scrollbars="horizontal"
+    android:paddingStart="20dp"
+    android:paddingEnd="20dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <LinearLayout
+        android:id="@+id/table_layout"
+        android:orientation="vertical"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</HorizontalScrollView>

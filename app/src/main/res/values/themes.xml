@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Pilcrow" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/primary_background</item>
+    </style>
+
+    <!-- Branded launch splash (AndroidX core SplashScreen API, path A). Background + animated icon
+         are theme-resource attributes resolved before app code runs; the splash colours are fixed
+         brand-dark in both system appearances (no -night divergence). postSplashScreenTheme hands
+         back to Theme.Pilcrow once the first frame is ready. -->
+    <style name="Theme.Pilcrow.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_pilcrow_anim</item>
+        <item name="windowSplashScreenAnimationDuration">1000</item>
+        <item name="postSplashScreenTheme">@style/Theme.Pilcrow</item>
+    </style>
+</resources>

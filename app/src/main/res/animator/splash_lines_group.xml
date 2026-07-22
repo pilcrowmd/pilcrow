@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lines lift gently upward as they hand off to the glyph. -->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyName="translateY"
+    android:valueFrom="0"
+    android:valueTo="-7"
+    android:startOffset="520"
+    android:duration="380"
+    android:valueType="floatType"
+    android:interpolator="@android:interpolator/fast_out_slow_in" />

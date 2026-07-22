@@ -1,0 +1,25 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 120
+
+[*.{kt,kts}]
+# Kotlin official code style (matches gradle.properties: kotlin.code.style=official)
+ktlint_code_style = intellij_idea
+
+# Compose: @Composable functions are intentionally PascalCase — exempt them from
+# the camelCase function-naming rule rather than litter the codebase with suppressions.
+ktlint_function_naming_ignore_when_annotated_with = Composable, Preview
+
+# Compose previews and composables are nullary/large by design; keep the gate focused
+# on real formatting, not Compose ceremony.
+ktlint_standard_function-expression-body = disabled
+
+[*.{yml,yaml,json}]
+indent_size = 2

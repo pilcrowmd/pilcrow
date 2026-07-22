@@ -1,0 +1,67 @@
+{
+  "name": "Pilcrow Light",
+  "type": "light",
+  "colors": {
+    "editor.background": "#F6EFE1",
+    "editor.foreground": "#3A352C",
+    "editorLineNumber.foreground": "#A99F88",
+    "editor.lineHighlightBackground": "#EFE7D5",
+    "editorCursor.foreground": "#6B5CA8",
+    "editor.selectionBackground": "#E3B94E"
+  },
+  "tokenColors": [
+    {
+      "scope": ["markup.heading", "markup.heading.markdown"],
+      "settings": {
+        "foreground": "#8A4FAE",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "scope": ["markup.bold", "markup.bold.markdown"],
+      "settings": {
+        "foreground": "#2E6FB0",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "scope": ["markup.italic", "markup.italic.markdown"],
+      "settings": {
+        "foreground": "#6B5CA8",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "scope": ["markup.raw.inline", "markup.raw.inline.markdown", "markup.raw", "markup.fenced_code", "markup.inline.raw"],
+      "settings": {
+        "foreground": "#A8543F"
+      }
+    },
+    {
+      "scope": ["markup.underline.link", "string.other.link", "markup.link.underline.markdown"],
+      "settings": {
+        "foreground": "#4E7A3A",
+        "fontStyle": "underline"
+      }
+    },
+    {
+      "scope": ["punctuation.definition.list", "markup.list", "punctuation.definition.list.markdown"],
+      "settings": {
+        "foreground": "#5BA3AA"
+      }
+    },
+    {
+      "scope": ["punctuation", "punctuation.definition"],
+      "settings": {
+        "foreground": "#9A7C4A"
+      }
+    },
+    {
+      "scope": ["comment", "comment.line", "comment.block"],
+      "settings": {
+        "foreground": "#8B7D6B",
+        "fontStyle": "italic"
+      }
+    }
+  ]
+}

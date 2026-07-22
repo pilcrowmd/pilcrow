@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash brand mark: three "markdown" lines that draw in and resolve into the Pilcrow ¶.
+     The ¶ is the Source Serif 4 Bold pilcrow glyph (OFL), the same brand mark as the welcome
+     wordmark and the adaptive launcher icon. Colours come only from
+     named, theme-qualified colour resources (Safeguard 4 — no inline hex). Initial values match
+     the animation start frame (lines un-drawn, glyph faded/shrunk) so there is no t=0 flash;
+     splash_pilcrow_anim.xml animates them to rest. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group android:name="lines_group">
+        <path
+            android:name="lines"
+            android:pathData="M36,44L72,44 M36,55L66,55 M36,66L60,66"
+            android:strokeColor="@color/splash_lines"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:trimPathEnd="0" />
+    </group>
+
+    <group
+        android:name="glyph_group"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.72"
+        android:scaleY="0.72">
+        <path
+            android:name="glyph"
+            android:fillColor="@color/splash_glyph"
+            android:fillAlpha="0"
+            android:pathData="M53.73,66.02Q48.84,65.94 44.7,64.58Q40.55,63.22 37.49,60.55Q34.43,57.88 32.76,53.92Q31.09,49.97 31.09,44.85Q31.09,39.66 32.88,35.74Q34.66,31.83 38.07,29.23Q41.48,26.64 46.25,25.32Q51.02,24 56.98,24H76.91V28.96L70.78,29.35Q70.78,30.67 70.78,31.91Q70.71,35.94 70.71,39.97V67.88Q70.71,71.91 70.74,75.94Q70.78,79.97 70.78,84H60.09Q60.16,79.97 60.16,75.94V29.04H53.73Z" />
+    </group>
+</vector>
