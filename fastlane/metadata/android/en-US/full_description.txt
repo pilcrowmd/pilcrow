@@ -1,0 +1,37 @@
+Pilcrow is a beautiful, distraction-free Markdown reader and editor for Android. Open a .md file and read it the way it was meant to look - clean serif typography, a warm dark theme, and generous spacing that make long documents a pleasure to read on a phone.
+
+Built for the Markdown people actually deal with every day: answers from AI assistants, README files, technical docs, notes, and specs. If you save output from AI chat tools as Markdown, Pilcrow renders it perfectly - headings, lists, tables, code, and math - instead of showing you raw symbols.
+
+WHY PILCROW
+
+- Beautiful reading first - premium serif type, a low-contrast dark theme, and layout tuned for real reading, not a cramped IDE.
+- Read AND edit - switch between a clean rendered preview and a real source editor with syntax highlighting, line numbers, and undo/redo.
+- Never loses your work - saving writes back exactly what you wrote, with no silent reformatting and no half-written files. Your file is safe.
+- Free, no ads, no account, no tracking - nothing to sign up for, nothing watching you. Fully open source (GPL-3.0).
+- Fast and offline - native Android, no browser engine, opens large files smoothly and works with no connection.
+
+EVERYTHING MARKDOWN
+
+- Full CommonMark + GitHub Flavored Markdown
+- Tables, task lists, strikethrough, and links
+- Syntax-highlighted code blocks
+- LaTeX math ($$…$$)
+- YAML front matter
+- Wide tables and code scroll sideways without breaking the page
+
+READER TOOLS
+
+- In-document search with highlighted matches and next/previous
+- Auto-generated table of contents from your headings
+- Remembers your scroll position per file
+- Open .md straight from your file manager, share sheet, or email attachment
+- Adjustable text size and selectable reading fonts
+
+PERFECT FOR
+
+- Reading and saving answers from AI assistants and large language models
+- README files and project documentation on the go
+- Technical specs, notes, and meeting docs
+- Anyone who works with .md / .markdown files
+
+Pilcrow opens .md, .markdown, and .txt files. No sign-up, no ads, no nonsense - just the cleanest way to read and edit Markdown on Android.

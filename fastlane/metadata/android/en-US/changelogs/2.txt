@@ -1,0 +1,7 @@
+New in 1.0.1:
+- Inline LaTeX math with single dollars ($…$), currency-aware
+- Save As, including brand-new documents
+- Pinch-to-zoom in the reader with live text reflow
+- Branded launch splash; Clear-Recents confirmation
+- Crash-recovery escape hatch for unrecoverable files
+- Fixes: in-document search counts and keyboard room, dialog survives rotation, Back stays in-app, file picker Markdown filter, status/nav bar theming, clearer Reader/Editor mode toggle
