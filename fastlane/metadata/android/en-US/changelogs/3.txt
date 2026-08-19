@@ -1,0 +1,4 @@
+New in 1.0.2:
+- Stability: the reading view is now fully crash-proof — a paragraph that fails to render degrades gracefully instead of crashing the app, and can never affect the look of other paragraphs
+- Release builds now include symbol and mapping metadata for better crash diagnostics
+- No changes to features, your files, or formatting
