@@ -35,8 +35,8 @@ android {
         applicationId = "com.pilcrowmd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -69,6 +69,13 @@ android {
             ndk {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }
+            // Do not embed the git revision (META-INF/version-control-info.textproto), so
+            // the APK content is independent of the checkout state — required for
+            // reproducible builds. (Per-build-type DSL on this AGP; release is the only
+            // variant that embeds it.)
+            vcsInfo {
+                include = false
+            }
             // Upload key (Play App Signing re-signs with the app key). Null when no
             // keystore is configured, so non-release builds never require it.
             signingConfig = if (hasReleaseKeystore) signingConfigs.getByName("release") else null
@@ -90,6 +97,14 @@ android {
         compose = true
         // BuildConfig.DEBUG gates the debug-only crash-injection hook (impossible in release).
         buildConfig = true
+    }
+
+    // Strip the Google-encrypted dependency-metadata signing block from release artifacts.
+    // F-Droid rejects APKs that carry it (opaque, only Google can read it), and Play does
+    // not require it for uploads.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     testOptions {

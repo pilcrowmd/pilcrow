@@ -1,0 +1,1 @@
+Build metadata removed from the APK for reproducible F-Droid builds. No functional changes.
