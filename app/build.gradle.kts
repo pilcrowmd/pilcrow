@@ -27,13 +27,16 @@ val hasReleaseKeystore = releaseSecret("RELEASE_STORE_FILE") != null
 android {
     namespace = "com.pilcrowmd"
     compileSdk = 36
+    // Pinned so release native-symbol extraction (debugSymbolLevel below) is reproducible.
+    // r27c LTS — preinstalled on GitHub ubuntu runners; AGP auto-installs it elsewhere.
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.pilcrowmd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -51,11 +54,21 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 runs in NO-OP mode (proguard-rules.pro: -dontshrink -dontobfuscate -dontoptimize):
+            // code is byte-identical to minify-off, but R8 emits the mapping file into the AAB's
+            // BUNDLE-METADATA so Play Vitals stack traces stay symbolicated and the Console
+            // "no deobfuscation file" warning goes away. Real shrinking is a deliberate,
+            // separately-UAT'd future change — do not flip these flags casually.
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Package native symbol tables for the AndroidX .so libs into the AAB so Play can
+            // symbolicate native crashes (Console warning on the 1.0.1 AAB). Needs a local NDK.
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
             // Upload key (Play App Signing re-signs with the app key). Null when no
             // keystore is configured, so non-release builds never require it.
             signingConfig = if (hasReleaseKeystore) signingConfigs.getByName("release") else null

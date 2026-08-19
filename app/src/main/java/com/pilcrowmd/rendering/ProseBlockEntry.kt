@@ -4,6 +4,7 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import android.util.Log
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.ViewGroup
@@ -50,6 +51,7 @@ class ProseBlockEntry(
         return Holder(tv)
     }
 
+    @Suppress("TooGenericExceptionCaught") // Safeguard 3: any render failure must degrade, not crash
     override fun bindHolder(markwon: Markwon, holder: Holder, node: Node) {
         // Tighten the gap between body paragraphs only. The prose layout's 8dp top+bottom puts
         // consecutive paragraphs 16dp apart, which reads as over-spaced; settled on 6dp (→12dp between
@@ -68,23 +70,38 @@ class ProseBlockEntry(
             holder.textView.paddingRight,
             verticalPaddingPx,
         )
-        markwon.setParsedMarkdown(holder.textView, markwon.render(node))
-        // Prose blocks are a single TextView, so occurrenceBase is 0.
-        SearchHighlighter.highlight(
-            holder.textView,
-            searchHighlight,
-            blockIsFocused = holder.bindingAdapterPosition == searchHighlight.focusedPosition,
-            occurrenceBase = 0,
-        )
+        try {
+            // Reset shared-holder state: a recycled holder may carry the fallback's secondaryText
+            // color from a previous failed bind — restore primaryText on every healthy bind.
+            holder.textView.setTextColor(colorScheme.primaryText.toArgb())
+            markwon.setParsedMarkdown(holder.textView, markwon.render(node))
+            // Prose blocks are a single TextView, so occurrenceBase is 0.
+            SearchHighlighter.highlight(
+                holder.textView,
+                searchHighlight,
+                blockIsFocused = holder.bindingAdapterPosition == searchHighlight.focusedPosition,
+                occurrenceBase = 0,
+            )
+        } catch (e: Exception) {
+            // Graceful-ignore: never crash the adapter on a bad/unsupported block (Safeguard 3) —
+            // same degradation shape as FencedCodeBlockEntry.bindHolder.
+            Log.e("ProseBlockEntry", "render failed: ${e.message}", e)
+            holder.textView.text = RENDER_FALLBACK_TEXT
+            holder.textView.setTextColor(colorScheme.secondaryText.toArgb())
+        }
     }
 
     class Holder(val textView: TextView) : MarkwonAdapter.Holder(textView)
 
-    private companion object {
+    internal companion object {
         // Vertical padding for prose blocks. Paragraphs use 6dp → 12dp between two body paragraphs;
         // all other prose blocks (headings, lists, blockquotes, rules) keep 8dp
         // (adapter_default_prose.xml default) so their spacing is unaffected.
         const val PARAGRAPH_VERTICAL_PADDING_DP = 6f
         const val PROSE_VERTICAL_PADDING_DP = 8f
+
+        // Shown when a prose block fails to render (Safeguard 3 fallback). Internal so the
+        // failure-path test asserts the exact degradation contract.
+        internal const val RENDER_FALLBACK_TEXT = "[content could not be rendered]"
     }
 }
