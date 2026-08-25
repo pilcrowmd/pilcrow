@@ -71,6 +71,9 @@ fun PilcrowToolbar(
     isSaving: Boolean = false,
     onUndo: (() -> Unit)? = null,
     onRedo: (() -> Unit)? = null,
+    // Non-null only for .txt documents; the label reflects the mode to switch TO.
+    plainToggleLabel: String? = null,
+    onTogglePlainView: () -> Unit = {},
 ) {
     val c = mdColors()
     Column(
@@ -160,8 +163,13 @@ fun PilcrowToolbar(
                         onClick = onRedo,
                     )
                 }
-                // Overflow menu (⋮) — hosts "Save a copy" (Save-As). Sits left of Close.
-                OverflowMenu(onSaveACopy = onSaveACopy, enabled = !isSaving)
+                // Overflow menu (⋮) — hosts "Save a copy" + the .txt render toggle. Sits left of Close.
+                OverflowMenu(
+                    onSaveACopy = onSaveACopy,
+                    enabled = !isSaving,
+                    plainToggleLabel = plainToggleLabel,
+                    onTogglePlainView = onTogglePlainView,
+                )
                 // Settings moved off the toolbar to the Welcome screen.
                 // Close (X) — always the rightmost action.
                 ActionIcon(
@@ -244,11 +252,18 @@ private fun PdfExportActionIcon(onClick: () -> Unit, enabled: Boolean = true) {
 }
 
 /**
- * Toolbar overflow (⋮) menu. Owns its own expanded state; currently hosts the "Save a copy" (Save-As)
- * action. A 42dp target / 22dp glyph to match the neighbouring [ActionIcon]s; the menu anchors to it.
+ * Toolbar overflow (⋮) menu. Owns its own expanded state; hosts "Save a copy" (Save-As) and — for
+ * `.txt` documents only ([plainToggleLabel] non-null) — the quiet render-mode toggle
+ * ("View as Markdown" ⇄ "View as plain text"). A 42dp target / 22dp glyph to match the
+ * neighbouring [ActionIcon]s; the menu anchors to it.
  */
 @Composable
-private fun OverflowMenu(onSaveACopy: () -> Unit, enabled: Boolean = true) {
+private fun OverflowMenu(
+    onSaveACopy: () -> Unit,
+    enabled: Boolean = true,
+    plainToggleLabel: String? = null,
+    onTogglePlainView: () -> Unit = {},
+) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.size(42.dp)) {
@@ -267,6 +282,15 @@ private fun OverflowMenu(onSaveACopy: () -> Unit, enabled: Boolean = true) {
                     onSaveACopy()
                 },
             )
+            if (plainToggleLabel != null) {
+                DropdownMenuItem(
+                    text = { Text(plainToggleLabel) },
+                    onClick = {
+                        expanded = false
+                        onTogglePlainView()
+                    },
+                )
+            }
         }
     }
 }

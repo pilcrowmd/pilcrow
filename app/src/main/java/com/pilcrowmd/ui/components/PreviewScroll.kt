@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.pilcrowmd.rendering.SEARCH_EXCLUDED_TAG
 import com.pilcrowmd.rendering.searchableMatchOffsets
 import com.pilcrowmd.storage.ScrollAnchor
 
@@ -103,11 +104,16 @@ private fun RecyclerView.focusedMatchTarget(
     return if (charIdx == null) null else tv to charIdx
 }
 
-/** Every TextView under [view], depth-first in child order (row-major for a table's cells). */
+/**
+ * Every TextView under [view] that paints document content, depth-first in child order (row-major
+ * for a table's cells). Views tagged [SEARCH_EXCLUDED_TAG] are chrome — they paint text the search
+ * use case does not model for this block, so counting their matches would desync the per-block
+ * occurrence ordinal this function threads.
+ */
 private fun collectTextViews(view: View): List<TextView> {
     val out = mutableListOf<TextView>()
     fun walk(v: View) {
-        if (v is TextView) out.add(v)
+        if (v is TextView && v.tag != SEARCH_EXCLUDED_TAG) out.add(v)
         if (v is ViewGroup) {
             for (i in 0 until v.childCount) walk(v.getChildAt(i))
         }

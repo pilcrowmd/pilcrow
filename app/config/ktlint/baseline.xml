@@ -20,6 +20,6 @@
     </file>
     <file name="src/main/java/com/pilcrowmd/viewmodel/MarkdownViewModel.kt">
         <error line="19" column="1" source="standard:no-wildcard-imports" />
-        <error line="151" column="17" source="standard:backing-property-naming" />
+        <error line="235" column="17" source="standard:backing-property-naming" />
     </file>
 </baseline>

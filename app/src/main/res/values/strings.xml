@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Pilcrow</string>
+    <!-- Talkback label for the arrow on a footnote definition that returns to its first reference. -->
+    <string name="footnote_back_link">Back to the footnote reference</string>
 </resources>

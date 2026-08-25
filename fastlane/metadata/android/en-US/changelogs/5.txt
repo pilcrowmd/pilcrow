@@ -1,0 +1,9 @@
+Stability and coverage: bigger files, more file types, fewer surprises.
+
+- Fixed a long-standing freeze when opening large files. Big documents now open instantly.
+- Fixed a crash when switching into the editor on some devices.
+- Plain .txt files now open in Pilcrow.
+- Footnotes render, with tap-to-jump and a link back.
+- Chemistry formulas (\ce{}) render in math.
+- Inline code and raw HTML no longer vanish inside table cells.
+- More accurate search counts in documents with math.

@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.domain.usecase
 
+import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.domain.markdown.InlineMathDelimiters
 import com.pilcrowmd.domain.model.SearchMatch
 import org.commonmark.ext.gfm.tables.TableBlock
@@ -54,6 +55,35 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
     }
 
     /**
+     * Plain-mode search: matches over the literal chunk texts — the visible text IS the
+     * source, so Markdown syntax is findable (`# alpha` matches). [chunkLiterals] must be the same
+     * split the plain render uses (adapter position = chunk index); chunks join with "\n", so raw
+     * start indices are cumulative. Case-insensitive and steps by ONE char (overlaps counted) —
+     * the same rules as the markdown scan and the TextView highlighter, so counts and focus
+     * ordinals never diverge.
+     */
+    fun findPlainSearchMatches(chunkLiterals: List<String>, query: String): List<SearchMatch> {
+        if (query.isEmpty()) return emptyList()
+        val matches = mutableListOf<SearchMatch>()
+        var chunkStart = 0
+        chunkLiterals.forEachIndexed { position, literal ->
+            var index = literal.indexOf(query, ignoreCase = true)
+            var ordinal = 0
+            while (index >= 0) {
+                matches += SearchMatch(
+                    content = literal.substring(index, index + query.length),
+                    startIndex = chunkStart + index,
+                    adapterPosition = position,
+                    occurrenceInBlock = ordinal++,
+                )
+                index = literal.indexOf(query, index + 1, ignoreCase = true)
+            }
+            chunkStart += literal.length + 1 // +1: the newline consumed at the chunk boundary
+        }
+        return matches
+    }
+
+    /**
      * Walks the parsed document once, accumulating matches over each block's assembled visible text.
      * Holds the monotonic raw-source [cursor] and the running [matches] as fields so the per-block and
      * per-node helpers stay small.
@@ -61,6 +91,16 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
     private class BlockScanner(private val content: String, private val query: String) {
         private var cursor = 0
         private val matches = mutableListOf<SearchMatch>()
+
+        // Whether the walk is currently inside a contiguous run of masked (formula) source, so the
+        // run collapses to exactly ONE U+FFFC. This is per math RUN, not per node: the parity parser
+        // has no inline-math processor, so `$a **b** c$` arrives as three inline nodes (Text /
+        // StrongEmphasis / Text) while the renderer paints one formula image. Scoped to the scanner
+        // rather than to appendLiteral so a run that spans several nodes still yields one
+        // placeholder — otherwise search models three images where the TextView paints one.
+        // Reset at the start of every chunk, at an UNMASKED line break, and at an image; a MASKED
+        // line break is interior to a multi-line display formula and keeps the run open.
+        private var inMath = false
 
         // Raw-source positions that render as a LaTeX formula image (inline `$…$` + display `$$…$$`).
         // Their *latex source* is excluded from prose search text so math is never a match (it renders
@@ -99,6 +139,7 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
         private fun scanChunk(root: Node, blockIndex: Int, occurrence: Occurrence) {
             val sb = StringBuilder()
             val rawOffsets = mutableListOf<Int>()
+            inMath = false // each chunk (block, or table cell) starts outside any math run
             appendVisible(root, sb, rawOffsets)
             val text = sb.toString()
             if (text.isEmpty()) return
@@ -130,7 +171,14 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
          */
         private fun appendVisible(node: Node, sb: StringBuilder, offsets: MutableList<Int>) {
             when (node) {
-                is Image -> return // alt text is not rendered into the TextView
+                // Alt text is not rendered into the TextView. The early return skips appendLiteral /
+                // appendBreak, so it must end the math run itself — otherwise two formulas separated
+                // only by an image would merge into one placeholder (a leak the pre-hoist local
+                // `inMath` could not have).
+                is Image -> {
+                    inMath = false
+                    return
+                }
                 // Prose Text is the only place `$…$`/`$$…$$` are parsed into math by the renderer, so
                 // only it skips math; code/HTML render `$` literally → keep them searchable.
                 is Text -> appendLiteral(node.literal, sb, offsets, skipMath = true)
@@ -139,6 +187,10 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
                 is IndentedCodeBlock -> appendLiteral(node.literal, sb, offsets)
                 is HtmlBlock -> appendLiteral(node.literal, sb, offsets)
                 is HtmlInline -> appendLiteral(node.literal, sb, offsets)
+                // A resolved footnote marker paints its ORDINAL, so that is what search must see —
+                // appending nothing would under-model the block, and appending the raw `[^label]`
+                // would count text the TextView never draws (the phantom-match class removed).
+                is FootnoteReference -> appendFootnoteMarker(node, sb, offsets)
                 is SoftLineBreak -> appendBreak(' ', sb, offsets)
                 is HardLineBreak -> appendBreak('\n', sb, offsets)
                 else -> {
@@ -169,7 +221,6 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
             // fall back to the cursor so the rare offset is approximate but the walk never derails.
             val found = content.indexOf(literal, cursor)
             val base = if (found in cursor..(cursor + LOOKAHEAD)) found else cursor
-            var inMath = false
             for (k in literal.indices) {
                 val raw = base + k
                 if (skipMath && raw < mathMask.size && mathMask[raw]) {
@@ -190,13 +241,64 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
             cursor = base + literal.length
         }
 
-        /** Append the single whitespace char [rendered] for a line-break node, anchored at the raw `\n`. */
+        /**
+         * Append the ordinal a [FootnoteReference] paints, anchored on the raw `[` of its
+         * `[^label]` source.
+         *
+         * Two rules, both load-bearing:
+         *  - **every emitted character anchors at the same `[` offset.** A two-digit ordinal must not
+         *    fabricate offsets for source positions that draw no separate glyph — the same anchoring
+         *    the math `U+FFFC` already uses.
+         *  - **the cursor advances past the closing `]`.** The marker replaced source the walk would
+         *    otherwise never consume, so without this the next literal's bounded forward search has to
+         *    bridge the marker and could snap to a duplicate substring beyond it.
+         *
+         * A marker inside a formula contributes nothing: the surrounding math run already collapses to
+         * one `U+FFFC`, and adding digits there would make a formula's interior searchable.
+         */
+        private fun appendFootnoteMarker(node: FootnoteReference, sb: StringBuilder, offsets: MutableList<Int>) {
+            val source = "[^" + node.label + "]"
+            val found = content.indexOf(source, cursor)
+            val base = if (found in cursor..(cursor + LOOKAHEAD)) found else cursor
+            if (base < mathMask.size && mathMask[base]) {
+                cursor = base + source.length
+                return
+            }
+            inMath = false
+            for (digit in node.ordinal.toString()) {
+                sb.append(digit)
+                offsets.add(base)
+            }
+            cursor = base + source.length
+        }
+
+        /**
+         * Append the single whitespace char [rendered] for a line-break node, anchored at the raw `\n`
+         * — unless that newline is itself inside a formula, in which case it belongs to the math run.
+         *
+         * Both branches matter. An **unmasked** newline ends the run: inline `$…$` is single-line, so a
+         * formula closing line 1 and another opening line 2 are two runs and must not merge. A
+         * **masked** newline is interior to a multi-line display `$$…$$` block (its range spans
+         * newlines), which the renderer paints as ONE image — so the break is part of the run, not
+         * searchable whitespace. Appending it unconditionally would both split the placeholder and
+         * make the formula's interior line breaks findable, a phantom hit that can be neither
+         * highlighted nor scrolled to.
+         */
         private fun appendBreak(rendered: Char, sb: StringBuilder, offsets: MutableList<Int>) {
             // Same bounded search as appendLiteral: a far-away `\n` must not pull the cursor forward.
             val nl = content.indexOf('\n', cursor)
             val base = if (nl in cursor..(cursor + LOOKAHEAD)) nl else cursor
-            sb.append(rendered)
-            offsets.add(base)
+            if (base < mathMask.size && mathMask[base]) {
+                if (!inMath) {
+                    sb.append('\uFFFC')
+                    offsets.add(base)
+                    inMath = true
+                }
+            } else {
+                inMath = false
+                sb.append(rendered)
+                offsets.add(base)
+            }
             cursor = base + 1
         }
     }

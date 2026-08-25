@@ -7,6 +7,60 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-08-25
+
+No user-facing changes — the app behaves exactly as 1.0.4.
+
+### Changed
+
+- The complete corresponding source for this release is published.
+- The Gradle distribution is pinned by SHA-256 checksum, so the build verifies the contents of
+  the toolchain it downloads and not only its URL — a prerequisite for reproducible builds.
+- Store listing metadata is now tracked in the repository alongside the source.
+
+## [1.0.4] - 2026-08-24
+
+### Added
+
+- **Footnotes** — `[^1]` references and `[^1]: …` definitions now render, with tap-to-jump
+  and a link back to the reference. Definitions render in place; references renumber 1..n by
+  first use.
+- **Plain text files** — `.txt` files open in the reader, with a per-file long-line overflow
+  toggle.
+- **Chemistry formulas** — `\ce{…}` (mhchem) notation renders inside math.
+
+### Fixed
+
+- **A long-standing freeze when opening large files.** Line-ending detection scanned the
+  document twice with a regex on the main thread, which degraded quadratically — a 1.3 MB file
+  could block the app for tens of seconds and a 3 MB file for minutes. Detection is now a single
+  linear pass off the main thread. Present since 1.0.0.
+- **A crash when entering the editor** on some devices, caused by the shared editor view being
+  re-attached while still parented.
+- **Inline code and raw HTML were silently dropped inside table cells** in every previous
+  release. Table cell rendering now recurses into unrecognised nodes by default rather than
+  discarding them.
+- **Search match counts** in documents containing math no longer over-count.
+
+## [1.0.3] - 2026-08-19
+
+Build metadata removed from the APK so F-Droid can reproduce the build byte-for-byte. No functional
+changes.
+
+## [1.0.2] - 2026-08-19
+
+### Fixed
+
+- **An unrenderable paragraph no longer takes the whole document down.** One rendering path was
+  missing the guard the others had, so a single paragraph that failed to render could bring down
+  the reader instead of just itself. It now shows a short placeholder in place of that paragraph
+  and the rest of the document renders normally.
+
+### Changed
+
+- Crash reports from the store now arrive with readable stack traces. Build-only change: the app's
+  behaviour, size and performance are unchanged.
+
 ## [1.0.1] - 2026-06-28
 
 ### Added

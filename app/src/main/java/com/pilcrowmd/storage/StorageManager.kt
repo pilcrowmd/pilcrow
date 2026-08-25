@@ -4,6 +4,7 @@
 package com.pilcrowmd.storage
 
 import android.net.Uri
+import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
 
@@ -81,6 +82,17 @@ interface StorageManager {
      * of the document — if none is stored.
      */
     suspend fun getScrollPosition(uri: Uri): ScrollAnchor
+
+    /**
+     * The user's remembered render-mode override for a file URI, or null when none is
+     * stored — null means "use the extension default". Overrides are explicit in BOTH directions
+     * (a `.txt` toggled to Markdown stores MARKDOWN; toggled back stores PLAIN), so a future
+     * default change never silently flips a user's chosen view.
+     */
+    suspend fun getRenderModeOverride(uri: Uri): RenderMode?
+
+    /** Persist ([mode] non-null) or clear ([mode] null) the render-mode override for a file URI. */
+    suspend fun setRenderModeOverride(uri: Uri, mode: RenderMode?)
 
     /**
      * Flow of font scale multiplier. Default: 1.0f (no scaling). Persists across app restarts.

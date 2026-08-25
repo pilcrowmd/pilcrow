@@ -33,6 +33,6 @@
 # - javax.lang.model.element.Modifier: referenced by error-prone's @IncompatibleModifiers
 #   annotation (annotation processing machinery, not runtime code).
 # - kotlin.Cloneable$DefaultImpls: stale metadata reference from Sora's ShareableData
-#   (the known Kotlin 2.3.10 <-> Sora metadata quirk, see D7-01).
+#   (the known Kotlin 2.3.10 <-> Sora metadata quirk).
 -dontwarn javax.lang.model.element.Modifier
 -dontwarn kotlin.Cloneable$DefaultImpls

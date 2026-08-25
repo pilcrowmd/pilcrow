@@ -3,6 +3,8 @@
 
 package com.pilcrowmd.domain.usecase
 
+import com.pilcrowmd.domain.markdown.FootnoteBlockParserFactory
+import com.pilcrowmd.domain.markdown.Footnotes
 import com.pilcrowmd.domain.markdown.FrontmatterBlockParserFactory
 import com.pilcrowmd.domain.markdown.FrontmatterDetector
 import com.pilcrowmd.domain.model.HeadingNode
@@ -42,6 +44,9 @@ class ParseMarkdownHeadingsUseCase {
         return Parser.builder()
             .extensions(listOf(TablesExtension.create(), StrikethroughExtension.create()))
             .customBlockParserFactory(FrontmatterBlockParserFactory { frontmatterEligible })
+            // Same factory the renderer registers (FootnotePlugin) — shared so the top-level block
+            // sequences stay 1:1. ParseParityTest fails if one side ever gains it without the other.
+            .customBlockParserFactory(FootnoteBlockParserFactory())
             .build()
     }
 
@@ -52,7 +57,9 @@ class ParseMarkdownHeadingsUseCase {
      * Returns `null` on a parse failure (graceful degradation — no search rather than a crash).
      */
     internal fun parseDocument(content: String): Document? = try {
-        parityParser(content).parse(content) as? Document
+        // The SAME post-parse pass the renderer and the PDF export apply, so search walks the exact
+        // node tree that gets painted — footnote markers included.
+        (Footnotes.transform(parityParser(content).parse(content)) as? Document)
     } catch (ignored: Exception) {
         null
     }
@@ -63,7 +70,7 @@ class ParseMarkdownHeadingsUseCase {
      */
     fun extractHeadings(content: String): List<HeadingNode> {
         return try {
-            val doc = parityParser(content).parse(content)
+            val doc = Footnotes.transform(parityParser(content).parse(content))
 
             val headings = mutableListOf<HeadingNode>()
             var blockIndex = 0

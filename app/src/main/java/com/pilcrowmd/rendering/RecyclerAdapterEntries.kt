@@ -45,8 +45,8 @@ class SearchHighlight(
  * The adapter reuses the Markwon instance and its entire plugin chain (CommonMark, GFM tables,
  * Prism4j syntax highlighting, JLatexMath for math rendering, etc.).
  *
- * Unsupported node types (Mermaid, footnotes, etc.) gracefully fall back to the default prose entry,
- * ensuring no crash on unexpected syntax (Safeguard 3).
+ * Unsupported node types (Mermaid, wiki-links, emoji shortcodes, etc.) gracefully fall back to the
+ * default prose entry, ensuring no crash on unexpected syntax (Safeguard 3).
  */
 object RecyclerAdapterEntries {
 
@@ -90,6 +90,20 @@ object RecyclerAdapterEntries {
             )
             // Register custom entry for table blocks (renders into HorizontalScrollView)
             .include(TableBlock::class.java, TableBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight))
+            // Plain-text chunks: only PlainTextBlocks.build emits these (the Markdown
+            // parser never does), so this entry is inert for every .md document.
+            .include(
+                PlainTextChunk::class.java,
+                PlainTextBlockEntry(context, fontScale, fontSet, searchHighlight, colorScheme),
+            )
+            // Footnote definitions. Without this entry the block still renders — its
+            // children fall through the default prose lane — so a half-wired footnote degrades to
+            // ordinary prose rather than crashing (Safeguard 3). The entry is what makes it read as
+            // a note, and what draws the back-link.
+            .include(
+                com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock::class.java,
+                FootnoteBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight),
+            )
             // Unregistered node types fall back to the default prose entry (graceful-ignore)
             .build()
 

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    Footnote definition item, rendered IN PLACE where the definition sits.
+
+    The marker, the leading rule and the back-link are their own views, NOT characters inside the
+    body TextView. That is a correctness decision, not a layout preference: SearchMarkdownUseCase
+    models this block as its body text alone, and the invariant is that a block's search text
+    matches character-for-character what is painted. Keeping the chrome out of the TextView holds
+    that by construction, instead of by remembering to mirror every decoration in the search walk.
+
+    Horizontal padding matches prose (20dp) so the body's left edge lines up with the page.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:baselineAligned="false"
+    android:orientation="horizontal"
+    android:paddingStart="20dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="6dp">
+
+    <!--
+        The note itself is nested so the leading rule's match_parent resolves to the height of the
+        TEXT, not of the whole row. Without this level the taller back-link box stretches the rule
+        past the words it is marking — visibly so at the 1.6 font scale.
+    -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
+
+        <!-- Thin leading rule; colour set from the token layer at bind time (Safeguard 4). -->
+        <View
+            android:id="@+id/footnote_rule"
+            android:layout_width="2dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="12dp" />
+
+        <TextView
+            android:id="@+id/footnote_marker"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/footnote_body"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!--
+        Sized to a single line of note text (a 32dp box around a 16dp glyph), so a one-line note is
+        not forced taller than its own words and the leading rule stops overshooting them.
+    -->
+    <ImageView
+        android:id="@+id/footnote_back_link"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/footnote_back_link"
+        android:padding="8dp"
+        android:src="@drawable/ic_footnote_back" />
+</LinearLayout>

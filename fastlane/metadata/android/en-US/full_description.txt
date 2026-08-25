@@ -8,7 +8,7 @@ WHY PILCROW
 - Read AND edit - switch between a clean rendered preview and a real source editor with syntax highlighting, line numbers, and undo/redo.
 - Never loses your work - saving writes back exactly what you wrote, with no silent reformatting and no half-written files. Your file is safe.
 - Free, no ads, no account, no tracking - nothing to sign up for, nothing watching you. Fully open source (GPL-3.0).
-- Fast and offline - native Android, no browser engine, opens large files smoothly and works with no connection.
+- Fast and offline - native Android, no browser engine, opens large files smoothly and works with no connection. Only Mermaid diagram rendering uses the internet.
 
 EVERYTHING MARKDOWN
 

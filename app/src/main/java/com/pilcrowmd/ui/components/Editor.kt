@@ -5,6 +5,7 @@ package com.pilcrowmd.ui.components
 
 import android.content.Context
 import android.util.Log
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -144,6 +145,34 @@ fun MarkdownEditor(
                 // Otherwise, create a new one (fallback for dev/testing).
                 val editor = codeEditorInstance ?: CodeEditor(context)
 
+                // DETACH BEFORE ATTACH. `AndroidView` hands this straight to `AndroidViewHolder`,
+                // which calls `addView(...)`; `ViewGroup.addViewInner` THROWS if the child still has
+                // a parent. Because the instance is hoisted it outlives its holder, so whenever a
+                // node is recreated while the previous holder still owns the view - the shape a SAF
+                // picker return produces - the second attach used to kill the process
+                // (IllegalStateException "The specified child already has a parent"; Play cluster
+                // 51756ead17b727a9731a2f8baf99cff3, present since 1.0.1).
+                //
+                // Detaching is deliberately the ONLY remedy applied here: creating a fresh editor
+                // would also stop the crash and would silently DROP THE USER'S UNDO STACK, which
+                // lives on this instance and is the entire reason it is hoisted.
+                // MarkdownEditorReattachTest pins both halves.
+                // ⚠️ TRIPWIRE — READ THIS BEFORE ADDING A SECOND EDITOR SURFACE.
+                // This line is safe ONLY while exactly ONE editor instance is active at a time,
+                // which is true of the app as built (one MarkdownEditor, one hoisted instance owned
+                // by MainScreen). **If you introduce a second CONCURRENTLY-ACTIVE editor — split
+                // view, tabs, side-by-side preview, a second pane of any kind — this becomes a P1.**
+                // With two live holders sharing one hoisted instance, detach-before-attach stops
+                // being a repair and starts SILENTLY STEALING the view from the holder that is still
+                // using it: the other pane goes blank with no exception and no log line, which is a
+                // strictly worse failure than the crash this line was added to fix.
+                // This is not speculative — a probe with two AndroidViews sharing one hoisted
+                // instance reproduced the original production exception, so the mechanism is
+                // demonstrated (a review raised it as LOW).
+                // If that day comes: give each surface its own CodeEditor, or key the hoisted
+                // instance per surface. Do NOT simply delete this line - the crash returns.
+                (editor.parent as? ViewGroup)?.removeView(editor)
+
                 try {
                     // Set initial content
                     editor.setText(content)
@@ -234,6 +263,16 @@ fun MarkdownEditor(
                     Log.e("MarkdownEditor", "update failed: ${e.message}", e)
                 }
             },
+            // NO onRelease detach - deliberately, and the decision is test-driven rather than
+            // stylistic. Detaching here was tried first and REGRESSED the fix: when a node is
+            // recreated, Compose runs the NEW factory before releasing the OLD node, so an
+            // unconditional removeView() in onRelease rips the editor back out of the holder that
+            // just legitimately attached it, leaving it unparented and blank.
+            // MarkdownEditorReattachTest caught exactly that (two tests flipped from the crash to
+            // "editor must be attached after the node was recreated"). The factory's
+            // detach-before-attach already covers every ordering, INCLUDING an abandoned
+            // composition, which never runs onRelease at all. The editor's own lifecycle stays
+            // where it was: MainScreen's DisposableEffect calls release() (D4-REVIEW-3).
         )
     }
 }

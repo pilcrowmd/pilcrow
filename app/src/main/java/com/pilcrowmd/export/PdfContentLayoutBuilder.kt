@@ -12,12 +12,16 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import com.pilcrowmd.R
+import com.pilcrowmd.rendering.FencedCodeBlockEntry
+import com.pilcrowmd.rendering.FrontmatterBlockEntry
 import com.pilcrowmd.rendering.SearchHighlight
 import com.pilcrowmd.ui.theme.FontSets
 import com.pilcrowmd.ui.theme.PilcrowTypography
 import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
+import io.noties.markwon.recycler.MarkwonAdapter
+import org.commonmark.node.FencedCodeBlock
 import ru.noties.jlatexmath.JLatexMathDrawable
 
 /**
@@ -29,7 +33,30 @@ import ru.noties.jlatexmath.JLatexMathDrawable
  * to the builder; binding a returned node is a read-only render, hence reusing the list is idempotent.
  */
 internal fun parseTopLevelBlocks(markwon: Markwon, content: String): List<org.commonmark.node.Node> {
-    val document = markwon.parse(content)
+    // Same shared footnote pass as the reader, so the PDF cannot diverge from the screen.
+    val document = com.pilcrowmd.domain.markdown.Footnotes.transform(markwon.parse(content))
+    val nodes = buildList {
+        var node = document.firstChild
+        while (node != null) {
+            add(node)
+            node = node.next
+        }
+    }
+    nodes.forEach { it.unlink() }
+    return nodes
+}
+
+/**
+ * Top-level blocks for the active render mode: MARKDOWN parses as always; PLAIN builds
+ * the verbatim chunk tree — no parser runs, so the exported PDF matches the plain preview.
+ */
+internal fun topLevelBlocksForMode(
+    markwon: Markwon,
+    content: String,
+    renderMode: com.pilcrowmd.domain.model.RenderMode,
+): List<org.commonmark.node.Node> {
+    if (renderMode != com.pilcrowmd.domain.model.RenderMode.PLAIN) return parseTopLevelBlocks(markwon, content)
+    val document = com.pilcrowmd.rendering.PlainTextBlocks.build(content)
     val nodes = buildList {
         var node = document.firstChild
         while (node != null) {
@@ -172,26 +199,14 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
                 FontSets.DEFAULT,
                 PrintColorScheme,
             )
-            is org.commonmark.node.FencedCodeBlock -> {
-                // YAML frontmatter → styled FrontmatterBlockEntry; otherwise normal code block.
-                // Both extend MarkwonAdapter.Entry<FencedCodeBlock, Holder>, mirroring the live
-                // preview's ConditionalFencedCodeBlockEntry. Mermaid stays a code block (no sync cloud).
-                if (node.info?.trim()?.lowercase() == "yaml") {
-                    com.pilcrowmd.rendering.FrontmatterBlockEntry(
-                        context,
-                        fontScale,
-                        FontSets.DEFAULT,
-                        PrintColorScheme,
-                    )
-                } else {
-                    com.pilcrowmd.rendering.FencedCodeBlockEntry(
-                        context,
-                        fontScale,
-                        FontSets.DEFAULT,
-                        PrintColorScheme,
-                    )
-                }
-            }
+            is org.commonmark.node.FencedCodeBlock -> fencedCodeEntry(context, node, fontScale)
+            is com.pilcrowmd.rendering.PlainTextChunk ->
+                // Plain-text chunk: literal verbatim, prose typography, print colors.
+                plainTextEntry(context, fontScale)
+            is com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock ->
+                // Footnote definition. The PDF has its own dispatch, so a node type added
+                // to the reader and not to this `when` silently prints as something else.
+                footnoteEntry(context, fontScale)
             else -> {
                 // Default prose entry for headings, paragraphs, lists, blockquotes, etc.
                 com.pilcrowmd.rendering.ProseBlockEntry(
@@ -228,29 +243,21 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
                     node,
                 )
             }
-            is org.commonmark.node.FencedCodeBlock -> {
-                // Same logic as createHolderForNode: YAML frontmatter vs. normal code block
-                val entry = if (node.info?.trim()?.lowercase() == "yaml") {
-                    com.pilcrowmd.rendering.FrontmatterBlockEntry(
-                        context,
-                        fontScale,
-                        FontSets.DEFAULT,
-                        PrintColorScheme,
-                    )
-                } else {
-                    com.pilcrowmd.rendering.FencedCodeBlockEntry(
-                        context,
-                        fontScale,
-                        FontSets.DEFAULT,
-                        PrintColorScheme,
-                    )
-                }
-                entry.bindHolder(
-                    markwon,
-                    holder as com.pilcrowmd.rendering.FencedCodeBlockEntry.Holder,
-                    node,
-                )
-            }
+            is org.commonmark.node.FencedCodeBlock -> fencedCodeEntry(context, node, fontScale).bindHolder(
+                markwon,
+                holder as com.pilcrowmd.rendering.FencedCodeBlockEntry.Holder,
+                node,
+            )
+            is com.pilcrowmd.rendering.PlainTextChunk -> plainTextEntry(context, fontScale).bindHolder(
+                markwon,
+                holder as com.pilcrowmd.rendering.PlainTextBlockEntry.Holder,
+                node,
+            )
+            is com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock -> footnoteEntry(context, fontScale).bindHolder(
+                markwon,
+                holder as com.pilcrowmd.rendering.FootnoteBlockEntry.Holder,
+                node,
+            )
             else -> {
                 val entry = com.pilcrowmd.rendering.ProseBlockEntry(
                     context,
@@ -421,3 +428,52 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
         private const val CODE_BLOCK_HORIZONTAL_MARGIN_DP = 20f
     }
 }
+
+/**
+ * Print-styled entry for a fenced block: YAML frontmatter → the metadata card, everything else →
+ * a normal code block (mermaid included — there is no synchronous cloud render for print). Both
+ * extend `MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder>`, mirroring the live
+ * preview's ConditionalCodeBlockEntry.
+ *
+ * Top-level and shared by the create + bind dispatch: the selection used to be spelled out twice,
+ * so the two could drift into creating one holder and binding another.
+ */
+private fun fencedCodeEntry(
+    context: Context,
+    node: FencedCodeBlock,
+    fontScale: Float,
+): MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder> {
+    val isFrontmatter = node.info?.trim()?.lowercase() == "yaml"
+    return if (isFrontmatter) {
+        FrontmatterBlockEntry(context, fontScale, FontSets.DEFAULT, PrintColorScheme)
+    } else {
+        FencedCodeBlockEntry(context, fontScale, FontSets.DEFAULT, PrintColorScheme)
+    }
+}
+
+/**
+ * Print-styled footnote entry — shared by the builder's create + bind dispatch, so the
+ * printed note matches the screen. Top-level so the builder class does not gain a member and trip
+ * detekt's TooManyFunctions threshold (the item-2 precedent).
+ *
+ * The back-link arrow is drawn but inert on paper — there is no list to scroll — which is the same
+ * thing that happens to every other tappable span in an exported PDF.
+ */
+private fun footnoteEntry(context: android.content.Context, fontScale: Float) =
+    com.pilcrowmd.rendering.FootnoteBlockEntry(
+        context,
+        fontScale,
+        FontSets.DEFAULT,
+        PrintColorScheme,
+        SearchHighlight(),
+    )
+
+/** Print-styled plain-text entry — shared by the builder's create + bind dispatch. */
+private fun plainTextEntry(context: android.content.Context, fontScale: Float) =
+    com.pilcrowmd.rendering.PlainTextBlockEntry(
+        context,
+        fontScale,
+        FontSets.DEFAULT,
+        SearchHighlight(),
+        PrintColorScheme,
+    )

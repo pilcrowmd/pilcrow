@@ -6,6 +6,7 @@ package com.pilcrowmd.viewmodel
 import android.content.Context
 import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
@@ -13,12 +14,17 @@ import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.LocalStorageManager
+import com.pilcrowmd.testing.MainDispatcherSuite
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,6 +32,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.experimental.categories.Category
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -40,7 +47,34 @@ import java.io.IOException
  * suspend fns return inline, so viewModelScope launches (Robolectric Main) complete synchronously.
  */
 @RunWith(RobolectricTestRunner::class)
+@Category(MainDispatcherSuite::class)
 class MarkdownViewModelStrandedSlotTest {
+
+    // --- teardown quiescence ------------------------------------------------------
+    // The ViewModels built by the factories below are per-test locals, so nothing ever
+    // cancelled their `viewModelScope`. That was harmless until the load path gained a
+    // real `withContext(Dispatchers.IO)` hop: a load coroutine can now still be suspended on
+    // IO when the test body returns and then resume onto Main exactly as
+    // `Dispatchers.resetMain()` releases the global, throwing
+    // `IllegalStateException: Dispatchers.Main is used concurrently with setting it` - on a
+    // RANDOM test, in TEARDOWN rather than an assertion. Measured pre-fix at 16/20 clean runs.
+    //
+    // Registering each ViewModel in a ViewModelStore lets `clear()` cancel those scopes
+    // deterministically BEFORE the global is released. Public lifecycle API (2.8.7): no
+    // reflection, no dependence on the internal viewModelScope job key.
+    //
+    // SEQUENCING, NOT SILENCING: no try/catch around resetMain, no swallowed exception, no
+    // retry rule, no @Ignore, no timeout change - and not one await, barrier or assertion in
+    // this suite is touched.
+    private val vmStore = ViewModelStore()
+    private var vmSeq = 0
+
+    /** Registers [vm] so teardown can cancel its `viewModelScope` before `resetMain()`. */
+    private fun track(vm: MarkdownViewModel): MarkdownViewModel {
+        vmStore.put("vm-${vmSeq++}", vm)
+        return vm
+    }
+    // ---------------------------------------------------------------------------------
 
     @get:Rule
     val tempFolder = TemporaryFolder()
@@ -51,6 +85,9 @@ class MarkdownViewModelStrandedSlotTest {
 
     @Before
     fun setup() {
+        // Barriers below suspend the test thread; Robolectric's paused looper is owned by that same
+        // thread, so Main must be substituted or the load can never complete.
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         context = ApplicationProvider.getApplicationContext()
         storageScope = CoroutineScope(Dispatchers.IO + Job())
         val dataStore = PreferenceDataStoreFactory.create(scope = storageScope) {
@@ -61,7 +98,9 @@ class MarkdownViewModelStrandedSlotTest {
 
     @After
     fun tearDown() {
+        vmStore.clear() // cancels every viewModelScope BEFORE the global is released
         storageScope.cancel()
+        Dispatchers.resetMain()
     }
 
     private class FakeRepo(
@@ -105,19 +144,26 @@ class MarkdownViewModelStrandedSlotTest {
 
     private fun vmWith(repo: FileRepository): MarkdownViewModel {
         val parseHeadings = ParseMarkdownHeadingsUseCase()
-        return MarkdownViewModel(
-            repository = repo,
-            storage = storage,
-            parseHeadingsUseCase = parseHeadings,
-            searchUseCase = SearchMarkdownUseCase(parseHeadings),
-            pdfExporter = mockk(relaxed = true),
-            appInfo = object : AppInfo {
-                override val versionName = "test"
-            },
+        return track(
+            MarkdownViewModel(
+                repository = repo,
+                storage = storage,
+                parseHeadingsUseCase = parseHeadings,
+                searchUseCase = SearchMarkdownUseCase(parseHeadings),
+                pdfExporter = mockk(relaxed = true),
+                appInfo = object : AppInfo {
+                    override val versionName = "test"
+                },
+            ),
         )
     }
 
     private fun slot(n: Int) = StrandedSlot("key$n", Uri.parse("content://test/lost$n.md"), "lost$n.md")
+
+    /** A REAL barrier: identity is non-null only once the load has actually published. */
+    private suspend fun MarkdownViewModel.awaitLoaded(uri: Uri) {
+        currentDocument.first { it?.uri == uri }
+    }
 
     @Test
     fun coldLauncherStartWithSlotsAutoOpensDialog() = runTest {
@@ -171,6 +217,7 @@ class MarkdownViewModelStrandedSlotTest {
         val repo = FakeRepo(readContent = "open doc\n", slots = mutableListOf(slot(1)))
         val vm = vmWith(repo)
         vm.loadFile(docUri)
+        vm.awaitLoaded(docUri)
         val before = vm.currentDocument.value!!
 
         vm.rescueStrandedSlot(Uri.parse("content://test/rescued1.md"), "key1")

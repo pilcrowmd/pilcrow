@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.ui.components.EditorController
@@ -111,6 +112,9 @@ fun MainScreen(
     val lineNumbersEnabled = viewModel.lineNumbersEnabled.collectAsStateWithLifecycle()
     // Separate preview/editor scales and selected font set.
     val previewFontScale = viewModel.previewFontScale.collectAsStateWithLifecycle()
+    // How the reader renders the current document + whether the .txt toggle is offered.
+    val renderMode = viewModel.renderMode.collectAsStateWithLifecycle()
+    val plainToggleAvailable = viewModel.plainToggleAvailable.collectAsStateWithLifecycle()
     val editorFontScale = viewModel.editorFontScale.collectAsStateWithLifecycle()
     val fontSetId = viewModel.fontSetId.collectAsStateWithLifecycle()
     val fontSet = FontSets.byId(fontSetId.value)
@@ -394,24 +398,37 @@ fun MainScreen(
     // Save-As / "Save a copy" launcher (ACTION_CREATE_DOCUMENT). Mirrors the PDF launcher. Dispatches
     // by what initiated the pick: a stranded-slot rescue (raw WAL bytes, never touches the open doc)
     // when pendingRescueSlotKey is set, else the document Save-As (write + adopt).
-    val saveAsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/markdown"),
-    ) { uri ->
+    val handleSaveAsResult = { uri: Uri? ->
         val rescueKey = pendingRescueSlotKey
         if (uri != null) {
             if (rescueKey != null) viewModel.rescueStrandedSlot(uri, rescueKey) else viewModel.saveActiveDocumentAs(uri)
         }
         pendingRescueSlotKey = null // clear regardless (incl. picker cancel) so a later Save-As isn't misrouted
     }
+    val saveAsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown"),
+    ) { uri -> handleSaveAsResult(uri) }
+    // Second launcher for .txt sources: CreateDocument fixes the MIME type in its
+    // constructor, so switching text/plain vs text/markdown at runtime needs two launchers
+    // sharing the one result path. Only launchSaveAs routes here; rescue stays on the .md one.
+    val saveAsPlainLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri -> handleSaveAsResult(uri) }
     // Default filename for the create dialog: a "Copy of <name>.md" so the suggested name never
     // collides with the source (Save-As is "save a COPY"). Critical for a transient doc opened from
     // the Download folder: defaulting to the original name invites overwriting the user's own file.
     // (baseName from the display name — a content-URI lastPathSegment is a doc ID like "msf:47".)
+    // A .txt source suggests "Copy of <name>.txt" + text/plain: the copy keeps the
+    // source's identity instead of silently pretending to be Markdown.
     val launchSaveAs = {
         val baseName = currentDocument.value?.displayName
             ?.substringBeforeLast('.')
             ?.takeIf { it.isNotBlank() }
-        saveAsLauncher.launch("Copy of ${baseName ?: "document"}.md")
+        if (plainToggleAvailable.value) {
+            saveAsPlainLauncher.launch("Copy of ${baseName ?: "document"}.txt")
+        } else {
+            saveAsLauncher.launch("Copy of ${baseName ?: "document"}.md")
+        }
     }
     // Rescue a stranded slot: route the next picker result to rescueStrandedSlot(slotKey).
     val launchRescue = { slot: com.pilcrowmd.repository.StrandedSlot ->
@@ -485,6 +502,14 @@ fun MainScreen(
                             // Save-As; otherwise the normal in-place save.
                             onSave = { if (transient.value) launchSaveAs() else viewModel.saveFile() },
                             onSaveACopy = { launchSaveAs() },
+                            // Quiet .txt render toggle: item present only for .txt documents;
+                            // label names the mode to switch TO. Viewing-only — never touches bytes.
+                            plainToggleLabel = if (plainToggleAvailable.value) {
+                                if (renderMode.value == RenderMode.PLAIN) "View as Markdown" else "View as plain text"
+                            } else {
+                                null
+                            },
+                            onTogglePlainView = { viewModel.toggleRenderMode() },
                             onClose = {
                                 // Safeguard against silent data loss: prompt if there are unsaved edits.
                                 if (currentDocument.value?.dirty == true) {
@@ -647,6 +672,7 @@ fun MainScreen(
                                             currentMatchIndex = currentMatchIndex.value,
                                             jumpPosition = headingJump.value?.position ?: -1,
                                             jumpSeq = headingJump.value?.seq ?: 0,
+                                            renderMode = renderMode.value,
                                         )
                                     }
                                     ViewMode.EDITOR -> {

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    Plain-text chunk item. Horizontal padding matches prose; vertical padding is ZERO —
+    chunk boundaries sit only at blank-line runs (PlainTextBlocks), so adjacent chunks must join
+    with no extra spacing (the blank lines themselves provide the visual gap).
+-->
+<TextView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/text_view"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="20dp"
+    android:paddingEnd="20dp"
+    android:paddingTop="0dp"
+    android:paddingBottom="0dp" />

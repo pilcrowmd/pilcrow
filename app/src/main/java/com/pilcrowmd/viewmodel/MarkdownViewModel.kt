@@ -6,12 +6,15 @@ package com.pilcrowmd.viewmodel
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pilcrowmd.domain.model.DocumentKind
 import com.pilcrowmd.domain.model.HeadingNode
+import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
+import com.pilcrowmd.rendering.PlainTextBlocks
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.RecentFile
@@ -58,17 +61,98 @@ sealed class ExportState {
     data class Error(val errorMessage: String) : ExportState()
 }
 
-class MarkdownViewModel(
+// The 7th constructor parameter is `cpuDispatcher`, a DEFAULTED test seam rather than a new
+// dependency — it exists so a test can assert that the load path's CPU work actually leaves the main
+// thread, which is otherwise unobservable. Suppressed here rather than added to the detekt
+// baseline: the baseline carries inherited debt, and a suppression introduced by new code should be
+// visible at the code it excuses. Revisit if an 8th parameter is ever proposed — at that point the
+// dependencies want grouping, not another exemption.
+//
+// Scoped to the CONSTRUCTOR, not the class. detekt honours @Suppress hierarchically, so the
+// class-level form this originally used also silenced LongParameterList for every function in the
+// class body — including ones not written yet. Measured rather than assumed (a review of
+// PR #61): a 7-parameter member function added as a probe was NOT reported with the annotation on
+// the class, and WAS reported once it moved here, with the constructor itself still correctly
+// exempt. A suppression that silences more than the violation it was written for is how a rule
+// quietly stops applying.
+class MarkdownViewModel
+@Suppress("LongParameterList")
+constructor(
     private val repository: FileRepository,
     private val storage: StorageManager,
     private val parseHeadingsUseCase: ParseMarkdownHeadingsUseCase,
     private val searchUseCase: SearchMarkdownUseCase,
     private val pdfExporter: PdfExporter,
     val appInfo: com.pilcrowmd.di.AppInfo,
+    /**
+     * Where [loadDocument]'s CPU work runs. Injectable ONLY so a test can assert that work leaves
+     * the main thread (Play Vitals ANR, 1.0.3) — production always uses the default. Defaulted, so
+     * `provideFactory` and the AppContainer are untouched.
+     */
+    private val cpuDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
 ) : ViewModel() {
     // v1 holds single document, but the structure allows collection.
     private val _currentDocument = MutableStateFlow<Document?>(null)
     val currentDocument: StateFlow<Document?> = _currentDocument.asStateFlow()
+
+    // How the reader pane renders the current document: extension default, overridable
+    // per file. Re-derived on EVERY document-identity change (load + Save-As adoption).
+    private val _renderMode = MutableStateFlow(RenderMode.MARKDOWN)
+    val renderMode: StateFlow<RenderMode> = _renderMode.asStateFlow()
+
+    // True iff the current document is a `.txt` — gates the "View as Markdown" overflow toggle.
+    private val _plainToggleAvailable = MutableStateFlow(false)
+    val plainToggleAvailable: StateFlow<Boolean> = _plainToggleAvailable.asStateFlow()
+
+    /**
+     * Flip the reader between plain and Markdown rendering for the current document and persist
+     * the choice per file (explicit in both directions). Viewing-only: touches
+     * render state and the override store, never the document bytes or the save path.
+     */
+    fun toggleRenderMode() {
+        viewModelScope.launch {
+            val doc = _currentDocument.value ?: return@launch
+            val next = if (_renderMode.value == RenderMode.PLAIN) RenderMode.MARKDOWN else RenderMode.PLAIN
+            _renderMode.emit(next)
+            storage.setRenderModeOverride(doc.uri, next)
+            refreshHeadings(doc.content)
+            refreshActiveSearch()
+        }
+    }
+
+    /**
+     * Re-run the active search after the render tree changed (mode toggle / Save-As
+     * re-derivation): matches carry adapter positions and ordinals of the OLD tree and would
+     * highlight or jump wrongly. No-op when no query is active; resets the focus
+     * to the first match like any fresh query.
+     */
+    private fun refreshActiveSearch() {
+        val query = _searchQuery.value
+        if (query.isNotEmpty()) updateSearchQuery(query)
+    }
+
+    /**
+     * Derive the render mode for a document identity: the user's remembered per-file override
+     * wins; otherwise the extension default. Called from BOTH identity-assignment sites
+     * ([loadDocument] and [saveActiveDocumentAs] adoption) so the state can never desync from
+     * the document (a review finding).
+     */
+    private suspend fun applyDerivedRenderMode(uri: Uri, displayName: String) {
+        val kind = DocumentKind.fromDisplayName(displayName)
+        _plainToggleAvailable.emit(kind == DocumentKind.PLAIN_TEXT)
+        val default = if (kind == DocumentKind.PLAIN_TEXT) RenderMode.PLAIN else RenderMode.MARKDOWN
+        _renderMode.emit(storage.getRenderModeOverride(uri) ?: default)
+    }
+
+    /** Headings feed the TOC drawer — a plain-text document has none. */
+    private suspend fun refreshHeadings(content: String) {
+        val headings = if (_renderMode.value == RenderMode.PLAIN) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.Default) { parseHeadingsUseCase.extractHeadings(content) }
+        }
+        _headings.emit(headings)
+    }
 
     // Transient = the open document holds no persisted *write* grant (e.g. opened read-only via
     // "Open with"), so an in-place save would fail. Derived from the repository at load/adopt time;
@@ -229,24 +313,44 @@ class MarkdownViewModel(
         }
     }
 
+    /** The results of the load-time CPU pass, carried back to Main as one value. */
+    private data class PreparedLoad(val lineEnding: String, val normalized: String)
+
     private suspend fun loadDocument(uri: Uri) {
         _fileLoadState.emit(FileLoadState.Loading)
         val result = repository.readFile(uri)
         result
             .onSuccess { content ->
+                // EVERY per-character pass over the document happens here, off the main thread.
+                // `readFile` is `withContext(Dispatchers.IO)`, so it RETURNS to this coroutine's
+                // context — `viewModelScope` = Dispatchers.Main.immediate — and until 1.0.4 that
+                // meant the whole block below ran on Main. On a large file that froze the UI for
+                // minutes and Play Vitals recorded it as an ANR (Pixel 6a, 1.0.3).
+                //
+                // Both passes are cheap now, but they are grouped into ONE hop on purpose: the next
+                // expensive thing added to the load path should land on this side of the boundary by
+                // default, not on Main. Only the results cross back.
+                //
                 // Detect and remember the original line-ending format (CRLF vs LF).
                 // EditText normalizes \r\n → \n, so we detect here and restore on save.
-                val detectedLineEnding = detectLineEnding(content)
-                _lineEnding.emit(detectedLineEnding)
-
+                //
                 // Normalize to LF for the in-memory model + editor (Sora/EditText work in LF). The
                 // original line ending is restored on save via applyLineEnding(). Keeping content,
                 // originalContent, and the editor all in LF avoids false-dirty and setText loops for
                 // CRLF files (otherwise the LF editor text never equals the CRLF in-memory content,
                 // so dirty could never clear and the update block would re-setText every recomposition).
-                val normalized = content.replace("\r\n", "\n")
+                val prepared = withContext(cpuDispatcher) {
+                    PreparedLoad(
+                        lineEnding = detectLineEnding(content),
+                        normalized = content.replace("\r\n", "\n"),
+                    )
+                }
+                _lineEnding.emit(prepared.lineEnding)
+                val normalized = prepared.normalized
 
-                // Set baseline for dirty detection (type-then-undo clears dirty).
+                // Set baseline for dirty detection (type-then-undo clears dirty). Stays on Main:
+                // the dirty check reads it from Main, so keeping the write here avoids any
+                // cross-thread visibility question.
                 originalContent = normalized
 
                 // Resolve the SAF display name once and reuse it for both the open document
@@ -256,13 +360,17 @@ class MarkdownViewModel(
                     Document(uri = uri, content = normalized, dirty = false, displayName = displayName),
                 )
                 // Transient iff we hold no persisted write grant for this URI (read-only "Open with").
-                _transient.emit(!repository.hasPersistedWritePermission(uri))
+                // The permission lookup is a synchronous ContentResolver/binder IPC — cheap in the
+                // common case, unbounded when the providing app is slow or cold-starting — so it is
+                // NOT left on Main either. IO rather than [cpuDispatcher]: it blocks, it does not compute.
+                val writable = withContext(Dispatchers.IO) { repository.hasPersistedWritePermission(uri) }
+                _transient.emit(!writable)
                 _editorCursor.value = 0 // new file starts at the top
 
-                // Extract headings for TOC. Parse off the main thread so a large
-                // file doesn't jank the open (same AST work as search).
-                val headings = withContext(Dispatchers.Default) { parseHeadingsUseCase.extractHeadings(content) }
-                _headings.emit(headings)
+                // Render mode from the document identity (extension default ?: per-file override),
+                // then headings for the TOC — gated to empty in plain mode.
+                applyDerivedRenderMode(uri, displayName)
+                refreshHeadings(content)
 
                 // Restore saved scroll anchor for this file.
                 val savedScroll = storage.getScrollPosition(uri)
@@ -438,7 +546,15 @@ class MarkdownViewModel(
                 val content = _currentDocument.value?.content ?: return@launch
                 // Search parses + scans the whole document — run it off the main thread so a
                 // large file (or a common term with thousands of hits) can't freeze the UI / ANR.
-                val matches = withContext(Dispatchers.Default) { searchUseCase.findSearchMatches(content, query) }
+                // Plain mode: the visible text IS the literal source, so match over the
+                // same chunk split the plain render uses (adapter positions align).
+                val matches = withContext(Dispatchers.Default) {
+                    if (_renderMode.value == RenderMode.PLAIN) {
+                        searchUseCase.findPlainSearchMatches(PlainTextBlocks.chunkLiterals(content), query)
+                    } else {
+                        searchUseCase.findSearchMatches(content, query)
+                    }
+                }
                 _searchMatches.emit(matches)
                 _currentMatchIndex.emit(0) // Focus first match
             } else {
@@ -577,6 +693,13 @@ class MarkdownViewModel(
                     // which suspends on DataStore I/O — the outcome must not wait on it (mirrors loadFile,
                     // which persists last). The in-memory adoption above is what the session relies on.
                     _fileLoadState.emit(FileLoadState.SaveSuccess)
+                    // Identity changed → re-derive the render mode for the NEW name/URI (a .txt
+                    // saved-as .md must not stay stuck in plain). Sits with
+                    // the other post-outcome persistence: it reads DataStore, and the save outcome
+                    // above must not wait on that I/O.
+                    applyDerivedRenderMode(targetUri, displayName)
+                    refreshHeadings(doc.content)
+                    refreshActiveSearch()
                     storage.saveLastFileUri(targetUri)
                     storage.addRecent(RecentFile(targetUri, displayName, System.currentTimeMillis()))
                 }
@@ -689,11 +812,43 @@ class MarkdownViewModel(
      *
      * Limitation: Mixed line endings are normalized to the dominant style.
      * Per-line preservation is out of scope for v1 (acceptable per spec simplicity).
+     *
+     * **One pass, no regex — and that is a correctness fix, not a micro-optimisation.** This used to
+     * be two `Regex(...).findAll(content).count()` scans. On Android those are not O(n): each match
+     * re-enters ICU's `MatcherNative.setInput`, which re-copies the document, so the real cost is
+     * proportional to BYTES x MATCHES. Play Vitals recorded it as an ANR on 1.0.3 — main thread
+     * blocked in `findNext` -> `setInput` — and it was measured on device at 24.5 s for a 1.3 MB file
+     * and 294 s for 3.3 MB. The loop below does 3.3 MB in 11 ms.
+     *
+     * **The cost was driven by LINE COUNT, not file size** (device UAT, S24+): two fixtures of
+     * IDENTICAL byte size, 14,152 vs 75,934 lines, took ~15-20 s and >2 min respectively. A
+     * line-oriented file — a log, an export, a dump — is the worst case, which is why a byte-only
+     * size threshold is the wrong way to think about the old behaviour.
+     *
+     * **Both counts are still counted, deliberately.** Returning on the first match found would be
+     * cheaper still and WRONG: the question is which ending DOMINATES, and a file that opens LF and
+     * ends mostly CRLF must answer CRLF. Getting that wrong changes the bytes written back on save
+     * (Safeguard 2), so the semantics are pinned by `MarkdownViewModelLineEndingTest` — including its
+     * mixed-dominant pair — which this rewrite leaves untouched and green.
+     *
+     * Equivalence with the regex version holds for every input, including the ones worth naming:
+     * empty string and a lone `\r` yield 0/0 and fall to "LF"; `\r\r\n` counts one CRLF; a `\n`
+     * at index 0 counts as LF (the `i > 0` guard); and a tie returns "LF", matching `crlfCount > lfOnly`.
+     *
+     * `internal` rather than `private` ONLY so `MarkdownViewModelLineEndingScalingTest` can measure the
+     * real function instead of a copy of it — a scaling test written against a duplicated loop would
+     * pass forever no matter what production did.
      */
-    private fun detectLineEnding(content: String): String {
-        val crlfCount = Regex("""\r\n""").findAll(content).count()
-        val lfOnly = Regex("""\n""").findAll(content).count() - crlfCount
-        return if (crlfCount > lfOnly) "CRLF" else "LF"
+    @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.PRIVATE)
+    internal fun detectLineEnding(content: String): String {
+        var crlf = 0
+        var lf = 0
+        for (i in content.indices) {
+            if (content[i] == '\n') {
+                if (i > 0 && content[i - 1] == '\r') crlf++ else lf++
+            }
+        }
+        return if (crlf > lf) "CRLF" else "LF"
     }
 
     /**
@@ -737,7 +892,7 @@ class MarkdownViewModel(
             // A failed export (large/odd content, write error) must surface an error,
             // never crash. The atomic write deletes the partial file on failure.
             runCatching {
-                pdfExporter.exportToUri(markdownContent, previewFontScale.value, uri)
+                pdfExporter.exportToUri(markdownContent, previewFontScale.value, uri, _renderMode.value)
             }.onSuccess {
                 _exportState.value = ExportState.Success()
             }.onFailure { e ->

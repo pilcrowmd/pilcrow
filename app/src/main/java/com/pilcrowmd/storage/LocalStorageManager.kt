@@ -11,6 +11,7 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +109,7 @@ class LocalStorageManager(
     private val lineNumbersEnabledKey = booleanPreferencesKey("line_numbers_enabled")
     private val recentFilesKey = stringPreferencesKey("recent_files")
     private val scrollPositionsKey = stringPreferencesKey("scroll_positions")
+    private val renderModeOverridesKey = stringPreferencesKey("render_mode_overrides")
     private val fontScaleKey = floatPreferencesKey("font_scale") // legacy, pre-split scale
     private val previewFontScaleKey = floatPreferencesKey("preview_font_scale")
     private val editorFontScaleKey = floatPreferencesKey("editor_font_scale")
@@ -217,6 +219,33 @@ class LocalStorageManager(
         return dataStore.data.map { prefs ->
             decodeScrollPositions(prefs[scrollPositionsKey])[uri] ?: ScrollAnchor()
         }.first()
+    }
+
+    override suspend fun getRenderModeOverride(uri: Uri): RenderMode? {
+        return dataStore.data.map { prefs ->
+            decodeRenderModeOverrides(prefs[renderModeOverridesKey])[uri]
+        }.first()
+    }
+
+    override suspend fun setRenderModeOverride(uri: Uri, mode: RenderMode?) {
+        dataStore.edit { prefs ->
+            val current = decodeRenderModeOverrides(prefs[renderModeOverridesKey]).toMutableMap()
+            if (mode == null) current.remove(uri) else current[uri] = mode
+            prefs[renderModeOverridesKey] = encodeRenderModeOverrides(current)
+        }
+    }
+
+    private fun encodeRenderModeOverrides(map: Map<Uri, RenderMode>): String =
+        map.entries.joinToString(recordSep) { "${it.key}$fieldSep${it.value.name}" }
+
+    private fun decodeRenderModeOverrides(raw: String?): Map<Uri, RenderMode> {
+        if (raw.isNullOrEmpty()) return emptyMap()
+        return raw.split(recordSep).mapNotNull { record ->
+            val parts = record.split(fieldSep)
+            if (parts.size != 2) return@mapNotNull null
+            val mode = RenderMode.entries.firstOrNull { it.name == parts[1] } ?: return@mapNotNull null
+            Uri.parse(parts[0]) to mode
+        }.toMap()
     }
 
     override suspend fun saveFontScale(scale: Float) {

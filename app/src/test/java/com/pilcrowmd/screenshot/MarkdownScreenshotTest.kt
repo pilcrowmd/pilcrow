@@ -22,6 +22,7 @@ import com.pilcrowmd.ui.components.MarkdownPreview
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
+import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,7 +55,7 @@ data class ScreenshotCase(val sample: MarkdownSample, val fontScale: Float, val 
  * at min/default/max zoom and across both themes are caught. Any future change to padding,
  * typography, or line-height that shifts the rendered layout fails the verify task with a pixel diff.
  *
- * Total cases: 16 samples × 3 scales × 2 themes = 96 test cases.
+ * Total cases: 18 samples × 3 scales × 2 themes = 108 test cases.
  *
  *   Record baseline:  ./gradlew recordRoborazziDebug
  *   Verify (gate):    ./gradlew verifyRoborazziDebug
@@ -86,6 +87,18 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
         compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.01f),
     )
 
+    // Robolectric never runs jlatexmath's self-init ContentProvider, so async math renders
+    // silently fail — and poison the library's static font state for the rest of the JVM — in
+    // any run where nothing init'd it first. Full-suite runs always got init from
+    // PdfExporterTest by class order; init here unconditionally so targeted runs behave
+    // identically and awaitMathRender captures can actually resolve.
+    @org.junit.Before
+    fun initJLatexMath() {
+        ru.noties.jlatexmath.JLatexMathAndroid.init(
+            androidx.test.core.app.ApplicationProvider.getApplicationContext(),
+        )
+    }
+
     @Test
     fun golden() {
         composeRule.setContent {
@@ -108,12 +121,14 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
                         content = case.sample.markdown,
                         renderer = renderer,
                         fontScale = case.fontScale,
+                        renderMode = case.sample.renderMode,
                     )
                 }
             }
         }
 
         drainMainLooper()
+        if (case.sample.awaitMathRender) awaitLatexResolved()
 
         composeRule.onRoot().captureRoboImage(
             filePath = "src/test/screenshots/markdown_${case.sample.name}_${case.scalePct}_${case.themeSuffix}.png",
@@ -136,10 +151,51 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
         } while (!mainLooper.isIdle)
     }
 
+    /**
+     * Deterministically settle the async JLatexMath renders (see [MarkdownSample.awaitMathRender]):
+     * wait for the background executor (ForkJoinPool.commonPool) between looper drains until every
+     * LaTeX span in the view tree has a resolved bitmap, then drain once more so the resulting
+     * invalidation/layout is applied before capture. Fails loudly (never flakes) if resolution
+     * doesn't happen within the pass cap.
+     */
+    private fun awaitLatexResolved() {
+        var guard = 0
+        while (true) {
+            drainMainLooper()
+            val spans = collectLatexSpans(composeRule.activity.window.decorView)
+            if (spans.isNotEmpty() && spans.all { it.drawable.hasResult() }) break
+            check(guard++ < MAX_RENDER_WAIT_PASSES) {
+                "LaTeX bitmaps never resolved before capture (${spans.size} spans)"
+            }
+            java.util.concurrent.ForkJoinPool.commonPool()
+                .awaitQuiescence(RENDER_WAIT_STEP_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+        drainMainLooper()
+    }
+
+    /** Walk the view tree and collect every LaTeX async span (same shape as PdfExporterTest's). */
+    private fun collectLatexSpans(view: android.view.View): List<JLatexAsyncDrawableSpan> {
+        val result = mutableListOf<JLatexAsyncDrawableSpan>()
+        when (view) {
+            is android.view.ViewGroup ->
+                for (i in 0 until view.childCount) result += collectLatexSpans(view.getChildAt(i))
+            is android.widget.TextView ->
+                (view.text as? android.text.Spanned)?.let { spanned ->
+                    result += spanned.getSpans(0, spanned.length, JLatexAsyncDrawableSpan::class.java)
+                }
+        }
+        return result
+    }
+
     companion object {
         // Generous upper bound: the read-only reader posts a handful of layout runnables, never
         // an unbounded stream — this only exists so a bug fails loudly instead of hanging CI.
         private const val MAX_DRAIN_PASSES = 50
+
+        // awaitLatexResolved: cap + per-pass executor wait. A formula bitmap renders in tens of
+        // milliseconds; 50 passes × 200ms is far beyond any real resolve time.
+        private const val MAX_RENDER_WAIT_PASSES = 50
+        private const val RENDER_WAIT_STEP_MS = 200L
 
         // The app clamps the font scale to 0.85–1.6, so these are the real min/default/max — 2.0 would
         // never occur on device. Each sample is captured at all three.

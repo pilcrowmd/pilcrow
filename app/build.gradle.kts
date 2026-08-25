@@ -35,8 +35,8 @@ android {
         applicationId = "com.pilcrowmd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 6
+        versionName = "1.0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -151,7 +151,7 @@ dependencies {
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // Markwon + plugins (full §3 plugin set)
+    // Markwon + plugins (full plugin set)
     implementation("io.noties.markwon:core:4.6.2") {
         exclude(group = "org.jetbrains", module = "annotations-java5")
     }
@@ -176,7 +176,7 @@ dependencies {
     implementation("io.noties.markwon:recycler:4.6.2") {
         exclude(group = "org.jetbrains", module = "annotations-java5")
     }
-    // LaTeX math rendering: native via JLatexMath, no WebView (§3)
+    // LaTeX math rendering: native via JLatexMath, no WebView
     implementation("io.noties.markwon:ext-latex:4.6.2") {
         exclude(group = "org.jetbrains", module = "annotations-java5")
     }
@@ -337,4 +337,54 @@ tasks.register("marketingScreenshots") {
         }
     }
     if (marketingRequested) dependsOn("testDebugUnitTest")
+}
+
+// ---------------------------------------------------------------------------
+// Dispatchers.Main test isolation.
+//
+// `Dispatchers.setMain` is a PROCESS-GLOBAL. The ViewModel barrier suites certified
+// in PR #59/#60 call it in @Before and resetMain() in @After. That is safe across
+// Gradle forks - forks are separate JVMs - but NOT against concurrency WITHIN one
+// JVM. A Compose Recomposer (createComposeRule / createAndroidComposeRule, which
+// every Roborazzi screenshot suite uses) keeps using Dispatchers.Main for as long
+// as it lives, so sharing a process with a resetMain() teardown throws:
+//
+//   IllegalStateException: Dispatchers.Main is used concurrently with setting it
+//
+// Flagged in review as the ONE configuration that would
+// break setMain; it broke the build a day later. It is ORDER-DEPENDENT and lands
+// on an UNRELATED suite in TEARDOWN, not in an assertion.
+//
+// THE SPLIT RULE, in one place:
+//
+//   *** @Category(MainDispatcherSuite::class) -> testMainDispatcherDebug, in its ***
+//   *** own JVM. Everything else - including ALL Compose and screenshot tests -  ***
+//   *** stays in testDebugUnitTest, which excludes that category.                ***
+//
+// WHY THE setMain SIDE AND NOT THE COMPOSE SIDE: isolating Compose was tried first
+// and rejected on evidence. Roborazzi's verify/record tasks are bound to
+// testDebugUnitTest, so moving the screenshot suites out left verifyRoborazziDebug
+// running 393 unrelated tests and EXITING 0 WHILE VERIFYING NO GOLDENS - a silent
+// hole. Isolating setMain moves 3 classes instead of 8, leaves Roborazzi untouched,
+// and preserves the class names cited in the #59/#60 merge-gate record.
+//
+// Both tasks are in the canonical local gate AND in CI. A task in
+// only one of those does not exist.
+// ---------------------------------------------------------------------------
+tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
+    (this as Test).useJUnit {
+        excludeCategories("com.pilcrowmd.testing.MainDispatcherSuite")
+    }
+}
+
+val testMainDispatcherDebug by tasks.registering(Test::class) {
+    group = "verification"
+    description =
+        "Runs @Category(MainDispatcherSuite) classes in a JVM of their own, so a Dispatchers.setMain " +
+            "suite never shares a process with a Compose Recomposer bound to Dispatchers.Main."
+    val base = tasks.named<Test>("testDebugUnitTest")
+    dependsOn(base)
+    testClassesDirs = files({ base.get().testClassesDirs })
+    classpath = files({ base.get().classpath })
+    useJUnit { includeCategories("com.pilcrowmd.testing.MainDispatcherSuite") }
 }

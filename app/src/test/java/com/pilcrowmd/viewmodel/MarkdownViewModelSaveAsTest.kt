@@ -5,21 +5,26 @@ package com.pilcrowmd.viewmodel
 
 import android.content.Context
 import android.net.Uri
-import android.os.Looper
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.storage.LocalStorageManager
+import com.pilcrowmd.testing.MainDispatcherSuite
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,10 +33,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.experimental.categories.Category
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import java.io.IOException
 
 /**
@@ -41,13 +46,48 @@ import java.io.IOException
  * identity adoption — Safeguards 1 & 2) and the transient flag derived from a persisted *write* grant.
  *
  * Mirrors [MarkdownViewModelLineEndingTest]: a real StorageManager (Robolectric DataStore) + a
- * configurable fake FileRepository whose suspend functions return inline, so viewModelScope launches
- * (on Robolectric's Main) complete synchronously and state can be asserted right after the call. It
- * deliberately does NOT use Dispatchers.setMain — that is a process-global mutation that races other
- * test classes sharing the JVM fork.
+ * configurable fake FileRepository.
+ *
+ * It used to add "whose suspend functions return inline, so viewModelScope launches complete
+ * synchronously and state can be asserted right after the call", and to avoid `Dispatchers.setMain`
+ * on the grounds that it is a process-global mutation racing other classes in the JVM fork. Both
+ * halves are corrected here. The first was the defect: asserting right after the call made every
+ * assertion below TAUTOLOGICAL — it would have passed against a Save-As that never ran, and it broke
+ * the moment the load path gained a real dispatcher hop. The second was true but for the
+ * wrong reason: `maxParallelForks`/`forkEvery` spawn SEPARATE JVMs, so a process-global cannot leak
+ * across them; only concurrency WITHIN one JVM (JUnit 5 parallel execution) would break it, and
+ * JUnit 4 does not do that. `resetMain()` in @After restores the global between classes.
+ * A barrier must wait on state the call actually publishes, never on an initial value.
  */
 @RunWith(RobolectricTestRunner::class)
+@Category(MainDispatcherSuite::class)
 class MarkdownViewModelSaveAsTest {
+
+    // --- teardown quiescence ------------------------------------------------------
+    // The ViewModels built by the factories below are per-test locals, so nothing ever
+    // cancelled their `viewModelScope`. That was harmless until the load path gained a
+    // real `withContext(Dispatchers.IO)` hop: a load coroutine can now still be suspended on
+    // IO when the test body returns and then resume onto Main exactly as
+    // `Dispatchers.resetMain()` releases the global, throwing
+    // `IllegalStateException: Dispatchers.Main is used concurrently with setting it` - on a
+    // RANDOM test, in TEARDOWN rather than an assertion. Measured pre-fix at 16/20 clean runs.
+    //
+    // Registering each ViewModel in a ViewModelStore lets `clear()` cancel those scopes
+    // deterministically BEFORE the global is released. Public lifecycle API (2.8.7): no
+    // reflection, no dependence on the internal viewModelScope job key.
+    //
+    // SEQUENCING, NOT SILENCING: no try/catch around resetMain, no swallowed exception, no
+    // retry rule, no @Ignore, no timeout change - and not one await, barrier or assertion in
+    // this suite is touched.
+    private val vmStore = ViewModelStore()
+    private var vmSeq = 0
+
+    /** Registers [vm] so teardown can cancel its `viewModelScope` before `resetMain()`. */
+    private fun track(vm: MarkdownViewModel): MarkdownViewModel {
+        vmStore.put("vm-${vmSeq++}", vm)
+        return vm
+    }
+    // ---------------------------------------------------------------------------------
 
     @get:Rule
     val tempFolder = TemporaryFolder()
@@ -58,6 +98,9 @@ class MarkdownViewModelSaveAsTest {
 
     @Before
     fun setup() {
+        // Required for the barriers below: viewModelScope dispatches to Main, which under Robolectric
+        // is the paused looper the test thread itself owns, so suspending that thread would deadlock.
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         context = ApplicationProvider.getApplicationContext()
         storageScope = CoroutineScope(Dispatchers.IO + Job())
         val dataStore = PreferenceDataStoreFactory.create(scope = storageScope) {
@@ -68,7 +111,9 @@ class MarkdownViewModelSaveAsTest {
 
     @After
     fun tearDown() {
+        vmStore.clear() // cancels every viewModelScope BEFORE the global is released
         storageScope.cancel()
+        Dispatchers.resetMain()
     }
 
     /**
@@ -119,16 +164,46 @@ class MarkdownViewModelSaveAsTest {
 
     private fun vmWith(repo: FileRepository): MarkdownViewModel {
         val parseHeadings = ParseMarkdownHeadingsUseCase()
-        return MarkdownViewModel(
-            repository = repo,
-            storage = storage,
-            parseHeadingsUseCase = parseHeadings,
-            searchUseCase = SearchMarkdownUseCase(parseHeadings),
-            pdfExporter = mockk(relaxed = true),
-            appInfo = object : AppInfo {
-                override val versionName = "test"
-            },
+        return track(
+            MarkdownViewModel(
+                repository = repo,
+                storage = storage,
+                parseHeadingsUseCase = parseHeadings,
+                searchUseCase = SearchMarkdownUseCase(parseHeadings),
+                pdfExporter = mockk(relaxed = true),
+                appInfo = object : AppInfo {
+                    override val versionName = "test"
+                },
+            ),
         )
+    }
+
+    /**
+     * REAL barriers. Each waits on the state the operation actually publishes, so
+     * they hold however many times the production path switches threads. Every one was proved by
+     * watching its test fail without it.
+     */
+    private suspend fun MarkdownViewModel.awaitLoaded(uri: Uri) {
+        currentDocument.first { it?.uri == uri }
+        // Identity alone is NOT enough: `loadDocument` publishes the document, THEN resolves the write
+        // grant, THEN emits Success. Stopping at the identity returns before `transient` is set, which
+        // only went unnoticed while the permission lookup was a non-suspending binder call. Waiting on
+        // Success covers everything the load publishes.
+        //
+        // Deliberately not waiting on `transient` itself: its initial value is `false`, so a
+        // `first { !it }` would return instantly without the load having run — the same unsound
+        // barrier `553fabb` removed from the render-mode tests.
+        fileLoadState.first { it is FileLoadState.Success }
+    }
+
+    /** A Save-As that is expected to finish, either way — the test asserts which. */
+    private suspend fun MarkdownViewModel.awaitSaveSettled() {
+        fileLoadState.first { it is FileLoadState.SaveSuccess || it is FileLoadState.SaveError }
+    }
+
+    /** A Save-As deliberately parked at a gate: wait for it to have STARTED, not finished. */
+    private suspend fun MarkdownViewModel.awaitSaving() {
+        fileLoadState.first { it is FileLoadState.Saving }
     }
 
     @Test
@@ -138,8 +213,10 @@ class MarkdownViewModelSaveAsTest {
         val repo = FakeRepo("hello\nworld\n", writableUris = mutableSetOf(oldUri))
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
+        vm.awaitLoaded(oldUri)
 
         vm.saveActiveDocumentAs(newUri)
+        vm.awaitSaveSettled()
 
         val doc = vm.currentDocument.value!!
         assertEquals("identity re-points to the new URI", newUri, doc.uri)
@@ -158,9 +235,11 @@ class MarkdownViewModelSaveAsTest {
         val repo = FakeRepo("L1\r\nL2\r\n", writableUris = mutableSetOf(oldUri))
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
+        vm.awaitLoaded(oldUri)
         assertEquals("CRLF", vm.lineEnding.value)
 
         vm.saveActiveDocumentAs(newUri)
+        vm.awaitSaveSettled()
 
         assertEquals("copy is byte-identical CRLF", "L1\r\nL2\r\n", repo.capturedSaves[newUri])
         assertFalse("original URI is never written by Save-As", repo.capturedSaves.containsKey(oldUri))
@@ -173,9 +252,11 @@ class MarkdownViewModelSaveAsTest {
         val repo = FakeRepo("orig\n", writableUris = mutableSetOf(oldUri))
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
+        vm.awaitLoaded(oldUri)
         vm.updateContent("edited\n")
 
         vm.saveActiveDocumentAs(newUri)
+        vm.awaitSaveSettled()
 
         assertEquals("the edited content is what gets copied", "edited\n", repo.capturedSaves[newUri])
         assertEquals("edited\n", vm.currentDocument.value!!.content)
@@ -193,11 +274,13 @@ class MarkdownViewModelSaveAsTest {
         val repo = FakeRepo("orig\n", writableUris = mutableSetOf(oldUri, newUri), saveGate = gate)
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
+        vm.awaitLoaded(oldUri)
 
         vm.saveActiveDocumentAs(newUri) // snapshots "orig\n", parks at the gate
+        vm.awaitSaving() // the snapshot is taken by now; only then is typing a race worth testing
         vm.updateContent("edited during save\n") // user types while the write is suspended
         gate.complete(Unit)
-        shadowOf(Looper.getMainLooper()).idle()
+        vm.awaitSaveSettled()
 
         assertEquals("copy holds the save-start snapshot", "orig\n", repo.capturedSaves[newUri])
         val doc = vm.currentDocument.value!!
@@ -215,9 +298,11 @@ class MarkdownViewModelSaveAsTest {
         val repo = FakeRepo("base\n", writableUris = mutableSetOf(oldUri), saveSucceeds = false)
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
+        vm.awaitLoaded(oldUri)
         vm.updateContent("unsaved edit\n")
 
         vm.saveActiveDocumentAs(newUri)
+        vm.awaitSaveSettled()
 
         assertTrue("failure surfaces SaveError", vm.fileLoadState.value is FileLoadState.SaveError)
         val doc = vm.currentDocument.value!!
@@ -249,12 +334,14 @@ class MarkdownViewModelSaveAsTest {
         val repo = FakeRepo("doc\n", writableUris = mutableSetOf(oldUri, newUri1, newUri2), saveGate = gate)
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
+        vm.awaitLoaded(oldUri)
 
         vm.saveActiveDocumentAs(newUri1) // enters Saving, parks at the gate
+        vm.awaitSaving()
         assertEquals(FileLoadState.Saving, vm.fileLoadState.value)
         vm.saveActiveDocumentAs(newUri2) // must be blocked by the guard
         gate.complete(Unit)
-        shadowOf(Looper.getMainLooper()).idle() // let the released save finish on Main
+        vm.awaitSaveSettled()
 
         assertTrue("only the first Save-As wrote", repo.capturedSaves.containsKey(newUri1))
         assertFalse("the guarded second Save-As never wrote", repo.capturedSaves.containsKey(newUri2))
@@ -268,6 +355,7 @@ class MarkdownViewModelSaveAsTest {
         val vm = vmWith(repo)
 
         vm.loadFile(uri)
+        vm.awaitLoaded(uri)
 
         assertTrue("no write grant → transient", vm.transient.value)
     }
@@ -279,6 +367,7 @@ class MarkdownViewModelSaveAsTest {
         val vm = vmWith(repo)
 
         vm.loadFile(uri)
+        vm.awaitLoaded(uri)
 
         assertFalse("write grant held → not transient", vm.transient.value)
     }
@@ -291,9 +380,11 @@ class MarkdownViewModelSaveAsTest {
         val repo = FakeRepo("t\n") // transientUri not writable; takePersistableUriPermission grants newUri
         val vm = vmWith(repo)
         vm.loadFile(transientUri)
+        vm.awaitLoaded(transientUri)
         assertTrue(vm.transient.value)
 
         vm.saveActiveDocumentAs(newUri)
+        vm.awaitSaveSettled()
 
         assertFalse("after adopting a persistable copy, no longer transient", vm.transient.value)
         assertEquals(newUri, vm.currentDocument.value!!.uri)
@@ -314,8 +405,10 @@ class MarkdownViewModelSaveAsTest {
         )
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
+        vm.awaitLoaded(oldUri)
 
         vm.saveActiveDocumentAs(newUri)
+        vm.awaitSaveSettled()
 
         assertTrue("takePersistableUriPermission was attempted", repo.takePermCalls > 0)
         assertEquals("write still succeeded despite the permission failure", "c\n", repo.capturedSaves[newUri])

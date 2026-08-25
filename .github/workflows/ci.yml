@@ -51,4 +51,31 @@ jobs:
       # Kept in this one job so the single mandatory clean step + --rerun-tasks cover both variants
       # (the Kotlin 2.3.10 cache-bug rule) without duplicating checkout/JDK/Gradle setup.
       - name: Build, lint, unit tests, screenshot gate (debug + release variant)
-        run: ./gradlew assembleDebug ktlintCheck detekt testDebugUnitTest verifyRoborazziDebug bundleRelease lintRelease --rerun-tasks
+        run: ./gradlew assembleDebug ktlintCheck detekt testDebugUnitTest testMainDispatcherDebug verifyRoborazziDebug bundleRelease lintRelease --rerun-tasks
+
+      # Without this, a CI-only failure is undiagnosable. A failing test's assertion MESSAGE (the
+      # string awaitValue/assertEquals was given) exists only in the HTML/XML report — the Gradle
+      # console prints just "AssertionError at SomeTest.kt:NN". When several assertions share one
+      # line (a polling helper's final assertEquals is the usual case) the console cannot tell you
+      # WHICH one fired, so the failure teaches nothing and the next occurrence teaches nothing
+      # again. This happened: PR #53, a docs-only commit, failed MarkdownViewModelRenderModeTest and
+      # left no way to separate a too-tight timeout budget from a logic race.
+      # Roborazzi's compare/diff images are included for the same reason — a golden mismatch on CI
+      # is unreadable without the actual/diff PNGs.
+      # Runs only on failure, so a green build pays nothing. Node-24-capable and SHA-pinned per the
+      # deprecation rule at the top of this file — keep the pin, update the version comment with it.
+      - name: Upload test + lint reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reports-${{ github.run_id }}
+          path: |
+            app/build/reports/tests/testDebugUnitTest/**
+            app/build/test-results/testDebugUnitTest/**
+            app/build/reports/tests/testMainDispatcherDebug/**
+            app/build/test-results/testMainDispatcherDebug/**
+            app/build/reports/roborazzi/**
+            app/build/outputs/roborazzi/**
+            app/build/reports/lint-results-release.*
+          retention-days: 14
+          if-no-files-found: ignore

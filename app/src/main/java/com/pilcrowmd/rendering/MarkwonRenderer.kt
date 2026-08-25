@@ -25,7 +25,7 @@ import java.util.concurrent.ForkJoinPool
  * Singleton Markwon renderer configured with all rendering plugins.
  * Renders markdown to native Spannables (no WebView).
  * Handles CommonMark + GFM + per-language syntax highlighting + LaTeX math.
- * Gracefully degrades on unsupported syntax (Mermaid, footnotes, etc.).
+ * Gracefully degrades on unsupported syntax (Mermaid, wiki-links, emoji shortcodes, etc.).
  *
  * Features:
  * - JLatexMathPlugin (ext-latex 4.6.2): renders math as native JLatexMath bitmaps, both as a
@@ -114,6 +114,9 @@ internal fun buildPilcrowMarkwon(context: Context): Markwon {
         // Render leading `---…---` as a styled `yaml` code block via a custom
         // BlockParser (no source mutation → char offsets stay aligned with the editor).
         .usePlugin(FrontmatterPlugin())
+        // Footnote definitions: `[^label]: body` becomes a container block instead of a stray
+        // paragraph (or, for a single-token body, a bogus link reference definition).
+        .usePlugin(FootnotePlugin())
         // GFM: tables, strikethrough, task lists
         .usePlugin(TablePlugin.create(context))
         .usePlugin(StrikethroughPlugin.create())
@@ -131,6 +134,10 @@ internal fun buildPilcrowMarkwon(context: Context): Markwon {
     // LaTeX math rendering via JLatexMath
     // Async executor prevents main-thread ANR; error handler provides graceful fallback
     try {
+        // mhchem \ce{…} shim: rewrites math-node latex payloads in beforeRender so chemistry
+        // renders instead of raw-dumping the whole equation (JLaTeXMath has no mhchem).
+        // Registered with JLatexMathPlugin — without it there are no math nodes to rewrite.
+        builder.usePlugin(CeMacroShimPlugin())
         builder.usePlugin(
             JLatexMathPlugin.create(baseFontSizePx) { jlatexBuilder ->
                 jlatexBuilder

@@ -36,8 +36,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.doOnNextLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.pilcrowmd.domain.markdown.Footnotes
+import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.PlainTextBlocks
 import com.pilcrowmd.rendering.RecyclerAdapterEntries
 import com.pilcrowmd.rendering.SearchHighlight
 import com.pilcrowmd.storage.ScrollAnchor
@@ -83,6 +86,9 @@ fun MarkdownPreview(
     currentMatchIndex: Int = 0,
     jumpPosition: Int = -1,
     jumpSeq: Int = 0,
+    // PLAIN renders the content verbatim via PlainTextBlocks (no Markdown parsing);
+    // MARKDOWN is today's path, byte-for-byte unchanged.
+    renderMode: RenderMode = RenderMode.MARKDOWN,
 ) {
     // Captured once per composition-entry, so re-entering Reader mode (or rotating) restores the
     // saved offset without fighting live scroll updates.
@@ -249,7 +255,10 @@ fun MarkdownPreview(
                 // content into the new adapter BEFORE attaching it, swap it in already-populated
                 // (swapAdapter keeps the recycled-view pool), then restore the anchor synchronously so the
                 // first layout of the new adapter lands in place — no blank frame, no reposition flash.
-                val configKey = "${liveFontScale.value}|${fontSet.id}|$mermaidCloudEnabled|${c.primaryBackground}"
+                // renderMode is part of the key: the .txt plain⇄markdown toggle re-renders
+                // through the flicker-free rebuild path like a font-scale change.
+                val configKey =
+                    "${liveFontScale.value}|${fontSet.id}|$mermaidCloudEnabled|${c.primaryBackground}|$renderMode"
                 if (configKey != lastConfig.value) {
                     // Keep the user's place across the rebuild: the live anchor mid-reading (e.g. the
                     // commit at the end of a pinch lands where the live reflow left the viewport), or the
@@ -266,7 +275,8 @@ fun MarkdownPreview(
                         searchHighlight,
                         c,
                     )
-                    newAdapter.setMarkdown(renderer.markwon, content) // populate before attaching → no empty frame
+                    // Populate before attaching → no empty frame.
+                    newAdapter.setContentForMode(renderer, content, renderMode)
                     lastContent.value = content // content is now rendered; the (1) re-render is skipped this pass
                     rv.swapAdapter(newAdapter, false)
                     (rv.layoutManager as? LinearLayoutManager)
@@ -283,7 +293,7 @@ fun MarkdownPreview(
                 // block-height changes that an absolute pixel offset could not.
                 if (content != lastContent.value) {
                     lastContent.value = content
-                    adapter.setMarkdown(renderer.markwon, content)
+                    adapter.setContentForMode(renderer, content, renderMode)
                     val lm = rv.layoutManager as? LinearLayoutManager
                     rv.post { lm?.scrollToPositionWithOffset(initialScroll.index, initialScroll.offset) }
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
@@ -404,5 +414,19 @@ private fun JumpButton(icon: ImageVector, description: String, onClick: () -> Un
             tint = c.secondaryText,
             modifier = Modifier.padding(8.dp),
         )
+    }
+}
+
+/**
+ * Populate the adapter for the active render mode: MARKDOWN parses as always; PLAIN
+ * injects the pre-built verbatim chunk tree — no parser runs, so Markdown syntax stays literal.
+ */
+private fun MarkwonAdapter.setContentForMode(renderer: MarkwonRenderer, content: String, renderMode: RenderMode) {
+    if (renderMode == RenderMode.PLAIN) {
+        setParsedMarkdown(renderer.markwon, PlainTextBlocks.build(content))
+    } else {
+        // setMarkdown() IS setParsedMarkdown(markwon, markwon.parse(md)); we parse explicitly so the
+        // shared footnote pass runs before the adapter splits the document into items.
+        setParsedMarkdown(renderer.markwon, Footnotes.transform(renderer.markwon.parse(content)))
     }
 }

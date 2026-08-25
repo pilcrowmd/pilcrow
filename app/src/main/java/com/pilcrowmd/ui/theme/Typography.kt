@@ -143,6 +143,14 @@ object PilcrowTypography {
     const val CODE_BLOCK_FONT_SIZE_SP: Float = 14f
 
     /**
+     * Footnote definition font size — one step down from body prose, so a note reads as an aside
+     * without becoming unreadable at the 0.85 minimum font scale.
+     * Base value: 15sp.
+     * Consumed: FootnoteBlockEntry.kt (marker and body), with fontScale multiplier.
+     */
+    const val FOOTNOTE_FONT_SIZE_SP: Float = 15f
+
+    /**
      * Table cell font size.
      * Base value: 15sp.
      * Consumed: TableBlockEntry.kt line 136, with fontScale multiplier.

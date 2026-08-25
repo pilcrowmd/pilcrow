@@ -304,6 +304,153 @@ class PdfExporterTest {
         }
     }
 
+    @Test
+    fun testStreamingBlockRenderResolvesCeChemistrySynchronously() {
+        // mhchem \ce{…} parity: the PDF path renders through the same Markwon instance,
+        // so CeMacroShimPlugin.beforeRender fires there too. Both a translated formula and an F1
+        // fallback (\text{…} for a bond) must resolve to real math bitmaps — if the raw \ce macro
+        // reached JLaTeXMath the parse would fail and the span would have no result (raw dump).
+        val d = "$$"
+        val content = "Rate \$k[\\ce{A}]^2\$ and ${d}\\ce{2H2 + O2 -> 2H2O}$d and bond \$\\ce{C-C}\$."
+        exporter.measureBlockBounds(content, fontScale = 1.0f)
+
+        val pageContentWidthPx =
+            (exporter.ptToPx(PdfExporter.PAGE_CONTENT_WIDTH_PT.toFloat()) / PdfExporter.PRINT_SCALE).toInt()
+        val inflater = android.view.LayoutInflater.from(context)
+        val builder = com.pilcrowmd.export.PdfContentLayoutBuilder(context)
+        val spans = mutableListOf<JLatexAsyncDrawableSpan>()
+        var node = exporter.getMarkwon().parse(content).firstChild
+        while (node != null) {
+            val next = node.next
+            node.unlink()
+            spans += collectLatexSpans(
+                builder.inflateMeasuredBlock(exporter.getMarkwon(), node, inflater, pageContentWidthPx, 1.0f),
+            )
+            node = next
+        }
+
+        assertEquals("all three \\ce math shapes should produce LaTeX spans in the PDF path", 3, spans.size)
+        spans.forEach { span ->
+            assertTrue(
+                "\\ce LaTeX span must be synchronously resolved (shimmed), not raw text",
+                span.drawable.hasResult(),
+            )
+        }
+    }
+
+    @Test
+    fun testPlainChunkInflatesWithLiteralText() {
+        // PDF parity: a PlainTextChunk block renders its literal verbatim in the export —
+        // Markdown syntax stays raw text, no heading typography, no empty prose fallback.
+        val literal = "# literal heading\n**still literal**"
+        val builder = com.pilcrowmd.export.PdfContentLayoutBuilder(context)
+        val inflater = android.view.LayoutInflater.from(context)
+        val pageContentWidthPx =
+            (exporter.ptToPx(PdfExporter.PAGE_CONTENT_WIDTH_PT.toFloat()) / PdfExporter.PRINT_SCALE).toInt()
+
+        val view = builder.inflateMeasuredBlock(
+            exporter.getMarkwon(),
+            com.pilcrowmd.rendering.PlainTextChunk(literal),
+            inflater,
+            pageContentWidthPx,
+            1.0f,
+        )
+
+        val texts = mutableListOf<String>()
+        fun collect(v: android.view.View) {
+            when (v) {
+                is android.view.ViewGroup -> for (i in 0 until v.childCount) collect(v.getChildAt(i))
+                is android.widget.TextView -> texts += v.text.toString()
+            }
+        }
+        collect(view)
+        assertEquals(listOf(literal), texts)
+    }
+
+    @Test
+    fun testFootnoteDefinitionPrintsAsANoteWithPrintColors() {
+        // PDF parity: the export has its own create/bind dispatch, so a node type wired into
+        // the reader and not into the builder silently prints as something else. Assert the printed
+        // note directly — marker, body and Print-scheme colours.
+        val content = "Newton[^1] wrote it down.\n\n[^1]: gravity\n"
+        val blocks = topLevelBlocksForMode(
+            exporter.getMarkwon(),
+            content,
+            com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+        )
+        val definition = blocks.filterIsInstance<com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock>().single()
+
+        val builder = PdfContentLayoutBuilder(context)
+        val pageContentWidthPx =
+            (exporter.ptToPx(PdfExporter.PAGE_CONTENT_WIDTH_PT.toFloat()) / PdfExporter.PRINT_SCALE).toInt()
+        val view = builder.inflateMeasuredBlock(
+            exporter.getMarkwon(),
+            definition,
+            android.view.LayoutInflater.from(context),
+            pageContentWidthPx,
+            1.0f,
+        )
+
+        val marker = view.findViewById<android.widget.TextView>(com.pilcrowmd.R.id.footnote_marker)
+        val body = view.findViewById<android.widget.TextView>(com.pilcrowmd.R.id.footnote_body)
+        assertEquals("1", marker.text.toString())
+        assertEquals("gravity", body.text.toString().trim())
+        assertEquals(PrintColorScheme.accent.toArgb(), marker.currentTextColor)
+        assertEquals(PrintColorScheme.secondaryText.toArgb(), body.currentTextColor)
+    }
+
+    @Test
+    fun testFootnoteMarkerPrintsInsideTheProseBlock() {
+        // The marker itself needs no PDF branch — it is an inline span in ordinary prose — but that
+        // is a claim worth checking rather than assuming.
+        val content = "Newton[^1] wrote it down.\n\n[^1]: gravity\n"
+        val paragraph = topLevelBlocksForMode(
+            exporter.getMarkwon(),
+            content,
+            com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+        ).first()
+
+        val builder = PdfContentLayoutBuilder(context)
+        val pageContentWidthPx =
+            (exporter.ptToPx(PdfExporter.PAGE_CONTENT_WIDTH_PT.toFloat()) / PdfExporter.PRINT_SCALE).toInt()
+        val view = builder.inflateMeasuredBlock(
+            exporter.getMarkwon(),
+            paragraph,
+            android.view.LayoutInflater.from(context),
+            pageContentWidthPx,
+            1.0f,
+        )
+
+        val printed = (view as android.widget.TextView).text as android.text.Spanned
+        assertEquals("Newton1 wrote it down.", printed.toString().trim())
+        val markerStart = printed.toString().indexOf('1')
+        assertEquals(
+            PrintColorScheme.accent.toArgb(),
+            printed.getSpans(markerStart, markerStart + 1, android.text.style.ForegroundColorSpan::class.java)
+                .single().foregroundColor,
+        )
+    }
+
+    @Test
+    fun testPlainModeMeasureUsesChunkBlocks() {
+        // Plain-mode export measures over PlainTextBlocks chunks, not parsed Markdown blocks:
+        // 220 blank-separated lines = 220 Markdown paragraphs but exactly 3 plain chunks
+        // (blank-boundary split at the 200-line target).
+        val content = (1..220).flatMap { listOf("line $it", "") }.joinToString("\n")
+        val plainBounds = exporter.measureBlockBounds(
+            content,
+            fontScale = 1.0f,
+            renderMode = com.pilcrowmd.domain.model.RenderMode.PLAIN,
+        )
+        assertEquals(
+            "chunk count from PlainTextBlocks, not the Markdown parse",
+            com.pilcrowmd.rendering.PlainTextBlocks.chunkLiterals(content).size,
+            plainBounds.size,
+        )
+        assertTrue("far fewer blocks than the 220-paragraph Markdown parse", plainBounds.size < 10)
+        assertTrue("blocks have height", plainBounds.last().second > plainBounds.first().first)
+    }
+
     /** Walk the off-screen view tree and collect every LaTeX async span (block + inline). */
     private fun collectLatexSpans(view: android.view.View): List<JLatexAsyncDrawableSpan> {
         val result = mutableListOf<JLatexAsyncDrawableSpan>()

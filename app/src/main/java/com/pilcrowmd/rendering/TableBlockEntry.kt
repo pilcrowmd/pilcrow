@@ -17,6 +17,7 @@ import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.res.ResourcesCompat
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -28,7 +29,12 @@ import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
 import org.commonmark.ext.gfm.tables.TableCell
 import org.commonmark.ext.gfm.tables.TableHead
+import org.commonmark.node.Code
+import org.commonmark.node.HardLineBreak
+import org.commonmark.node.HtmlInline
+import org.commonmark.node.Image
 import org.commonmark.node.Node
+import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
 import org.commonmark.ext.gfm.tables.TableRow as MdTableRow
 
@@ -192,18 +198,42 @@ class TableBlockEntry(
     /** Inline-rendered cell content, falling back to plain text if Markwon can't render it. */
     private fun renderCell(markwon: Markwon, cell: TableCell): CharSequence = try {
         val spanned = markwon.render(cell)
-        if (spanned.isNullOrEmpty()) plainText(cell) else spanned
+        // Same accent treatment a marker gets in prose — a footnote in a table cell must not read
+        // as a different thing from the identical footnote one paragraph above it.
+        if (spanned.isNullOrEmpty()) plainText(cell) else tintFootnoteMarkers(spanned, colorScheme.accent.toArgb())
     } catch (e: Exception) {
         plainText(cell)
     }
 
+    /**
+     * The cell's visible text, used when Markwon renders nothing for it.
+     *
+     * This walk mirrors `SearchMarkdownUseCase.appendVisible`, and must keep mirroring it. A node
+     * whose text lives in a PROPERTY rather than in a [Text] child has to contribute that text here,
+     * or two things break at once: the author's content is silently DELETED from the page
+     * (Safeguard 1 — the same reason an unreferenced definition still renders), and search, which
+     * models this exact string, targets offsets the cell never painted.
+     *
+     * Recursing in the `else` branch is what keeps it non-lossy by default: an unknown container
+     * still yields its children instead of disappearing. Only a node that genuinely paints nothing —
+     * an image's alt text — is dropped on purpose, matching `appendVisible`'s early return.
+     */
     private fun plainText(node: Node): String {
         val sb = StringBuilder()
         fun walk(n: Node?) {
             var c = n
             while (c != null) {
-                if (c is Text) sb.append(c.literal)
-                walk(c.firstChild)
+                when (c) {
+                    is Text -> sb.append(c.literal)
+                    is Code -> sb.append(c.literal)
+                    is HtmlInline -> sb.append(c.literal)
+                    // A resolved marker paints its ordinal — the string search models for it.
+                    is FootnoteReference -> sb.append(c.ordinal)
+                    is SoftLineBreak -> sb.append(' ')
+                    is HardLineBreak -> sb.append('\n')
+                    is Image -> Unit
+                    else -> walk(c.firstChild)
+                }
                 c = c.next
             }
         }

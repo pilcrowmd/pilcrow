@@ -86,9 +86,13 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
      * @param fontScale Font scale multiplier
      * @return List of (top, bottom) Y-bounds in pixels for each top-level block
      */
-    fun measureBlockBounds(content: String, fontScale: Float = 1.0f): List<Pair<Int, Int>> = runCatching {
+    fun measureBlockBounds(
+        content: String,
+        fontScale: Float = 1.0f,
+        renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+    ): List<Pair<Int, Int>> = runCatching {
         val pageContentWidthPx = (ptToPx(PAGE_CONTENT_WIDTH_PT.toFloat()) / PRINT_SCALE).toInt()
-        val nodes = parseTopLevelBlocks(markwonRenderer.markwon, content)
+        val nodes = topLevelBlocksForMode(markwonRenderer.markwon, content, renderMode)
         layoutBuilder.measureBlockBounds(markwonRenderer.markwon, nodes, pageContentWidthPx, fontScale)
     }.getOrThrow()
 
@@ -112,7 +116,11 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
      * @param fontScale Font scale multiplier
      * @return PdfDocument with all pages rendered
      */
-    fun paginateAndRenderStreaming(content: String, fontScale: Float = 1.0f): PdfDocument = runCatching {
+    fun paginateAndRenderStreaming(
+        content: String,
+        fontScale: Float = 1.0f,
+        renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+    ): PdfDocument = runCatching {
         val pdfDocument = PdfDocument()
         layoutBuilder.resetPeakLiveBlockViews() // measure the peak across this whole export
         val pageContentWidthPx = (ptToPx(PAGE_CONTENT_WIDTH_PT.toFloat()) / PRINT_SCALE).toInt()
@@ -122,7 +130,7 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
         // (per-page render), so a P-page export parses once — not P+1 times. The same node objects
         // are bound multiple times (a block spanning two pages renders on both); binding is a
         // read-only render, so it is idempotent and heights stay deterministic across passes.
-        val nodes = parseTopLevelBlocks(markwonRenderer.markwon, content)
+        val nodes = topLevelBlocksForMode(markwonRenderer.markwon, content, renderMode)
 
         // Pass 1: Compute block bounds (streaming, O(1) live views)
         val blockBounds =
@@ -294,9 +302,14 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
      *
      * Uses the streaming path (paginateAndRenderStreaming) to minimize memory usage on large docs.
      */
-    fun exportToUri(content: String, fontScale: Float, uri: android.net.Uri) {
+    fun exportToUri(
+        content: String,
+        fontScale: Float,
+        uri: android.net.Uri,
+        renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+    ) {
         layoutBuilder.resetPeakLiveBlockViews()
-        val pdfDocument = paginateAndRenderStreaming(content, fontScale)
+        val pdfDocument = paginateAndRenderStreaming(content, fontScale, renderMode)
         try {
             writePdfToUri(pdfDocument, uri, context.contentResolver)
         } finally {

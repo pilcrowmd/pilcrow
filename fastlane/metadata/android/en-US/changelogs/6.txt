@@ -1,0 +1,4 @@
+Housekeeping release. The app itself is unchanged from 1.0.4.
+
+- The complete source for this version is published.
+- The build now verifies the checksum of its own toolchain, for reproducible builds.

@@ -74,7 +74,11 @@ class ProseBlockEntry(
             // Reset shared-holder state: a recycled holder may carry the fallback's secondaryText
             // color from a previous failed bind — restore primaryText on every healthy bind.
             holder.textView.setTextColor(colorScheme.primaryText.toArgb())
-            markwon.setParsedMarkdown(holder.textView, markwon.render(node))
+            // Footnote markers take the accent from the ACTIVE scheme (Dark/Light/Print). The
+            // Markwon visitor that emits them is one shared singleton across all three, so it
+            // cannot pick the colour itself — the entry, which knows the scheme, does (Safeguard 4).
+            val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.accent.toArgb())
+            markwon.setParsedMarkdown(holder.textView, rendered)
             // Prose blocks are a single TextView, so occurrenceBase is 0.
             SearchHighlighter.highlight(
                 holder.textView,
