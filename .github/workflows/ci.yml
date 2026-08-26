@@ -25,19 +25,31 @@ jobs:
     steps:
       # Third-party actions are pinned to immutable commit SHAs (supply-chain hardening); the
       # trailing comment records the human-readable version each SHA corresponds to.
-      # MAINTENANCE (post-launch, by 2026-09-16): these pinned versions run on Node.js 20, which
-      # GitHub removes from runners on 2026-09-16 (forced to Node 24 from 2026-06-16). Bump each pin
-      # to a newer SHA whose release supports Node 24, re-verify the version comments, keep the SHA pin.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # NODE 24: every action below was verified to declare `runs.using: node24` in its action.yml
+      # at the exact SHA pinned here, read from the live repository rather than assumed. GitHub
+      # removes Node.js 20 from runners on 2026-09-16. When bumping again, re-read `runs.using` at
+      # the candidate SHA — the version number alone does not tell you the runtime, and the v4 lines
+      # of checkout and setup-java were still node20 at their newest releases.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 21
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
           java-version: '21'
 
+      # HELD AT v5 BY OWNER DECISION — do not "modernise" this to v6.
+      # gradle/actions@v6.0.0 moved the caching component into a separate `gradle-actions-caching`
+      # library that is NO LONGER OPEN-SOURCE, and its release notes state that upgrading
+      # constitutes acceptance of Gradle's Terms of Use for that component.
+      # This file is part of the published source tree, so bumping to v6 would land a closed-source
+      # dependency and an implicit Terms-of-Use acceptance in a GPL-3 project whose central trust
+      # claim is a reproducible build that F-Droid's own CI verifies against the published APK.
+      # v5.0.2 is the newest v5 release, already runs on node24, and carries none of that — it meets
+      # the 2026-09-16 Node 24 deadline with no licensing commitment attached.
+      # REVISIT ONLY IF THE v5 LINE LOSES SUPPORT.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
       - name: Clean (mandatory — defeats the Kotlin 2.3.10 incremental-cache bug)
         run: ./gradlew clean
@@ -62,8 +74,8 @@ jobs:
       # left no way to separate a too-tight timeout budget from a logic race.
       # Roborazzi's compare/diff images are included for the same reason — a golden mismatch on CI
       # is unreadable without the actual/diff PNGs.
-      # Runs only on failure, so a green build pays nothing. Node-24-capable and SHA-pinned per the
-      # deprecation rule at the top of this file — keep the pin, update the version comment with it.
+      # Runs only on failure, so a green build pays nothing. Already on node24 — this pin was
+      # unchanged by the Node 24 sweep; keep the SHA pin and update the version comment with it.
       - name: Upload test + lint reports (on failure)
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

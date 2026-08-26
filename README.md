@@ -4,13 +4,15 @@
 
 **A beautiful, reliable, private Markdown reader for Android.**
 
-[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80">](https://play.google.com/store/apps/details?id=com.pilcrowmd)
+[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80">](https://play.google.com/store/apps/details?id=com.pilcrowmd&referrer=utm_source%3Dgithub%26utm_campaign%3Dreadme_badge)
 
 [![CI](https://github.com/pilcrowmd/pilcrow/actions/workflows/ci.yml/badge.svg)](https://github.com/pilcrowmd/pilcrow/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Android 8.0+](https://img.shields.io/badge/Platform-Android%208.0%2B-3DDC84.svg?logo=android&logoColor=white)](#build--run)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF.svg?logo=kotlin&logoColor=white)](#tech-stack)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-UI-4285F4.svg?logo=jetpackcompose&logoColor=white)](#tech-stack)
+
+**[pilcrowmd.com](https://pilcrowmd.com)** — screenshots, changelog, privacy policy
 
 <img src="docs/screenshots/reader-hero-dark.png" alt="Pilcrow rendering a Markdown document — headings, prose, and syntax-highlighted code, all rendered natively" width="320">
 
