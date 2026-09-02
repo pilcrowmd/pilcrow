@@ -1,0 +1,5 @@
+The app is now called PilcrowMD. Your files and settings are unchanged.
+
+- Renamed from Pilcrow to PilcrowMD, on the home screen and the welcome screen.
+- The paragraph mark on the welcome screen sits higher and is back to its original size.
+- Fixed the "Open MD File" button sitting off screen when the phone is held sideways.

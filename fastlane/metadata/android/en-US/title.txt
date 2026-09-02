@@ -1,1 +1,1 @@
-Markdown Reader — Pilcrow
+Markdown Reader — PilcrowMD

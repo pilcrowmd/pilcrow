@@ -7,6 +7,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-08-31
+
+### Changed
+
+- **The app is now called PilcrowMD.** The name under the icon and the wordmark on the welcome
+  screen both change. The icon itself, the app's identity on your device and your files are
+  unaffected — this is a name change and nothing else.
+- **The paragraph mark behind the welcome wordmark sits higher, and is back to its original
+  size.** It had been enlarged and moved down, which left it crossing the wordmark in portrait
+  and running below the bottom of the screen in landscape.
+
+### Fixed
+
+- **The "Open MD File" button could sit completely off screen with the phone held sideways**,
+  with nothing to indicate it was there. The space above the button now gives way when the
+  screen is short, so the button stays reachable in landscape.
+
 ## [1.0.5] - 2026-08-25
 
 No user-facing changes — the app behaves exactly as 1.0.4.

@@ -161,7 +161,11 @@ test green (see below) — and add to it.
 4. Use [Conventional Commits](https://www.conventionalcommits.org/) (e.g.
    `feat(reader): show search match count`, `fix(editor): keep scroll after undo`, `docs: …`).
    Reference issues with `Closes #123`.
-5. Open a PR and fill in the [template](.github/PULL_REQUEST_TEMPLATE.md): what changed and why, how
+5. Keep your local tooling out of the diff. Editor, IDE and local agent configuration directories
+   are yours, not the project's — this repository does not ignore them on your behalf. Put them in
+   your own global excludes (`git config --global core.excludesFile`) rather than in `.gitignore`,
+   and check `git status` before you stage instead of relying on `git add -A`.
+6. Open a PR and fill in the [template](.github/PULL_REQUEST_TEMPLATE.md): what changed and why, how
    you tested, and confirmation that the gate passed and the safeguards/layer boundaries hold.
 
 **Reviewers look for:** layer boundaries respected; the four safeguards intact; tests added and the
