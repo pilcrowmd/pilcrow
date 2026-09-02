@@ -1,6 +1,6 @@
 <div align="center">
 
-# Pilcrow
+# PilcrowMD
 
 **A beautiful, reliable, private Markdown reader for Android.**
 
@@ -14,7 +14,7 @@
 
 **[pilcrowmd.com](https://pilcrowmd.com)** — screenshots, changelog, privacy policy
 
-<img src="docs/screenshots/reader-hero-dark.png" alt="Pilcrow rendering a Markdown document — headings, prose, and syntax-highlighted code, all rendered natively" width="320">
+<img src="docs/screenshots/reader-hero-dark.png" alt="PilcrowMD rendering a Markdown document — headings, prose, and syntax-highlighted code, all rendered natively" width="320">
 
 </div>
 
@@ -23,9 +23,9 @@
 ## What & why
 
 The web is full of Markdown — LLM answers, READMEs, notes, technical docs — and most Android apps
-render it in a WebView wrapped in ads and trackers. Pilcrow takes the opposite approach.
+render it in a WebView wrapped in ads and trackers. PilcrowMD takes the opposite approach.
 
-Pilcrow renders Markdown **natively** — no WebView, no JavaScript runtime, no network calls to read
+PilcrowMD renders Markdown **natively** — no WebView, no JavaScript runtime, no network calls to read
 your files. The result is fast, typographically careful rendering of full GitHub-Flavored Markdown
 (tables, code, math, task lists, frontmatter) with a reading experience that looks designed rather
 than dumped.
@@ -73,7 +73,7 @@ than dumped.
 
 ## Architecture overview
 
-Pilcrow is a single-activity Jetpack Compose app following **Clean Architecture + MVVM** with
+PilcrowMD is a single-activity Jetpack Compose app following **Clean Architecture + MVVM** with
 unidirectional data flow and strict layer boundaries:
 
 - **UI (Compose)** is passive and state-driven — no business logic, colors only from design tokens.
@@ -108,7 +108,7 @@ cd pilcrow
 
 The debug APK is written to `app/build/outputs/apk/debug/`.
 
-> **Build from `clean` for any result you intend to trust.** Pilcrow pins Kotlin to 2.3.10 to match
+> **Build from `clean` for any result you intend to trust.** PilcrowMD pins Kotlin to 2.3.10 to match
 > the metadata version of its editor dependency (Sora `editor-bom:0.24.5`). That toolchain carries a
 > known incremental-compiler quirk: it can cache a stale state and report phantom `Unresolved
 > reference` errors on code that compiles cleanly from scratch — a false *negative* (green turned
@@ -159,7 +159,7 @@ full gate from a clean build:
 
 ## Roadmap
 
-Pilcrow v1 is intentionally focused — read and edit Markdown beautifully and safely, offline.
+PilcrowMD v1 is intentionally focused — read and edit Markdown beautifully and safely, offline.
 Directions under consideration for future releases:
 
 - Document collections / multi-file libraries.
@@ -179,11 +179,11 @@ contributions are on hold while we finalize our Contributor License Agreement (C
 
 ## License
 
-Pilcrow is **free software**, licensed under the **GNU General Public License v3.0 or later
+PilcrowMD is **free software**, licensed under the **GNU General Public License v3.0 or later
 (GPL-3.0-or-later)**. Copyright © 2026 pleree.
 
 It comes with **no warranty**. See [LICENSE](LICENSE) for the full text or
-<https://www.gnu.org/licenses/>. The copyleft license is deliberate: it keeps Pilcrow and its
+<https://www.gnu.org/licenses/>. The copyleft license is deliberate: it keeps PilcrowMD and its
 derivatives free and open, and prevents closed-source or ad-laden clones.
 
 The app's own license is **distinct from** the licenses of its third-party dependencies and bundled
@@ -192,7 +192,7 @@ assets, which are documented in [LICENSES.md](LICENSES.md) and surfaced in-app u
 
 ## Acknowledgements
 
-Pilcrow stands on excellent open-source work:
+PilcrowMD stands on excellent open-source work:
 
 - [Markwon](https://github.com/noties/Markwon) and [Prism4j](https://github.com/noties/Prism4j) —
   native Markdown rendering and syntax highlighting.
