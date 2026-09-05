@@ -179,7 +179,7 @@ fun MarkdownEditor(
 
                     // Configure editor appearance and behavior
                     editor.setTextSize(editorFontSizeSp)
-                    editor.setWordwrap(true) // Soft wrap, no horizontal scroll
+                    editor.setWordwrap(true, true, true) // Soft wrap with right-aligned RTL rows
                     editor.isLineNumberEnabled = lineNumbersEnabled
 
                     // Sora's default divider margins are too tight — the content text sits flush
