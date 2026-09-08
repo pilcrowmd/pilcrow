@@ -79,6 +79,9 @@ class ProseBlockEntry(
             // cannot pick the colour itself — the entry, which knows the scheme, does (Safeguard 4).
             val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.accent.toArgb())
             markwon.setParsedMarkdown(holder.textView, rendered)
+            // A footnote marker paints at 0.75 of body size — about 20 px, which missed two taps
+            // in three during UAT. This widens the HIT AREA only; the glyph is untouched (M-06).
+            holder.textView.enableGenerousFootnoteTaps()
             // Prose blocks are a single TextView, so occurrenceBase is 0.
             SearchHighlighter.highlight(
                 holder.textView,

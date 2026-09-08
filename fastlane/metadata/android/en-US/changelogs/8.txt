@@ -1,0 +1,5 @@
+Fixes to things that did not work the way they looked.
+
+- Tapping a footnote now takes you to the footnote itself, instead of stopping about a screen short of it. The one you tapped is briefly highlighted so it is easy to find.
+- Footnote numbers are small, so they are now easier to hit — the number itself is unchanged.
+- Your recent files are visible as soon as you open the app, without scrolling down to find them.

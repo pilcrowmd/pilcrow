@@ -293,6 +293,17 @@ fun WelcomeScreen(
                             .padding(horizontal = 32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        // WHAT THE GAP MEASURES IS THE WHOLE POINT OF M-67. The recents list is
+                        // INSIDE this content, not a sibling below it, so `YieldingTopGap` measures
+                        // hero + recents together and the gap yields to both. As a sibling it was
+                        // invisible to the measurement: the gap filled the viewport with the hero
+                        // alone and pushed RECENT below the fold on every portrait launch.
+                        // The two states of M-67's rule fall out of that with no branch on
+                        // emptiness — an empty list contributes ZERO height, so the gap is
+                        // arithmetically identical and a first-run user sees exactly what they saw
+                        // before (which the four `welcome_*` goldens hold to). A populated list
+                        // makes the content taller, so the gap shrinks and the block moves up.
+                        //
                         // The lead gap is 206dp WHERE THERE IS ROOM, and yields where there is not, so
                         // the Open button is never pushed off the bottom. What is reserved runs
                         // through the "Browse all files" line BELOW the button, not just the button:
@@ -431,35 +442,34 @@ fun WelcomeScreen(
                                         .clickable { onOpenAnyFile() }
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                 )
+                                // Recents list
+                                if (recentFiles.isNotEmpty()) {
+                                    Spacer(Modifier.height(28.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            "RECENT",
+                                            color = c.secondaryText,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Text(
+                                            "Clear",
+                                            color = c.accent,
+                                            fontSize = 13.sp,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable { showClearConfirm = true }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    recentFiles.forEach { r -> RecentRow(r, onOpenRecent, onRemoveRecent) }
+                                }
                             }
-                        }
-
-                        // Recents list
-                        if (recentFiles.isNotEmpty()) {
-                            Spacer(Modifier.height(28.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    "RECENT",
-                                    color = c.secondaryText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Text(
-                                    "Clear",
-                                    color = c.accent,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .clickable { showClearConfirm = true }
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                )
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            recentFiles.forEach { r -> RecentRow(r, onOpenRecent, onRemoveRecent) }
                         }
 
                         // Clearance so the last item never collides with the footer below.

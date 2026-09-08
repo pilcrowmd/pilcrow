@@ -43,6 +43,10 @@ import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.PlainTextBlocks
 import com.pilcrowmd.rendering.RecyclerAdapterEntries
 import com.pilcrowmd.rendering.SearchHighlight
+import com.pilcrowmd.rendering.applyReaderJumpBehaviour
+import com.pilcrowmd.rendering.clearReaderHighlight
+import com.pilcrowmd.rendering.documentOverflowsViewport
+import com.pilcrowmd.rendering.scrollToDocumentEnd
 import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -136,6 +140,10 @@ fun MarkdownPreview(
                     // No item add/remove/change animations: a live pinch-zoom swaps the adapter many
                     // times a second, and the default cross-fade would read as a flicker/blink.
                     itemAnimator = null
+                    // M-06: one viewport of headroom below the last block, so a footnote
+                    // definition — always the document's final block — can actually reach the top
+                    // of the viewport instead of being clamped to the bottom.
+                    applyReaderJumpBehaviour(this, c.searchHighlightFocused.toArgb())
                     adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         context,
                         renderer.markwon,
@@ -148,7 +156,7 @@ fun MarkdownPreview(
                     addOnScrollListener(object : RecyclerView.OnScrollListener() {
                         override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                             onScrollChanged(rv.currentScrollAnchor())
-                            canScroll.value = rv.computeVerticalScrollRange() > rv.height
+                            canScroll.value = documentOverflowsViewport(rv)
                         }
                     })
 
@@ -266,6 +274,10 @@ fun MarkdownPreview(
                     val firstBuild = lastConfig.value == null
                     val restore = if (firstBuild) initialScroll else rv.currentScrollAnchor()
                     lastConfig.value = configKey
+                    // A tint is an index into the document being replaced; carried across a swap it
+                    // would light some unrelated block. A pinch-zoom rebuilds this many times a
+                    // second (M-06).
+                    clearReaderHighlight(rv)
                     val newAdapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         rv.context,
                         renderer.markwon,
@@ -282,7 +294,7 @@ fun MarkdownPreview(
                     (rv.layoutManager as? LinearLayoutManager)
                         ?.scrollToPositionWithOffset(restore.index, restore.offset)
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
-                    rv.post { canScroll.value = rv.computeVerticalScrollRange() > rv.height }
+                    rv.post { canScroll.value = documentOverflowsViewport(rv) }
                 }
 
                 val adapter = rv.adapter as MarkwonAdapter
@@ -297,7 +309,7 @@ fun MarkdownPreview(
                     val lm = rv.layoutManager as? LinearLayoutManager
                     rv.post { lm?.scrollToPositionWithOffset(initialScroll.index, initialScroll.offset) }
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
-                    rv.post { canScroll.value = rv.computeVerticalScrollRange() > rv.height }
+                    rv.post { canScroll.value = documentOverflowsViewport(rv) }
                 }
 
                 // (2) Update search highlights only when the search state changes.
@@ -390,10 +402,11 @@ private fun JumpControls(recyclerView: RecyclerView?, visible: Boolean, modifier
         }
         Spacer(modifier = Modifier.height(10.dp))
         JumpButton(icon = Icons.Filled.KeyboardArrowDown, description = "Scroll to bottom") {
-            recyclerView?.let { rv ->
-                val last = (rv.adapter?.itemCount ?: 0) - 1
-                if (last >= 0) rv.scrollToPosition(last)
-            }
+            // NOT `scrollToPosition(last)`: that asks for the last block at the TOP, and only the
+            // end-of-list clamp turned it into "the end of the document at the bottom of the
+            // screen". M-06's spacer removes that clamp, so the resting position is now stated
+            // rather than inherited — see `scrollToDocumentEnd`.
+            recyclerView?.let { scrollToDocumentEnd(it) }
         }
     }
 }

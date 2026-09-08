@@ -128,7 +128,7 @@ fun LicensesListView(
                 .padding(horizontal = 12.dp, vertical = 11.dp),
         ) {
             Text(
-                text = "Pilcrow",
+                text = "PilcrowMD",
                 color = c.primaryText,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,

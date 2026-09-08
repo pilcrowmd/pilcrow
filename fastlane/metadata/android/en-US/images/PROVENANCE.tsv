@@ -1,0 +1,28 @@
+# Store-asset provenance for this directory. Read by the publish gate
+# (zero-check.sh --public-tree). See docs/screenshot-capture-playbook.md.
+#
+# FORMAT (tab-separated):  filename <TAB> sha256 <TAB> buildType <TAB> commit
+#
+# EVERY regular file in this directory needs an entry. A missing entry, a missing file,
+# a duplicate entry, or a checksum that does not match all FAIL.
+#
+# buildType:
+#   release            captured from a release build            -> pass
+#   unverified-legacy  provenance never established             -> pass, named loudly
+#   debug              captured from a debug build              -> FAIL
+#
+# There is no buildType for artwork with no build behind it. A `designed` value existed
+# for that ("evidence required on the entry": byte-identity to a branding/ source, or
+# dimensions no device capture produces) and was REMOVED — nothing in the gate ever read
+# that evidence, so an entry claiming `designed` with no evidence at all passed exactly
+# the same as one with it. Confirmed by planting a real device capture labelled `designed`
+# and watching it pass at exit 0. Artwork attests as `unverified-legacy` like anything else
+# of unproven origin.
+#
+# ⚠️ PERMANENT WARNING — icon.png's provenance is UNVERIFIED by the gate. It is, in fact,
+# byte-identical to branding/pilcrow-icon-512.png (same sha256 below), itself derived from
+# branding/pilcrow-icon-master.png (1254x1254); 512x512 is the store-icon spec, while a
+# device capture from this project is 1080x2340. That fact is true but the gate cannot
+# check it mechanically without rebuilding the same hole for the next asset made elsewhere
+# — so it is recorded here, in prose, for a human to verify, not encoded as a passing value.
+icon.png	745589147e83fa3c35f3e5809003eca2622d293ae84d62eb1de6c8f2ea8ede23	unverified-legacy	b453b9c

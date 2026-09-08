@@ -36,14 +36,18 @@ import androidx.compose.ui.unit.sp
 import com.pilcrowmd.ui.theme.mdColors
 
 /**
- * GitHubIntegrationScreen: a roadmap-teaser sub-screen for the planned GitHub Markdown-browsing
- * feature, reached from the Settings → Integrations card. View-layer only — no ViewModel / data /
- * save-path contact. Mirrors the [LicensesScreen] modal pattern (header + ArrowBack close).
+ * GitHubIntegrationScreen: the feature-request sub-screen, reached from the Settings → Feedback
+ * card. View-layer only — no ViewModel / data / save-path contact. Mirrors the [LicensesScreen]
+ * modal pattern (header + ArrowBack close).
  *
- * The "Request this feature" button fires an ACTION_SENDTO `mailto:` intent (only email apps
- * respond), pre-addressed to pilcrowmd@gmail.com with a fixed subject. If no email app is installed
- * it degrades gracefully (a toast, never a crash — Safeguard 3 spirit). Colours come only from the
- * token layer (Safeguard 4).
+ * It promises nothing and carries no date. GitHub Markdown browsing is named only as an EXAMPLE of
+ * a request people have made, never as a commitment — the screen's job is to collect what
+ * users want built, not to advertise a roadmap.
+ *
+ * The button fires an ACTION_SENDTO `mailto:` intent (only email apps respond), pre-addressed to
+ * pilcrowmd@gmail.com with a fixed subject. This is the app's only feedback channel and is kept
+ * deliberately. If no email app is installed it degrades gracefully (a toast, never a crash —
+ * Safeguard 3 spirit). Colours come only from the token layer (Safeguard 4).
  */
 @Composable
 fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) {
@@ -65,7 +69,7 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "GitHub integration",
+                text = "Tell us what to build",
                 color = c.primaryText,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -91,28 +95,28 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
             Text(
-                text = "GitHub integration",
+                text = "Tell us what to build",
                 color = c.primaryText,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "We're planning to let you browse and open Markdown straight from your " +
-                    "GitHub repositories, without leaving Pilcrow. It's not here yet — but it's " +
-                    "on the roadmap.",
+                text = "What gets built next is decided by what people ask for. This is how you " +
+                    "ask.",
                 color = c.secondaryText,
                 fontSize = 14.sp,
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "If you'd find it useful, or have a specific workflow in mind, tell us how " +
-                    "you'd use it.",
+                text = "Opening Markdown straight from a GitHub repository is one thing people " +
+                    "have asked for. If that's what you want, say so — or tell us something else " +
+                    "entirely. Describing the workflow you have in mind helps most.",
                 color = c.secondaryText,
                 fontSize = 14.sp,
             )
             Spacer(modifier = Modifier.height(18.dp))
-            RequestFeatureButton(onClick = { requestGitHubIntegration(context) })
+            RequestFeatureButton(onClick = { sendFeatureRequest(context) })
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = "Opens your email app — nothing is sent unless you tap send.",
@@ -130,7 +134,7 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
 private fun RequestFeatureButton(onClick: () -> Unit) {
     val c = mdColors()
     Text(
-        text = "Request this feature",
+        text = "Send us a request",
         color = c.onAccent,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
@@ -145,18 +149,34 @@ private fun RequestFeatureButton(onClick: () -> Unit) {
 }
 
 /**
- * Open the system email composer pre-addressed to pilcrowmd@gmail.com with a fixed subject via
- * ACTION_SENDTO `mailto:` (only true email apps resolve this, so no unrelated app is offered). If
- * there is no email app, show a toast instead of crashing.
+ * Open the system email composer pre-addressed to [FEEDBACK_EMAIL] with [FEEDBACK_SUBJECT] already
+ * filled, via ACTION_SENDTO `mailto:` (only true email apps resolve this, so no unrelated app is
+ * offered). If there is no email app, show a toast instead of crashing.
+ *
+ * **The subject travels in the mailto URI, not in EXTRA_SUBJECT, and that is not a style choice.**
+ * Gmail — the default handler on the test device, and the most common one — parses the `mailto:`
+ * URI per RFC 6068 and **ignores `EXTRA_SUBJECT` entirely** on ACTION_SENDTO. Verified on device
+ * (S24+, 2026-09-04): with the extra alone the composer opened with an EMPTY Subject field; with
+ * the subject in the URI it arrives filled. The extra is kept alongside it purely as a fallback for
+ * clients that read extras instead — it costs nothing and neither form is authoritative everywhere.
+ *
+ * The subject names the app because it lands in a personal inbox that receives more than this app's
+ * mail — a bare "Feature request" is not identifiable there. Owner request from device UAT.
  */
-private fun requestGitHubIntegration(context: android.content.Context) {
+private fun sendFeatureRequest(context: android.content.Context) {
     val intent = Intent(Intent.ACTION_SENDTO).apply {
-        data = Uri.fromParts("mailto", "pilcrowmd@gmail.com", null)
-        putExtra(Intent.EXTRA_SUBJECT, "GitHub integration request")
+        data = Uri.parse("mailto:$FEEDBACK_EMAIL?subject=" + Uri.encode(FEEDBACK_SUBJECT))
+        putExtra(Intent.EXTRA_SUBJECT, FEEDBACK_SUBJECT)
     }
     try {
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "No email app found — write to pilcrowmd@gmail.com", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "No email app found — write to $FEEDBACK_EMAIL", Toast.LENGTH_LONG).show()
     }
 }
+
+/** Where feature requests go. The app's only feedback channel — see [sendFeatureRequest]. */
+private const val FEEDBACK_EMAIL = "pilcrowmd@gmail.com"
+
+/** Names the app so the mail is identifiable in an inbox that receives more than this app's mail. */
+private const val FEEDBACK_SUBJECT = "PilcrowMD feature request"

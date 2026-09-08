@@ -3,13 +3,16 @@
 
 package com.pilcrowmd.rendering
 
+import android.text.Layout
 import android.text.Spannable
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewParent
+import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -77,6 +80,83 @@ fun View.jumpToBlock(targetBlockIndex: Int) {
         layoutManager.scrollToPositionWithOffset(targetBlockIndex, 0)
     } else {
         recyclerView.smoothScrollToPosition(targetBlockIndex)
+    }
+    // Landing on the block is not the same as finding it: a footnote definition looks like every
+    // other paragraph, so the eye still has to hunt. Tint it briefly (M-06).
+    highlightOnArrival(recyclerView, targetBlockIndex)
+}
+
+/**
+ * How far either side of a footnote marker a tap still counts, in dp. The marker paints at
+ * [FOOTNOTE_MARKER_SCALE] of body size — about 20 px wide on a phone, which measured two misses in
+ * three during UAT. Widening the PAINTED marker was rejected: the ordinal's size is load-bearing
+ * (search models the marker as exactly those digits) and a bigger glyph would change every footnote
+ * golden. So the hit area grows and the pixels do not.
+ */
+private const val FOOTNOTE_TAP_SLOP_DP = 12f
+
+/**
+ * Let a tap NEAR a footnote marker count as a tap ON it.
+ *
+ * Runs only when the exact hit MISSED — a tap that lands on the marker is handed straight back to
+ * Markwon's movement method, so the normal path is untouched and no tap can fire twice. Only
+ * [FootnoteJumpSpan] is searched: widening every link in the document would make ordinary prose
+ * taps unpredictable, which is a worse bug than the one being fixed.
+ */
+fun TextView.enableGenerousFootnoteTaps() {
+    val slopPx = FOOTNOTE_TAP_SLOP_DP * resources.displayMetrics.density
+    setOnTouchListener { view, event ->
+        if (event.action != MotionEvent.ACTION_UP) return@setOnTouchListener false
+        val textView = view as? TextView ?: return@setOnTouchListener false
+        val spanned = textView.text as? Spanned ?: return@setOnTouchListener false
+        val x = event.x - textView.totalPaddingLeft + textView.scrollX
+        val y = event.y - textView.totalPaddingTop + textView.scrollY
+        val layout = textView.layout ?: return@setOnTouchListener false
+        val line = layout.getLineForVertical(y.toInt())
+        // ANY exact hit wins, not just a footnote's. A regular link sitting within the slop of a
+        // marker would otherwise be swallowed: the footnote check alone would miss it, the widened
+        // search would then find the neighbouring marker, and the link the reader actually tapped
+        // would never fire. Raised in review; the slop exists to rescue a MISS, never to overrule a
+        // hit.
+        if (spanned.clickableSpanAt(layout, line, x) != null) return@setOnTouchListener false
+        val nearby = spanned.footnoteSpanNear(layout, line, x, slopPx) ?: return@setOnTouchListener false
+        nearby.onClick(textView)
+        true
+    }
+}
+
+/** Any [ClickableSpan] painted directly under [x] on [line] — a link as much as a footnote marker. */
+private fun Spanned.clickableSpanAt(layout: Layout, line: Int, x: Float): ClickableSpan? {
+    val lineStart = layout.getLineStart(line)
+    val lineEnd = layout.getLineEnd(line)
+    if (lineStart >= lineEnd) return null
+    return getSpans(lineStart, lineEnd, ClickableSpan::class.java).firstOrNull { span ->
+        val left = layout.getPrimaryHorizontal(getSpanStart(span).coerceIn(lineStart, lineEnd))
+        val right = layout.getPrimaryHorizontal(getSpanEnd(span).coerceIn(lineStart, lineEnd))
+        x >= minOf(left, right) && x <= maxOf(left, right)
+    }
+}
+
+/**
+ * The [FootnoteJumpSpan] on [line] whose painted extent comes within [slopPx] of [x], or null.
+ *
+ * Measures the distance to each MARKER rather than converting the tap into a character offset and
+ * looking there. Two earlier versions did the latter and both were wrong in ways only a test found:
+ * probing the two points `x ± slopPx` misses a marker lying between them, and clamping the tap into
+ * the line's horizontal bounds depends on `getLineLeft`/`getLineRight`, which are not dependable.
+ * Asking "is the tap within slop of this marker" is the requirement stated directly, and a line
+ * holds at most a handful of markers.
+ *
+ * With `slopPx = 0` this is the plain "is the tap ON the marker" question.
+ */
+private fun Spanned.footnoteSpanNear(layout: Layout, line: Int, x: Float, slopPx: Float): FootnoteJumpSpan? {
+    val lineStart = layout.getLineStart(line)
+    val lineEnd = layout.getLineEnd(line)
+    if (lineStart >= lineEnd) return null
+    return getSpans(lineStart, lineEnd, FootnoteJumpSpan::class.java).firstOrNull { span ->
+        val left = layout.getPrimaryHorizontal(getSpanStart(span).coerceIn(lineStart, lineEnd))
+        val right = layout.getPrimaryHorizontal(getSpanEnd(span).coerceIn(lineStart, lineEnd))
+        x >= minOf(left, right) - slopPx && x <= maxOf(left, right) + slopPx
     }
 }
 

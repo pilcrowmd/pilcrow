@@ -1,0 +1,28 @@
+# Store-screenshot provenance. Read by the publish gate (zero-check.sh --public-tree).
+#
+# WHY THIS FILE EXISTS: a PNG carries no evidence of which build produced it, so the
+# only way a gate can refuse a debug-captured store image is if provenance is written
+# down and checksummed. See docs/screenshot-capture-playbook.md.
+#
+# FORMAT (tab-separated):  filename <TAB> sha256 <TAB> buildType <TAB> commit
+#
+# buildType values and what the gate does with each:
+#   release            captured from a release build  -> pass, silently
+#   unverified-legacy  provenance never established    -> pass, but named loudly
+#   debug              captured from a debug build     -> FAIL
+# There is no buildType for artwork with no build behind it — a former `designed` value was
+# removed because nothing ever checked the evidence it claimed to require. See
+# ../PROVENANCE.tsv (icon.png) and docs/screenshot-capture-playbook.md.
+# A missing entry, a missing file, a DUPLICATE entry, or a checksum that does not match -> FAIL.
+# EVERY regular file in this directory needs an entry — extensions are not enumerated, so an
+# unexpected one fails closed rather than passing silently.
+#
+# buildType is HUMAN-ATTESTED and is never inferred. The gate catches drift after the
+# first entry, not the truthfulness of the first entry itself.
+#
+01-reader-hero-dark.png	f2c8185b07a6b25138e892429e9ef9a57982b4ece61ed6cab3f2e1777b8e5f3c	release	111064b875d77a04c5a8db1de9ecffd79af61f24
+02-code-table-dark.png	88e63252a88dcea19d6b9f9e8d7ac6c4bad82a8b7b364c00362341ad135222ab	release	111064b875d77a04c5a8db1de9ecffd79af61f24
+03-math-mermaid-dark.png	7983686a6d7f1002972ae6da95d00680bc74a873b6b8af1aa6a33f397d68cf88	release	111064b875d77a04c5a8db1de9ecffd79af61f24
+04-home-dark.png	d914c096916acfe0fd5c60b380078e2e38a4b4787a67fc82fd98ec8747db6ff6	release	111064b875d77a04c5a8db1de9ecffd79af61f24
+05-settings-dark.png	ba8f07bd43588491282777628d4ead27660e52fd388e9272b19e20520c309aa7	release	a12bb39ab2c9a1dbf13b2feba16f67520cf14f2c
+06-reader-hero-light.png	1fe1bd12616e5678f93955108d4019f122d9787e3a7358d393182e823e990c74	release	111064b875d77a04c5a8db1de9ecffd79af61f24

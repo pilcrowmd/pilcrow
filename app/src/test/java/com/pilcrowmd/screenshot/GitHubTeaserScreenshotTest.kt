@@ -29,11 +29,16 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Visual-regression goldens for the GitHub-integration roadmap teaser (view-layer only):
- *  - `settings_github_card_*` — the full Settings screen (tall viewport so the Integrations card is
- *    in frame), guarding the relabelled "GitHub integration" card + the accent "Coming soon" pill;
- *  - `github_integration_screen_*` — the new teaser sub-screen (heading, copy, accent button).
+ * Visual-regression goldens for the feature-request surface (view-layer only):
+ *  - `settings_github_card_*` — the full Settings screen (tall viewport so the whole column is in
+ *    frame), guarding the Feedback section's "Tell us what to build" card and the Rendering
+ *    section label. There is deliberately NO badge on the card: no date, no date-shaped badge;
+ *  - `github_integration_screen_*` — the request sub-screen (heading, copy, accent button).
  * Both in Dark + Light. A future change to the card or screen layout fails the verify task.
+ *
+ * NOTE: these are PIXEL goldens and assert nothing textually. Re-recording them is what makes a
+ * copy change "pass", so a green verify after a re-record proves nothing on its own — the recorded
+ * PNGs must be looked at by a human in the diff (M-56).
  *
  *   Record baseline:  ./gradlew recordRoborazziDebug
  *   Verify (gate):    ./gradlew verifyRoborazziDebug

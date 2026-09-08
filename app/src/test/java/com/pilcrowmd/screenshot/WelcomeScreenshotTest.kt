@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.screenshot
 
+import android.net.Uri
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -19,6 +20,7 @@ import com.pilcrowmd.ui.components.WelcomeScreen
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
+import com.pilcrowmd.viewmodel.RecentFileUi
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -101,6 +103,17 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
     fun golden() = captureWelcome(suffix = themeSuffix())
 
     /**
+     * M-67: with recents PRESENT the block moves up so the list is reachable without scrolling.
+     *
+     * NEW goldens, not re-recorded ones. The populated state had no golden at all before this row,
+     * which is precisely why the fold defect could sit there unseen — and why the four EMPTY-state
+     * goldens must stay byte-identical: M-67's rule is that a first-run user sees no change, so
+     * those four are a regression guard on this change, not a baseline to refresh.
+     */
+    @Test
+    fun goldenWithRecents() = captureWelcome(suffix = themeSuffix() + "_recents", recentFiles = sampleRecents())
+
+    /**
      * Same composition under the short landscape viewport. Method-level [Config] overrides only the
      * size qualifiers; everything else is inherited from the class.
      */
@@ -108,12 +121,36 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
     @Config(qualifiers = LANDSCAPE_S24_PLUS)
     fun goldenLandscape() = captureWelcome(suffix = themeSuffix() + "_landscape")
 
+    @Test
+    @Config(qualifiers = LANDSCAPE_S24_PLUS)
+    fun goldenLandscapeWithRecents() =
+        captureWelcome(suffix = themeSuffix() + "_landscape_recents", recentFiles = sampleRecents())
+
     private fun themeSuffix(): String = when (themeMode) {
         ThemeMode.DARK -> "dark"
         ThemeMode.LIGHT -> "light"
     }
 
-    private fun captureWelcome(suffix: String) {
+    /**
+     * EIGHT entries, which is the storage cap (`LocalStorageManager.maxRecents`) and therefore the
+     * worst case this layout can ever be asked to hold — not the five that were confirmed by hand
+     * to sit comfortably. A golden pinned at the comfortable middle would not have answered the
+     * question a review asked: can a full list shrink the lead gap until the CTA is pushed off, or
+     * until the brand block is slammed against the top edge? It cannot, and this is the evidence.
+     * Fixed `lastOpened` values because a golden may not depend on the clock.
+     */
+    private fun sampleRecents(): List<RecentFileUi> = listOf(
+        RecentFileUi(Uri.parse("content://uat/notes.md"), "notes.md", 5_000L, available = true),
+        RecentFileUi(Uri.parse("content://uat/spec.md"), "spec.md", 4_000L, available = true),
+        RecentFileUi(Uri.parse("content://uat/README.md"), "README.md", 3_000L, available = true),
+        RecentFileUi(Uri.parse("content://uat/journal.md"), "journal.md", 2_000L, available = true),
+        RecentFileUi(Uri.parse("content://uat/todo.md"), "todo.md", 1_000L, available = false),
+        RecentFileUi(Uri.parse("content://uat/a.md"), "a.md", 900L, available = true),
+        RecentFileUi(Uri.parse("content://uat/b.md"), "b.md", 800L, available = true),
+        RecentFileUi(Uri.parse("content://uat/c.md"), "c.md", 700L, available = true),
+    )
+
+    private fun captureWelcome(suffix: String, recentFiles: List<RecentFileUi> = emptyList()) {
         val colorScheme = when (themeMode) {
             ThemeMode.DARK -> DarkColorScheme
             ThemeMode.LIGHT -> LightColorScheme
@@ -126,7 +163,7 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
                     .background(colorScheme.primaryBackground),
             ) {
                 CompositionLocalProvider(LocalMDColors provides colorScheme) {
-                    WelcomeScreen(recentFiles = emptyList())
+                    WelcomeScreen(recentFiles = recentFiles)
                 }
             }
         }

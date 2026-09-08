@@ -4,6 +4,12 @@
 local.properties
 .idea/
 build/
+# Kotlin 2.x persistent project state — a compiler session marker (`.kotlin/sessions/*.salive`)
+# exists only WHILE a build runs, so a quiet `git status` shows nothing and the repo looks clean.
+# Unignored, `git add -A` — a load-bearing step in docs/PUBLISHING.md — stages it, and the publish
+# push is additive and unwithdrawable. It trips none of the 0-check classes, so nothing but reading
+# the staged list by eye would catch it. See M-64.
+.kotlin/
 captures/
 .externalNativeBuild/
 .cxx/

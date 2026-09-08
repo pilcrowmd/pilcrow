@@ -28,11 +28,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -227,16 +226,14 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(18.dp))
 
-        // ───────────── INTEGRATIONS ─────────────
-        SectionLabel("Integrations")
+        // ───────────── FEEDBACK ─────────────
+        SectionLabel("Feedback")
         InfoCard(
-            leadingIcon = Icons.Outlined.Cloud,
-            title = "GitHub integration",
-            subtitle = "Open and browse Markdown from your repos.",
+            leadingIcon = Icons.Outlined.Lightbulb,
+            title = "Tell us what to build",
+            subtitle = "Browsing Markdown from your GitHub repos is one thing people have asked for.",
             onClick = onOpenGitHub,
             trailing = {
-                ComingSoonBadge()
-                Spacer(Modifier.width(8.dp))
                 Icon(
                     imageVector = Icons.Outlined.ChevronRight,
                     contentDescription = null,
@@ -248,14 +245,13 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(18.dp))
 
-        // ───────────── PRO PLUGINS ─────────────
-        SectionLabel("Pro Plugins")
+        // ───────────── RENDERING ─────────────
+        SectionLabel("Rendering")
         // LaTeX already renders natively/offline — show it as a built-in feature.
-        ProPluginCard(
+        RenderingFeatureCard(
             glyph = "{x}",
             title = "LaTeX Math",
             subtitle = "Render beautiful math equations.",
-            comingSoon = false,
         )
         CardGap()
         // Mermaid — opt-in cloud rendering, OFF by default.
@@ -515,33 +511,18 @@ private fun InfoCard(
     }
 }
 
-/** A small accent "Coming soon" pill (token colours only, Safeguard 4). */
-@Composable
-private fun ComingSoonBadge() {
-    val c = mdColors()
-    Text(
-        text = "Coming soon",
-        color = c.onAccent,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .clip(RoundedCornerShape(percent = 50))
-            .background(c.accent)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    )
-}
-
 /**
- * A pro-plugin row: leading glyph/icon, title, subtitle. When [comingSoon] it shows a
- * "Coming soon" + lock; otherwise a "Built-in" badge (the feature is active).
+ * A rendering-feature row: leading glyph/icon, title, subtitle, and a "Built-in" badge.
+ *
+ * Every feature listed here ships in the app and is on by default or user-toggleable, so there is
+ * no locked/"Coming soon" variant — the card cannot express one, and that is deliberate.
  */
 @Composable
-private fun ProPluginCard(
+private fun RenderingFeatureCard(
     title: String,
     subtitle: String,
     glyph: String? = null,
     leadingIcon: ImageVector? = null,
-    comingSoon: Boolean = true,
 ) {
     val c = mdColors()
     Row(
@@ -576,23 +557,12 @@ private fun ProPluginCard(
             CardTitle(title)
             Text(text = subtitle, color = c.secondaryText, fontSize = 12.sp)
         }
-        if (comingSoon) {
-            Text(text = "Coming soon", color = c.secondaryText, fontSize = 11.sp)
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.Outlined.Lock,
-                contentDescription = null,
-                tint = c.secondaryText.copy(alpha = 0.7f),
-                modifier = Modifier.size(14.dp),
-            )
-        } else {
-            Text(
-                text = "Built-in",
-                color = c.accent,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+        Text(
+            text = "Built-in",
+            color = c.accent,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
@@ -666,7 +636,7 @@ private fun AboutCard(appVersion: String, onOpenLicenses: () -> Unit = {}) {
                 modifier = Modifier.size(20.dp),
             )
             Text(
-                text = "About Pilcrow",
+                text = "About PilcrowMD",
                 color = c.primaryText,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,

@@ -7,7 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.0.6] - 2026-08-31
+## [1.0.7] - 2026-09-08
+
+### Fixed
+
+- **Tapping a footnote now lands on the footnote.** It used to stop about a screen short of the
+  definition, which looked like the jump half-working — and because a footnote definition is always
+  the last thing in a document, this happened to every footnote in every document. The definition
+  you asked for is now at the top of the screen, and is briefly highlighted so your eye finds it.
+- **Footnote markers are easier to tap.** The raised number is small, and a tap that just missed it
+  did nothing. A near miss now counts. **The number itself is unchanged in size** — only the area
+  that responds to your thumb grew.
+- **Your recent files are visible when you open the app.** With a few files in the list, the RECENT
+  heading and the list itself sat below the bottom of the screen in portrait, so every launch began
+  with a scroll. They are now in view, and the "Open MD File" button stays fully on screen.
+
+## [1.0.6] - 2026-09-02
 
 ### Changed
 
@@ -78,7 +93,7 @@ changes.
 - Crash reports from the store now arrive with readable stack traces. Build-only change: the app's
   behaviour, size and performance are unchanged.
 
-## [1.0.1] - 2026-06-28
+## [1.0.1] - 2026-07-24
 
 ### Added
 
