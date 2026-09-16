@@ -1,11 +1,18 @@
-# Contributing to Pilcrow
+# Contributing to PilcrowMD
 
-Thanks for your interest in contributing to Pilcrow! Bug reports, feature ideas, documentation,
-and design feedback are all very welcome — please open an issue. We're finalizing a Contributor
-License Agreement (CLA), so we're **not yet accepting external code contributions (pull
-requests)** — see [Code contributions (CLA pending)](#code-contributions-cla-pending) below.
+**Ideas are the contribution this project runs on.** Bug reports, feature requests, reproductions,
+design feedback, a note that something reads wrong on your device — these are genuinely wanted, and
+they are what moves the app forward. Several of the changes queued for the next release came from
+people outside the project raising them on the public tracker — including the right-to-left editor
+fix described below. Please
+[open an issue](https://github.com/pilcrowmd/pilcrow/issues/new/choose).
 
-Please read our **[Code of Conduct](CODE_OF_CONDUCT.md)** before contributing. For **security
+**Outside code is not accepted, at least for now.** This is a decision, not a queue and not a
+process you are waiting on: the codebase has a single maintainer, who holds sole copyright over it.
+There is no Contributor License Agreement and none is coming, so there is nothing to sign and
+nothing to wait for. If that changes, this file changes with it.
+
+Please read our **[Code of Conduct](CODE_OF_CONDUCT.md)** before taking part. For **security
 issues, do not open a public issue** — follow **[SECURITY.md](SECURITY.md)** instead.
 
 ---
@@ -13,28 +20,38 @@ issues, do not open a public issue** — follow **[SECURITY.md](SECURITY.md)** i
 ## Ways to contribute
 
 - **Report a bug** — open a [bug report](https://github.com/pilcrowmd/pilcrow/issues/new/choose)
-  with steps to reproduce, the Markdown that triggers it if relevant, and your Pilcrow/Android
+  with steps to reproduce, the Markdown that triggers it if relevant, and your PilcrowMD/Android
   versions.
 - **Request a feature** — open a [feature request](https://github.com/pilcrowmd/pilcrow/issues/new/choose)
   with the problem you're trying to solve. Note that v1 is intentionally focused on reading and
   editing Markdown beautifully and safely, offline (see the [roadmap](README.md#roadmap)); requests
   that respect that scope are easiest to land.
-- **Ask a question** — use [Discussions](https://github.com/pilcrowmd/pilcrow/discussions).
-- **Contribute code** — we'd love your help here too, but code pull requests are on hold until our
-  CLA is in place. See [Code contributions (CLA pending)](#code-contributions-cla-pending) just
-  below.
+- **Send design feedback** — screenshots, typography and spacing notes, anything that looks wrong on
+  your screen. Open an issue; they are read.
+- **Ask a question** — open an issue. There is no discussion forum; issues are the one place.
 
 ---
 
-## Code contributions (CLA pending)
+## Code contributions
 
-We are finalizing a Contributor License Agreement (CLA). **Until it's in place, we are not yet
-accepting external code contributions (pull requests).**
+**Pull requests that add code are declined.** The codebase has a single author and a single
+copyright holder, and it stays that way at least for now. Please do not spend your time on a patch
+expecting it to be merged — an issue describing the same change is worth far more here, and is
+acted on.
 
-If you'd like to contribute code, please open an issue to discuss it first — that way the work is
-already aligned on scope and approach when the door opens. We'll announce when the CLA process is
-live and code PRs can be accepted. Once it is, all code contributions will require a one-time CLA
-sign-off.
+**There is a route for a change you want badly enough to have written.** Describe it in an issue, or
+point at your own branch or patch so the behaviour is unambiguous. You keep the copyright in
+whatever you wrote; the change is then implemented here independently; and **you are credited by
+name in the changelog entry that ships it.** The credit is the point, and it is not optional.
+
+That route is in use right now: an outside contributor opened a pull request for right-to-left row
+alignment in the editor, gave written permission on the thread for the fix to be applied without
+merging the pull request, and the changelog entry that ships it will name them.
+
+**Translations are the one thing that will open, and they are not open yet.** The app's text is
+still written into the code rather than collected into a strings file, so there is nothing to hand a
+translator. That work is planned. When there is a file to translate, it will be said here and on
+the tracker — please don't start one before then, because there is nothing yet for it to attach to.
 
 ---
 
@@ -77,7 +94,7 @@ verifies the visual-regression screenshots, and builds + lints the release varia
 
 ## Project architecture
 
-Pilcrow is a single-activity Jetpack Compose app built with **Clean Architecture + MVVM +
+PilcrowMD is a single-activity Jetpack Compose app built with **Clean Architecture + MVVM +
 unidirectional data flow** and strict layer boundaries:
 
 - **UI (Compose)** is passive and state-driven — **no business logic**, and **colors come only from
@@ -151,9 +168,11 @@ test green (see below) — and add to it.
 
 ## Pull request process
 
-> **Note:** until the CLA is in place (see
-> [Code contributions (CLA pending)](#code-contributions-cla-pending)), external code PRs are not
-> yet being accepted — this process currently applies to maintainers.
+> **This is the maintainer workflow**, kept here in the open because the build it describes is
+> the one that produces the released app — the reproducible-build story F-Droid verifies depends on
+> every change going through exactly these steps. Outside pull requests are not accepted (see
+> [Code contributions](#code-contributions)); read this as a description of how the app is built,
+> not as an invitation to open one.
 
 1. Branch from `main` (e.g. `feat/toc-jump` or `fix/save-crlf`).
 2. Write or update tests, then implement.
@@ -176,6 +195,11 @@ changes.
 
 ## License
 
-By contributing, you agree your contributions are licensed under the **GNU General Public License
-v3.0 or later (GPL-3.0-or-later)** — see [LICENSE](LICENSE). Third-party dependencies are documented
-in [LICENSES.md](LICENSES.md).
+PilcrowMD is licensed under the **GNU General Public License v3.0 or later
+(GPL-3.0-or-later)** — see [LICENSE](LICENSE). You are free to use, study, modify and redistribute
+it on those terms, forks included. Third-party dependencies are documented in
+[LICENSES.md](LICENSES.md).
+
+Because outside code is not accepted, there is nothing for you to license to this project and no
+agreement to sign. If you describe a change and it is implemented here, the copyright in whatever
+you wrote stays yours.

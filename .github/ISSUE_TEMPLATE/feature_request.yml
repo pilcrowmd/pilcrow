@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea or improvement for Pilcrow.
+description: Suggest an idea or improvement for PilcrowMD.
 title: "feat: "
 labels: ["enhancement"]
 body:
@@ -8,7 +8,7 @@ body:
       value: |
         v1 is intentionally focused on reading and editing Markdown beautifully and safely, offline.
         Requests that respect that scope are easiest to land — see the
-        [roadmap](../../README.md#roadmap).
+        [roadmap](https://github.com/pilcrowmd/pilcrow/blob/main/README.md#roadmap).
   - type: textarea
     id: problem
     attributes:
@@ -36,5 +36,5 @@ body:
     attributes:
       label: Before submitting
       options:
-        - label: I searched existing issues and discussions and this is not a duplicate.
+        - label: I searched existing issues and this is not a duplicate.
           required: true

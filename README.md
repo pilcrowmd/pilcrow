@@ -171,9 +171,10 @@ Nothing here is a commitment; the v1 safeguards and native-only constraint alway
 
 ## Contributing
 
-Bug reports, feature ideas, and feedback are very welcome — please open an issue. External code
-contributions are on hold while we finalize our Contributor License Agreement (CLA); see
-**[CONTRIBUTING.md](CONTRIBUTING.md)** for details and the workflow, and our
+Bug reports, feature ideas, reproductions and design feedback are very welcome — please open an
+issue. Outside code contributions are not accepted, at least for now;
+**[CONTRIBUTING.md](CONTRIBUTING.md)** is the canonical statement of what is wanted and how a change
+you care about can still reach the app. Please also read our
 **[Code of Conduct](CODE_OF_CONDUCT.md)**. Security issues should follow
 **[SECURITY.md](SECURITY.md)** rather than a public issue.
 

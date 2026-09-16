@@ -1,6 +1,6 @@
 name: CI
 
-# Quality gate for Pilcrow. Runs on every push + PR to main.
+# Quality gate for PilcrowMD. Runs on every push + PR to main.
 #
 # Kotlin is pinned to 2.3.10 to match the metadata version of the Sora editor dependency
 # (editor-bom:0.24.5). That toolchain carries a known incremental-compiler quirk that can cache a

@@ -1,5 +1,7 @@
 <!--
-Thanks for contributing to Pilcrow! Please read CONTRIBUTING.md first.
+This template is the maintainer workflow for PilcrowMD.
+Outside code contributions are not accepted, at least for now — CONTRIBUTING.md is the
+canonical policy and explains how a change you care about can still reach the app.
 Keep diffs surgical: touch only what the change requires.
 -->
 
