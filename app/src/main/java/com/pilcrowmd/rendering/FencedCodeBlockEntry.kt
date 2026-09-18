@@ -61,7 +61,13 @@ class FencedCodeBlockEntry(
         val root = inflater.inflate(R.layout.adapter_code_block, parent, false)
         // Let a wide code block pan sideways inside the vertical RecyclerView.
         root.findViewById<HorizontalScrollView>(R.id.code_scroll)?.enableHorizontalNestedScroll()
-        return Holder(root)
+        val holder = Holder(root)
+        // Chrome opts out of pinch scaling: neither of these takes its size from the reader font
+        // scale, so nothing re-applies it on bind and a PX size written by the gesture would survive
+        // at rest forever. `codeView` is NOT excluded — bindHolder re-applies its size. See M-04.
+        holder.copyButton.setTag(R.id.pinch_excluded, true)
+        holder.mermaidCaption.setTag(R.id.pinch_excluded, true)
+        return holder
     }
 
     override fun bindHolder(markwon: Markwon, holder: Holder, node: FencedCodeBlock) {
@@ -71,6 +77,16 @@ class FencedCodeBlockEntry(
         holder.copyButton.visibility = View.VISIBLE
         holder.mermaidImage.visibility = View.GONE
         holder.mermaidCaption.visibility = View.GONE
+        // Size is re-applied on EVERY bind and BEFORE the try, not inside it. Two reasons, and the
+        // second is why it moved: a reused holder must not keep the PX size the live pinch wrote
+        // (createHolder does not run again for one — see M-04), and if `markwon.render` throws, the
+        // catch below degrades the block WITHOUT restoring its size, so the one path that already
+        // failed would be the one left permanently mis-sized. Same value as the success path sets,
+        // so resting layout is unchanged.
+        holder.codeView.setTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            PilcrowTypography.CODE_BLOCK_FONT_SIZE_SP * fontScale,
+        )
         try {
             // Real code rendering (Prism4j highlighting applied by the shared Markwon instance).
             markwon.setParsedMarkdown(holder.codeView, markwon.render(node))
@@ -82,9 +98,6 @@ class FencedCodeBlockEntry(
             holder.codeView.movementMethod = null
             holder.codeView.typeface =
                 ResourcesCompat.getFont(context, fontSet.monoRegular)
-            // Apply fontScale multiplier to code text size (14sp base)
-            val scaledCodeSize = PilcrowTypography.CODE_BLOCK_FONT_SIZE_SP * fontScale
-            holder.codeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledCodeSize)
             holder.codeView.setLineSpacing(0f, PreviewLineHeightMultiplier)
             // Highlight search matches inside the code (single TextView → occurrenceBase 0).
             SearchHighlighter.highlight(

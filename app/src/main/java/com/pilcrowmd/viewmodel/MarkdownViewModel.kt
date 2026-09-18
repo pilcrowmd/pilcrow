@@ -43,13 +43,31 @@ data class HeadingJump(val position: Int, val seq: Int)
  * Modeled as collection-capable (v1 holds one file, vNext can extend to tabs/multiple).
  */
 data class Document(
-    val uri: Uri,
+    /**
+     * The document's backing file, or **null for a document that has never been saved** — the
+     * "Create MD File" path (M-91), which opens a blank document straight in the editor.
+     *
+     * Nullable rather than a sentinel URI ON PURPOSE. Every consumer of this field is a place
+     * where "there is no file yet" needs a decision, and several of them are persistence keys —
+     * last-file, recents, per-file scroll anchors, the save journal's `sha256(uri)` slot. A
+     * sentinel would type-check its way into all of them and write junk state; null makes the
+     * compiler demand an answer at each one. The blast radius was measured before choosing: ten
+     * call sites in `main`.
+     */
+    val uri: Uri?,
     val content: String,
     val dirty: Boolean = false,
     // SAF display name (e.g. "notes.md"); drives the default PDF export filename. Empty until
     // resolved (intent/cold paths still route through loadFile, which populates it).
     val displayName: String = "",
-)
+) {
+    /**
+     * True when this document has no file on disk yet, so an in-place save is impossible and
+     * Save must route to Save-As. Deliberately reads as a question about the document rather than
+     * a null check, because that is what every call site is actually asking.
+     */
+    val isUnsaved: Boolean get() = uri == null
+}
 
 /**
  * PDF export state for UI feedback.
@@ -114,7 +132,8 @@ constructor(
             val doc = _currentDocument.value ?: return@launch
             val next = if (_renderMode.value == RenderMode.PLAIN) RenderMode.MARKDOWN else RenderMode.PLAIN
             _renderMode.emit(next)
-            storage.setRenderModeOverride(doc.uri, next)
+            // An unsaved document has no URI to key an override on; the in-memory mode still flips.
+            doc.uri?.let { storage.setRenderModeOverride(it, next) }
             refreshHeadings(doc.content)
             refreshActiveSearch()
         }
@@ -137,11 +156,14 @@ constructor(
      * ([loadDocument] and [saveActiveDocumentAs] adoption) so the state can never desync from
      * the document (a review finding).
      */
-    private suspend fun applyDerivedRenderMode(uri: Uri, displayName: String) {
+    private suspend fun applyDerivedRenderMode(uri: Uri?, displayName: String) {
         val kind = DocumentKind.fromDisplayName(displayName)
         _plainToggleAvailable.emit(kind == DocumentKind.PLAIN_TEXT)
         val default = if (kind == DocumentKind.PLAIN_TEXT) RenderMode.PLAIN else RenderMode.MARKDOWN
-        _renderMode.emit(storage.getRenderModeOverride(uri) ?: default)
+        // A document with no file yet (M-91) has no URI to look an override up by, so the
+        // extension default is the whole answer. Its name is `.md`, so that default is MARKDOWN.
+        val override = uri?.let { storage.getRenderModeOverride(it) }
+        _renderMode.emit(override ?: default)
     }
 
     /** Headings feed the TOC drawer — a plain-text document has none. */
@@ -247,6 +269,10 @@ constructor(
     val lineNumbersEnabled: StateFlow<Boolean> = storage.lineNumbersEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    /** M-90: open documents straight in the editor. Default off. */
+    val openInEditMode: StateFlow<Boolean> = storage.openInEditMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     // Font scales (0.85–1.6, persisted in DataStore).
     // Preview and Edit are independent app-wide prefs.
     val previewFontScale: StateFlow<Float> = storage.previewFontScale
@@ -316,7 +342,63 @@ constructor(
     /** The results of the load-time CPU pass, carried back to Main as one value. */
     private data class PreparedLoad(val lineEnding: String, val normalized: String)
 
+    /**
+     * Guards [loadDocumentOrThrow] so the load ALWAYS leaves [FileLoadState.Loading]. **M-115.**
+     *
+     * `readFile`'s failure is a `Result` and was always handled; everything after it — the CPU pass,
+     * `displayName`, the permission IPC, the `openInEditMode` read, the render-mode derivation, the
+     * scroll lookup — ran on the raw path to `emit(Success)`, so a throw anywhere in there skipped
+     * the terminal emit and left `Loading` set for good. That was harmless while nothing was gated
+     * on `Loading`; the welcome screen now disables its actions on it, which would turn a silent
+     * failure into a permanently dead screen.
+     *
+     * **The body is wrapped rather than rewritten, deliberately.** The emission ORDER inside it is
+     * load-bearing: the outcome is emitted BEFORE the last-file and recents persistence, so the
+     * outcome never waits on DataStore I/O, and the load tests' barriers are built on that sequence.
+     * A wrapper adds the missing exit without touching a single emit or its position.
+     *
+     * **`CancellationException` is rethrown**, not converted: it is an `Exception`, so a bare
+     * `catch (e: Exception)` would swallow coroutine cancellation and leave the load looking like a
+     * failure instead of a cancellation. It is written FULLY QUALIFIED on purpose — adding an import
+     * shifts every line below it, and `app/config/ktlint/baseline.xml` pins this file's
+     * `backing-property-naming` suppression to line 257 BY NUMBER. One new import moves that
+     * declaration to 258, the baseline entry stops matching, and a pre-existing, unrelated,
+     * deliberately-suppressed warning fails the gate.
+     *
+     * **Cancellation clears `Loading` to `Idle` before rethrowing.** A cancelled load is not a
+     * failure to report to the user, but it is still a load that has to leave `Loading` — the
+     * welcome-screen gate cannot tell a cancelled load from a stuck one, and a cancelled cold-start
+     * restore would otherwise leave its actions disabled for good. Emitting from the cancelled
+     * coroutine is sound, and that is a property of `MutableStateFlow` rather than an assumption:
+     * its `emit` is a suspend function that never suspends — the whole body is `value = v`, which
+     * compiles to `setValue(v); return Unit` with no `COROUTINE_SUSPENDED` path — so it performs no
+     * cancellation check and takes effect even once the coroutine is cancelled.
+     *
+     * **The state emit only fires while still `Loading`.** A throw in the post-outcome persistence
+     * lands after `emit(Success)`, and retroactively turning a document that loaded fine into an
+     * error would be a worse lie than the crash it replaces. It is logged rather than dropped: the
+     * load did finish, so there is nothing to tell the user, but a swallowed throw with no trace at
+     * all is how a persistence bug stays invisible.
+     */
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun loadDocument(uri: Uri) {
+        try {
+            loadDocumentOrThrow(uri)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            if (_fileLoadState.value is FileLoadState.Loading) {
+                _fileLoadState.emit(FileLoadState.Idle)
+            }
+            throw e
+        } catch (e: Exception) {
+            if (_fileLoadState.value is FileLoadState.Loading) {
+                _fileLoadState.emit(FileLoadState.Error(e.message ?: "Unknown error"))
+            } else {
+                android.util.Log.e("MarkdownViewModel", "load threw after its outcome was published", e)
+            }
+        }
+    }
+
+    private suspend fun loadDocumentOrThrow(uri: Uri) {
         _fileLoadState.emit(FileLoadState.Loading)
         val result = repository.readFile(uri)
         result
@@ -366,6 +448,13 @@ constructor(
                 val writable = withContext(Dispatchers.IO) { repository.hasPersistedWritePermission(uri) }
                 _transient.emit(!writable)
                 _editorCursor.value = 0 // new file starts at the top
+
+                // M-90: open straight in the editor when the user has asked for it. Deliberately
+                // ONE-DIRECTIONAL — when the setting is off, the mode is left exactly as it was,
+                // which preserves the pre-existing behaviour of the mode being sticky within a
+                // session. Forcing READER in the off case would be a second behaviour change
+                // nobody asked for.
+                if (storage.openInEditMode.first()) _mode.emit(ViewMode.EDITOR)
 
                 // Render mode from the document identity (extension default ?: per-file override),
                 // then headings for the TOC — gated to empty in plain mode.
@@ -424,7 +513,11 @@ constructor(
         viewModelScope.launch {
             if (_fileLoadState.value is FileLoadState.Saving) return@launch // no concurrent save
             val doc = _currentDocument.value
-            if (doc != null && doc.dirty) {
+            // `doc.uri != null` joins the dirty check rather than sitting inside it: an unsaved
+            // document (M-91) has no in-place target, and the View routes that case to Save-As
+            // before it ever gets here. Falling through drops the save, not the edits — the pending
+            // open is only cleared below, after the branch.
+            if (doc != null && doc.dirty && doc.uri != null) {
                 _fileLoadState.emit(FileLoadState.Saving)
                 val result = repository.saveFile(doc.uri, contentForDisk(doc))
                 if (result.isFailure) {
@@ -467,8 +560,12 @@ constructor(
         viewModelScope.launch {
             if (_fileLoadState.value is FileLoadState.Saving) return@launch // no concurrent save
             val doc = _currentDocument.value ?: return@launch
+            // An unsaved document (M-91) has no in-place target. The View routes Save→Save-As for
+            // it, so reaching here with a null URI would mean closing WITHOUT the save the user
+            // asked for — return instead of closing, and the document stays open with its text.
+            val target = doc.uri ?: return@launch
             _fileLoadState.emit(FileLoadState.Saving)
-            repository.saveFile(doc.uri, contentForDisk(doc))
+            repository.saveFile(target, contentForDisk(doc))
                 .onSuccess {
                     storage.clearLastFileUri()
                     _currentDocument.emit(null)
@@ -626,12 +723,17 @@ constructor(
             // same URI could interleave/truncate each other (Safeguard 1).
             if (_fileLoadState.value is FileLoadState.Saving) return@launch
             val doc = _currentDocument.value ?: return@launch
+            // No file on disk yet (M-91): there is nothing to save IN PLACE. The View routes this
+            // case to Save-As before calling here; returning rather than inventing a target is the
+            // safe half of that contract — a wrong guess would write the user's text somewhere they
+            // did not choose (Safeguard 1).
+            val target = doc.uri ?: return@launch
 
             _fileLoadState.emit(FileLoadState.Saving)
 
             // contentForDisk restores the original line ending before the write (Safeguard 2),
             // shared by every save path so a CRLF file is never silently converted to LF.
-            repository.saveFile(doc.uri, contentForDisk(doc))
+            repository.saveFile(target, contentForDisk(doc))
                 .onSuccess {
                     // Baseline = the content we just persisted, in the editor's LF form (doc.content).
                     // The disk form (contentForDisk) may be CRLF; the editor/model always work in LF, so
@@ -777,6 +879,44 @@ constructor(
     fun setLineNumbersEnabled(enabled: Boolean) {
         viewModelScope.launch {
             storage.setLineNumbersEnabled(enabled)
+        }
+    }
+
+    /** M-90: persist the "open documents in edit mode" preference. */
+    fun setOpenInEditMode(enabled: Boolean) {
+        viewModelScope.launch { storage.setOpenInEditMode(enabled) }
+    }
+
+    /**
+     * M-91: open a blank, never-saved document straight in the editor.
+     *
+     * The document carries **no URI** — it has no file on disk and deliberately does not get one
+     * here. It gets one from the existing Save-As path ([saveActiveDocumentAs]), which already
+     * knows how to write to a newly created SAF location and adopt it as the document's identity.
+     * Adding a second create-and-save path would duplicate the one piece of code every data-loss
+     * safeguard in this app is concentrated in, which is exactly what M-91 says not to do.
+     *
+     * Always EDITOR regardless of the M-90 setting: a blank reader renders nothing, so opening
+     * this in the reader would show an empty screen with no hint that anything happened.
+     *
+     * Nothing is persisted — no last-file URI, no recents entry. Both are keyed by URI, and a
+     * document with no file has no business appearing in a list of files you can reopen.
+     */
+    fun newDocument() {
+        viewModelScope.launch {
+            originalContent = ""
+            _currentDocument.emit(
+                Document(uri = null, content = "", dirty = false, displayName = NEW_DOCUMENT_NAME),
+            )
+            _transient.emit(false)
+            _mode.emit(ViewMode.EDITOR)
+            _previewScroll.emit(ScrollAnchor())
+            _editorScroll.emit(0)
+            _editorCursor.value = 0
+            _lineEnding.emit("LF")
+            applyDerivedRenderMode(uri = null, displayName = NEW_DOCUMENT_NAME)
+            refreshHeadings("")
+            _fileLoadState.emit(FileLoadState.Success)
         }
     }
 
@@ -956,6 +1096,13 @@ constructor(
         }
     }
 }
+
+/**
+ * Default name for a never-saved document (M-91). It is shown in the toolbar and pre-fills the
+ * Save-As dialog — NOT "Copy of …", which is the Save-As default for a document that has a source
+ * file it must not overwrite. A new document has no source, so there is nothing to copy.
+ */
+const val NEW_DOCUMENT_NAME = "Untitled.md"
 
 enum class ViewMode {
     READER,

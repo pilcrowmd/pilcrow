@@ -92,6 +92,22 @@ class FootnoteBlockEntry(
 
     @Suppress("TooGenericExceptionCaught") // Safeguard 3: a bad note must degrade, never crash
     override fun bindHolder(markwon: Markwon, holder: Holder, node: FootnoteDefinitionBlock) {
+        // Re-applied on every bind: the pinch writes a PX size onto the attached TextViews and the
+        // end-of-gesture rebuild re-binds rather than recreates, so without this the gesture's size
+        // would survive at rest. Same value `createHolder` sets, so nothing moves at rest. See M-04.
+        val boundNoteSize = PilcrowTypography.FOOTNOTE_FONT_SIZE_SP * fontScale
+        holder.marker.setTextSize(TypedValue.COMPLEX_UNIT_SP, boundNoteSize)
+        holder.body.setTextSize(TypedValue.COMPLEX_UNIT_SP, boundNoteSize)
+        // The back-link is sized from the font scale too, so it must be re-applied for the same
+        // reason — otherwise a reused holder shows new-scale text beside an old-scale icon, which
+        // is a worse result than the stale-but-consistent pair this fix replaced.
+        val boundBoxPx = dp(BACK_LINK_BOX_DP * fontScale)
+        holder.backLink.layoutParams = holder.backLink.layoutParams.apply {
+            width = boundBoxPx
+            height = boundBoxPx
+        }
+        val boundInsetPx = dp(BACK_LINK_INSET_DP * fontScale)
+        holder.backLink.setPadding(boundInsetPx, boundInsetPx, boundInsetPx, boundInsetPx)
         // An unreferenced note has no number to show, so it shows what the author actually typed.
         holder.marker.text = node.ordinal?.toString() ?: node.label
 

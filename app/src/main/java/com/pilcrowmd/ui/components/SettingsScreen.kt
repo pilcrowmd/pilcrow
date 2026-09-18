@@ -79,6 +79,8 @@ fun SettingsScreen(
     onEditorFontScaleChanged: (Float) -> Unit = {},
     lineNumbersEnabled: Boolean = true,
     onLineNumbersChanged: (Boolean) -> Unit = {},
+    openInEditMode: Boolean = false,
+    onOpenInEditModeChanged: (Boolean) -> Unit = {},
     mermaidCloudEnabled: Boolean = false,
     onMermaidCloudChanged: (Boolean) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.DARK,
@@ -213,6 +215,38 @@ fun SettingsScreen(
                 Switch(
                     checked = lineNumbersEnabled,
                     onCheckedChange = onLineNumbersChanged,
+                    modifier = Modifier.scale(0.8f),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = c.primaryText,
+                        checkedTrackColor = c.accent,
+                        uncheckedThumbColor = c.secondaryText,
+                        uncheckedTrackColor = c.secondarySurface,
+                    ),
+                )
+            }
+        }
+
+        // M-91: a setting, not a per-session toggle. That distinction was made in public when the
+        // request was accepted, and it is what makes this worth building at all: a toggle would
+        // still be a tap on every file, which is the thing being complained about.
+        CardGap()
+        SettingsCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    CardTitle("Open in edit mode")
+                    Text(
+                        text = "Open documents ready to write, not to read",
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(
+                    checked = openInEditMode,
+                    onCheckedChange = onOpenInEditModeChanged,
                     modifier = Modifier.scale(0.8f),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = c.primaryText,

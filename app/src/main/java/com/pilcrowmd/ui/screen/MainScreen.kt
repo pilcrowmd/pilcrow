@@ -75,6 +75,7 @@ import com.pilcrowmd.ui.theme.mdColors
 import com.pilcrowmd.viewmodel.ExportState
 import com.pilcrowmd.viewmodel.FileLoadState
 import com.pilcrowmd.viewmodel.MarkdownViewModel
+import com.pilcrowmd.viewmodel.NEW_DOCUMENT_NAME
 import com.pilcrowmd.viewmodel.ViewMode
 import io.github.rosemoe.sora.widget.CodeEditor
 import kotlinx.coroutines.launch
@@ -110,6 +111,7 @@ fun MainScreen(
     val strandedSlots = viewModel.strandedSlots.collectAsStateWithLifecycle()
     val strandedDialogVisible = viewModel.strandedDialogVisible.collectAsStateWithLifecycle()
     val lineNumbersEnabled = viewModel.lineNumbersEnabled.collectAsStateWithLifecycle()
+    val openInEditMode = viewModel.openInEditMode.collectAsStateWithLifecycle()
     // Separate preview/editor scales and selected font set.
     val previewFontScale = viewModel.previewFontScale.collectAsStateWithLifecycle()
     // How the reader renders the current document + whether the .txt toggle is offered.
@@ -424,7 +426,12 @@ fun MainScreen(
         val baseName = currentDocument.value?.displayName
             ?.substringBeforeLast('.')
             ?.takeIf { it.isNotBlank() }
-        if (plainToggleAvailable.value) {
+        // A never-saved document (M-91) is NOT a copy — there is no source file it could collide
+        // with, and "Copy of Untitled.md" would be nonsense offered to someone naming their first
+        // file. It suggests its own name instead. Everything else keeps the "Copy of" safeguard.
+        if (currentDocument.value?.isUnsaved == true) {
+            saveAsLauncher.launch(NEW_DOCUMENT_NAME)
+        } else if (plainToggleAvailable.value) {
             saveAsPlainLauncher.launch("Copy of ${baseName ?: "document"}.txt")
         } else {
             saveAsLauncher.launch("Copy of ${baseName ?: "document"}.md")
@@ -498,9 +505,17 @@ fun MainScreen(
                         PilcrowToolbar(
                             currentMode = mode.value,
                             onModeSelected = { selected -> viewModel.setMode(selected) },
-                            // A transient doc (read-only "Open with") can't save in place → route Save to
-                            // Save-As; otherwise the normal in-place save.
-                            onSave = { if (transient.value) launchSaveAs() else viewModel.saveFile() },
+                            // Neither a transient doc (read-only "Open with") nor a never-saved one
+                            // (M-91) can save in place → route Save to Save-As; otherwise the normal
+                            // in-place save. The ViewModel refuses both cases too rather than
+                            // trusting this routing — a wrong target is a data-loss bug (Safeguard 1).
+                            onSave = {
+                                if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                    launchSaveAs()
+                                } else {
+                                    viewModel.saveFile()
+                                }
+                            },
                             onSaveACopy = { launchSaveAs() },
                             // Quiet .txt render toggle: item present only for .txt documents;
                             // label names the mode to switch TO. Viewing-only — never touches bytes.
@@ -572,6 +587,8 @@ fun MainScreen(
                             onEditorFontScaleChanged = { viewModel.setEditorFontScale(it) },
                             lineNumbersEnabled = lineNumbersEnabled.value,
                             onLineNumbersChanged = { viewModel.setLineNumbersEnabled(it) },
+                            openInEditMode = openInEditMode.value,
+                            onOpenInEditModeChanged = { viewModel.setOpenInEditMode(it) },
                             mermaidCloudEnabled = mermaidCloudEnabled.value,
                             onMermaidCloudChanged = { viewModel.setMermaidCloudEnabled(it) },
                             themeMode = themeMode.value,
@@ -623,6 +640,9 @@ fun MainScreen(
                                 WelcomeScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     recentFiles = recentFiles.value,
+                                    // M-115: a restore is in flight and will emit its document over
+                                    // anything created or opened meanwhile.
+                                    isLoading = fileLoadState.value is FileLoadState.Loading,
                                     onOpenFile = {
                                         // Default: soft-filter the picker to text/Markdown so document
                                         // files surface and binaries (PNG/PDF) don't. Providers that
@@ -632,6 +652,10 @@ fun MainScreen(
                                             arrayOf("text/markdown", "text/plain", "text/*"),
                                         )
                                     },
+                                    // M-91: a blank document straight in the editor. No picker here
+                                    // on purpose — it gets a file from Save-As when the writer wants
+                                    // one, which is the whole point of the request.
+                                    onCreateFile = { viewModel.newDocument() },
                                     onOpenAnyFile = {
                                         // Show-all fallback for a mislabeled .md (octet-stream/etc.).
                                         // Uses the no-MIME-filter contract so every file is selectable;
@@ -724,10 +748,17 @@ fun MainScreen(
                             confirmButton = {
                                 TextButton(onClick = {
                                     showCloseConfirm = false
-                                    // A transient doc can't save in place → route to Save-As (adopts a
-                                    // persistable copy; the user can then close it normally). Otherwise
-                                    // the atomic save-then-close.
-                                    if (transient.value) launchSaveAs() else viewModel.saveAndClose()
+                                    // Neither a transient doc nor a never-saved one (M-91) can save
+                                    // in place → route to Save-As (adopts a persistable location; the
+                                    // user can then close it normally). Otherwise the atomic
+                                    // save-then-close. Without the unsaved case here, tapping Save on
+                                    // the close prompt for a brand-new document would close it and
+                                    // DISCARD the text (Safeguard 1).
+                                    if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                        launchSaveAs()
+                                    } else {
+                                        viewModel.saveAndClose()
+                                    }
                                 }) {
                                     Text("Save", color = mdColors().primaryText)
                                 }
@@ -754,11 +785,16 @@ fun MainScreen(
                             title = { Text("Unsaved changes") },
                             text = { Text("Open the new file? Save your current edits first, or discard them.") },
                             confirmButton = {
-                                // A transient doc can't save in place → route to Save-As (adopts a
-                                // persistable copy); the prompt stays up so a second Save (now clean)
-                                // proceeds to open the pending file. Otherwise the atomic save-then-open.
+                                // Neither a transient doc nor a never-saved one (M-91) can save in
+                                // place → route to Save-As (adopts a persistable location); the prompt
+                                // stays up so a second Save (now clean) proceeds to open the pending
+                                // file. Otherwise the atomic save-then-open.
                                 TextButton(onClick = {
-                                    if (transient.value) launchSaveAs() else viewModel.saveAndOpenPending()
+                                    if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                        launchSaveAs()
+                                    } else {
+                                        viewModel.saveAndOpenPending()
+                                    }
                                 }) {
                                     Text("Save", color = mdColors().primaryText)
                                 }

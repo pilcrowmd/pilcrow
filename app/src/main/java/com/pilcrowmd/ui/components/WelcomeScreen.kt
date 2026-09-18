@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.net.Uri
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,8 +30,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -184,10 +187,25 @@ private fun PilcrowInkMark(fontSize: Dp, color: Color, modifier: Modifier = Modi
 }
 
 @Composable
+@Suppress("LongParameterList") // A leaf composable's callbacks; one more than the threshold.
 fun WelcomeScreen(
     modifier: Modifier = Modifier,
     recentFiles: List<RecentFileUi> = emptyList(),
+    /**
+     * A document is being restored. **M-115.** While true the three ways in — Open, Create MD File
+     * and a recent — are disabled and a progress line is shown, because a load that completes emits
+     * its document straight over whatever is in the slot: a document created or opened in that
+     * window is silently replaced, and anything typed into it is gone (Safeguard 1).
+     *
+     * Defaults to false, so every existing call site and every golden renders exactly as before.
+     *
+     * **This is a NARROWING, not a closure.** `openFromIntent` — an "Open with" from another app —
+     * reaches the ViewModel without passing through this screen. Closing it needs the M-109
+     * redesign; see that row.
+     */
+    isLoading: Boolean = false,
     onOpenFile: () -> Unit = {},
+    onCreateFile: () -> Unit = {},
     onOpenAnyFile: () -> Unit = {},
     onOpenRecent: (Uri) -> Unit = {},
     onRemoveRecent: (Uri) -> Unit = {},
@@ -408,7 +426,7 @@ fun WelcomeScreen(
                                         .shadow(12.dp, RoundedCornerShape(16.dp), clip = false)
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(c.creamButton)
-                                        .clickable { onOpenFile() }
+                                        .clickable(enabled = !isLoading) { onOpenFile() }
                                         .padding(vertical = 18.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically,
@@ -427,6 +445,39 @@ fun WelcomeScreen(
                                         fontSize = 18.sp,
                                     )
                                 }
+
+                                // M-91: start from nothing. Deliberately SECONDARY — an outline
+                                // rather than a second cream fill — so the primary action stays
+                                // unambiguous for the far more common case of opening a file that
+                                // already exists. It is also why it is shorter than the CTA above:
+                                // this screen's layout rule (M-67) gives the lead gap away to
+                                // content, so every dp added here is a dp taken from the recents
+                                // list on a short viewport.
+                                Spacer(Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .border(1.dp, c.border, RoundedCornerShape(16.dp))
+                                        .clickable(enabled = !isLoading) { onCreateFile() }
+                                        .padding(vertical = 14.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.NoteAdd,
+                                        contentDescription = null,
+                                        tint = c.primaryText,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        text = "Create MD File",
+                                        color = c.primaryText,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 16.sp,
+                                    )
+                                }
                                 // Secondary, low-emphasis fallback: the primary CTA filters the picker to
                                 // text/Markdown, but some providers report .md as application/octet-stream
                                 // (hidden by that filter). This opens the picker unfiltered so a mislabeled
@@ -439,9 +490,32 @@ fun WelcomeScreen(
                                     fontSize = 13.sp,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .clickable { onOpenAnyFile() }
+                                        .clickable(enabled = !isLoading) { onOpenAnyFile() }
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                 )
+                                // M-115: the restore is running and the actions above are inert —
+                                // say so, rather than leaving taps silently doing nothing. Token
+                                // colour only (Safeguard 4); rendered only while loading, so the
+                                // resting layout and every golden are untouched.
+                                if (isLoading) {
+                                    Spacer(Modifier.height(16.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = c.secondaryText,
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Text(
+                                            text = "Opening your last document…",
+                                            color = c.secondaryText,
+                                            fontSize = 13.sp,
+                                        )
+                                    }
+                                }
                                 // Recents list
                                 if (recentFiles.isNotEmpty()) {
                                     Spacer(Modifier.height(28.dp))
@@ -467,7 +541,9 @@ fun WelcomeScreen(
                                         )
                                     }
                                     Spacer(Modifier.height(6.dp))
-                                    recentFiles.forEach { r -> RecentRow(r, onOpenRecent, onRemoveRecent) }
+                                    recentFiles.forEach { r ->
+                                        RecentRow(r, onOpenRecent, onRemoveRecent, isLoading)
+                                    }
                                 }
                             }
                         }
@@ -566,7 +642,12 @@ fun WelcomeScreen(
 }
 
 @Composable
-private fun RecentRow(r: RecentFileUi, onOpenRecent: (Uri) -> Unit, onRemoveRecent: (Uri) -> Unit) {
+private fun RecentRow(
+    r: RecentFileUi,
+    onOpenRecent: (Uri) -> Unit,
+    onRemoveRecent: (Uri) -> Unit,
+    isLoading: Boolean = false,
+) {
     val c = mdColors()
     val nameColor = if (r.available) {
         c.primaryText
@@ -577,7 +658,7 @@ private fun RecentRow(r: RecentFileUi, onOpenRecent: (Uri) -> Unit, onRemoveRece
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = r.available) { onOpenRecent(r.uri) }
+            .clickable(enabled = r.available && !isLoading) { onOpenRecent(r.uri) }
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

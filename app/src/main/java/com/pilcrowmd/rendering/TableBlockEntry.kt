@@ -117,6 +117,14 @@ class TableBlockEntry(
                 TextView(context).apply {
                     text = "[table could not be rendered]"
                     setTextColor(colorScheme.secondaryText.toArgb())
+                    // The degraded path takes the font scale like every other block. Without this it
+                    // renders at the theme default, so at any zoom other than 100% a failed table
+                    // sits at a visibly different size from the document around it — and during a
+                    // pinch it is scaled and then snaps back when the rebuild re-creates it.
+                    setTextSize(
+                        TypedValue.COMPLEX_UNIT_SP,
+                        PilcrowTypography.TABLE_FONT_SIZE_SP * fontScale,
+                    )
                 },
             )
         }

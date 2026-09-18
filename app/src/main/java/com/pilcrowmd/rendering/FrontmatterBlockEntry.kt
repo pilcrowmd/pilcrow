@@ -73,15 +73,29 @@ class FrontmatterBlockEntry(
         // and drop the code-only chrome (Copy button) so the card is clean.
         holder.codeScroll.visibility = View.VISIBLE
         holder.copyButton.visibility = View.GONE
+        // Excluded from pinch scaling by ROLE, not by the fact that it is currently hidden. This
+        // entry shares `adapter_code_block` with the fenced-code entry, so the same chrome is in the
+        // tree; today the GONE above keeps the scaler off it, but that is incidental — make this
+        // button visible here one day and, with no bind-time size to restore, it would keep the
+        // gesture's size at rest. See M-04.
+        holder.copyButton.setTag(R.id.pinch_excluded, true)
+        holder.mermaidCaption.setTag(R.id.pinch_excluded, true)
         holder.mermaidImage.visibility = View.GONE
+        // Size FIRST, outside the try: the catch below degrades the card without restoring it, and
+        // the live pinch writes a PX size straight onto this view, so a card that failed to render
+        // would keep the gesture's size for good. `getFont` on the first line of the try is exactly
+        // the call that can throw, so inside the try this reset is the one thing not guaranteed to
+        // run. Same value as the success path sets, so resting layout is unchanged. M-107.
+        holder.codeView.setTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * fontScale,
+        )
         try {
             holder.codeView.movementMethod = null
-            // Reading font (not mono) + body size — the card reads like prose, not code.
+            // Reading font (not mono) — the card reads like prose, not code. Stays INSIDE the try:
+            // `getFont` is the throwing call, and hoisting it would put it outside the catch and
+            // turn a graceful degrade into a crash (Safeguard 3).
             holder.codeView.typeface = ResourcesCompat.getFont(context, fontSet.readingRegular)
-            holder.codeView.setTextSize(
-                TypedValue.COMPLEX_UNIT_SP,
-                PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * fontScale,
-            )
             holder.codeView.setLineSpacing(0f, PreviewLineHeightMultiplier)
             // Reset the base colour every bind: the holder is recycled, and the row spans cover only
             // the key/value text (not the tab/newline separators), so unspanned chars must not inherit

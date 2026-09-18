@@ -20,9 +20,25 @@
 # buildType is HUMAN-ATTESTED and is never inferred. The gate catches drift after the
 # first entry, not the truthfulness of the first entry itself.
 #
+# The COMMIT column IS machine-checked, as of M-99: `zero-check.sh` in PRIVATE mode
+# asserts the commit resolves and that this file's content AT that commit equals column 2.
+# Private, not public: these are private-repo commits and the public repo's squashed
+# history does not contain them. Record the CONTENT commit that produced the capture --
+# not the merge commit that later carried it, which is what row 05 held before M-99 and
+# which pointed at a tree holding a DIFFERENT image. The commit must be a full 40-char
+# lowercase SHA and an ancestor of HEAD (not of `main` — a re-shoot and its manifest
+# update land in the SAME pull request, where the new commit is not yet on main).
+#
+# ⚠️ THE COMMIT COLUMN REFERS TO THE PRIVATE DEVELOPMENT REPOSITORY, and these SHAs are
+# NOT resolvable in this public tree — its history is a squashed seed plus follow-ups.
+# The column is verified there, on every pull request, by the private gate; it is not a
+# claim a reader of this repo can check, and it is recorded here for traceability, not
+# as public evidence. Stated explicitly because an unverifiable field that LOOKS
+# checkable is the same decoration this manifest removed the `designed` buildType for.
+#
 01-reader-hero-dark.png	f2c8185b07a6b25138e892429e9ef9a57982b4ece61ed6cab3f2e1777b8e5f3c	release	111064b875d77a04c5a8db1de9ecffd79af61f24
 02-code-table-dark.png	88e63252a88dcea19d6b9f9e8d7ac6c4bad82a8b7b364c00362341ad135222ab	release	111064b875d77a04c5a8db1de9ecffd79af61f24
 03-math-mermaid-dark.png	7983686a6d7f1002972ae6da95d00680bc74a873b6b8af1aa6a33f397d68cf88	release	111064b875d77a04c5a8db1de9ecffd79af61f24
 04-home-dark.png	d914c096916acfe0fd5c60b380078e2e38a4b4787a67fc82fd98ec8747db6ff6	release	111064b875d77a04c5a8db1de9ecffd79af61f24
-05-settings-dark.png	ba8f07bd43588491282777628d4ead27660e52fd388e9272b19e20520c309aa7	release	a12bb39ab2c9a1dbf13b2feba16f67520cf14f2c
+05-settings-dark.png	ba8f07bd43588491282777628d4ead27660e52fd388e9272b19e20520c309aa7	release	d0be3c79a0b287c3ac04c7a96139518b186066ae
 06-reader-hero-light.png	1fe1bd12616e5678f93955108d4019f122d9787e3a7358d393182e823e990c74	release	111064b875d77a04c5a8db1de9ecffd79af61f24

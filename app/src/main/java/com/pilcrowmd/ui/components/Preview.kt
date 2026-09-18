@@ -36,6 +36,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.doOnNextLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.Footnotes
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.SearchMatch
@@ -180,14 +181,16 @@ fun MarkdownPreview(
                             private var gestureScale = 1f
                             private var startScale = 1f
 
-                            // The scale the visible TextViews currently SHOW (continuous), advanced each
-                            // frame by the applied ratio so it tracks the live (un-rebuilt) view state.
+                            // The scale the visible TextViews currently SHOW (continuous). Only used to
+                            // skip frames that would change nothing; the sizes themselves are set
+                            // absolutely from each view's recorded base, so this never drives them.
                             private var visualScale = 1f
 
                             override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
                                 gestureScale = 1f
                                 startScale = liveFontScale.value
                                 visualScale = startScale
+                                recyclerView.value?.let { beginPinchScaleGesture(it) }
                                 return true
                             }
 
@@ -208,7 +211,7 @@ fun MarkdownPreview(
                                 } else {
                                     0f
                                 }
-                                scaleVisibleTextViews(rv, ratio)
+                                applyPinchTextScale(rv, target / startScale)
                                 visualScale = target
                                 // After the reflow lays the focal block out at its new height, scroll so
                                 // that same fractional point is back under the fingers.
@@ -228,8 +231,16 @@ fun MarkdownPreview(
                                 // persists it. The live-scaled views ≈ the rebuilt size, so the reset is
                                 // seamless.
                                 val finalScale = ReaderZoom.clampScale(ReaderZoom.dampedScale(startScale, gestureScale))
-                                liveFontScale.value = finalScale
-                                if (finalScale != startScale) onFontScaleChange(finalScale)
+                                if (finalScale != startScale) {
+                                    liveFontScale.value = finalScale
+                                    onFontScaleChange(finalScale)
+                                } else {
+                                    // Quantising landed back on the scale we started at, so NO rebuild
+                                    // will happen — and the views are still showing the last continuous
+                                    // (un-quantised) frame. Put them back on their bases explicitly, or
+                                    // the next gesture records that drift as its base.
+                                    recyclerView.value?.let { applyPinchTextScale(it, 1f) }
+                                }
                             }
                         },
                     )
@@ -370,22 +381,88 @@ fun MarkdownPreview(
 }
 
 /**
- * Multiply the `textSize` of every TextView currently attached to [rv] (recursing into nested
- * containers — a table's/code block's HorizontalScrollView) by [ratio]. Used for live pinch-zoom:
- * scaling the paint size in place reflows each block instantly with no Markwon re-parse, and
- * Markwon's relative heading spans scale off the new base automatically. Off-screen blocks are
- * fixed up by the single adapter rebuild on gesture end.
+ * Set the `textSize` of every TextView under [root] (recursing into nested containers — a
+ * table's/code block's HorizontalScrollView) to its **base size × [factor]**. Used for live
+ * pinch-zoom: scaling the paint size in place reflows each block instantly with no Markwon
+ * re-parse, and Markwon's relative heading spans scale off the new base automatically. Off-screen
+ * blocks are fixed up by the single adapter rebuild on gesture end.
+ *
+ * **Absolute, not relative — this is M-04's fix.** The base size (what the view measures at the
+ * *committed* scale) is recorded in a view tag the first time the view is seen during a gesture,
+ * and every later frame overwrites the size from that base. Multiplying the view's *current* size
+ * by a per-frame ratio instead made the result depend on how many frames the view happened to be
+ * attached for — and the focal-anchor re-scroll creates and recycles holders mid-gesture, so
+ * survivors, newly created holders and rebound recycled holders each ended up at a different size.
+ * Setting from the base is idempotent, so all three converge.
+ *
+ * First sight is the only moment the current size is read, and it is sound because a view can only
+ * reach a gesture at the committed scale: everything attached when the gesture began was laid out
+ * by the last adapter rebuild, and anything created during it is built by `createHolder` at the
+ * same committed scale. [clearPinchTextScaleBases] plus the pool clear in `onScaleBegin` are what
+ * keep that true across gestures.
  */
-private fun scaleVisibleTextViews(rv: RecyclerView, ratio: Float) {
+internal fun applyPinchTextScale(root: View, factor: Float) {
     fun scale(view: View) {
+        // Skip hidden subtrees, and do NOT record a base for them. A GONE TextView's size is not
+        // guaranteed to be the committed one: `FencedCodeBlockEntry.bindMermaid` hides `codeScroll`
+        // WITHOUT setting `codeView`'s size, and `fallbackToSource` — which runs from an async image
+        // load-error callback, so it can land mid-gesture — is what makes it visible and sets that
+        // size. Recording a base while it was hidden would capture whatever the holder last carried
+        // and then scale the now-visible block from it. Left untagged instead, it is treated exactly
+        // like a holder created mid-gesture: already at the committed scale, so the next frame
+        // records the right base. Note the deliberate asymmetry with [clearPinchTextScaleBases],
+        // which clears hidden views too.
+        if (view.visibility == View.GONE) return
+        // Chrome and the LaTeX formula opt out: their resting size is not derived from the reader's
+        // font scale, so nothing re-applies it on bind and a PX size written here would survive at
+        // rest forever. Marked at the view, not matched by id here, so each entry decides for itself
+        // which of its views are document text.
+        if (view.getTag(R.id.pinch_excluded) != null) return
         if (view is TextView) {
-            view.setTextSize(TypedValue.COMPLEX_UNIT_PX, view.textSize * ratio)
+            val base = view.getTag(R.id.pinch_base_text_size) as? Float
+                ?: view.textSize.also { view.setTag(R.id.pinch_base_text_size, it) }
+            view.setTextSize(TypedValue.COMPLEX_UNIT_PX, base * factor)
         }
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) scale(view.getChildAt(i))
         }
     }
-    for (i in 0 until rv.childCount) scale(rv.getChildAt(i))
+    scale(root)
+}
+
+/**
+ * Put [rv] into a known state for a new pinch: drop every pooled holder, then forget every recorded
+ * base size. Both halves are load-bearing and neither replaces the other.
+ *
+ * **The pool clear.** `swapAdapter` deliberately KEEPS the recycled-view pool across the
+ * end-of-gesture rebuild, so a holder stashed part-way through the PREVIOUS pinch is still carrying
+ * that gesture's size. [clearPinchTextScaleBases] cannot reach it — it walks the attached view tree,
+ * and a pooled holder is detached — so it would return untagged and have its wrong size recorded as
+ * this gesture's base. With the pool empty, every view seen during the gesture is either attached
+ * now (laid out by the last rebuild) or freshly created by `createHolder`, and both are at the
+ * committed scale, which is exactly what a recorded base is required to mean.
+ */
+internal fun beginPinchScaleGesture(rv: RecyclerView) {
+    rv.recycledViewPool.clear()
+    clearPinchTextScaleBases(rv)
+}
+
+/**
+ * Forget the recorded base sizes under [root], so the next [applyPinchTextScale] re-reads them
+ * from what the views currently measure. Called at the START of a pinch: the previous gesture
+ * committed a new scale, so the bases from that gesture no longer describe the resting size.
+ */
+internal fun clearPinchTextScaleBases(root: View) {
+    // Deliberately clears HIDDEN views too, unlike [applyPinchTextScale]. If a GONE view kept a tag
+    // from an earlier gesture, becoming visible mid-gesture would hand that stale base straight to
+    // the next frame — which is the very defect the visibility skip exists to prevent.
+    fun clear(view: View) {
+        if (view is TextView) view.setTag(R.id.pinch_base_text_size, null)
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) clear(view.getChildAt(i))
+        }
+    }
+    clear(root)
 }
 
 /**

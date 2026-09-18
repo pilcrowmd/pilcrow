@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Key for the view tag holding a TextView's unscaled base text size during a reader pinch
+      (M-04). Android requires a resource id for keyed view tags. View-only: nothing here is
+      rendered, so this file cannot affect layout or the visual goldens.
+    -->
+    <item name="pinch_base_text_size" type="id" />
+
+    <!--
+      Marks a TextView whose resting size does NOT come from the reader's font scale — chrome and
+      the LaTeX formula. The pinch scaler skips these: it writes a PX size that only a
+      fontScale-derived re-apply on bind can undo, and these views have no such re-apply, so
+      scaling them leaves them permanently wrong at rest. See M-04 / M-105.
+    -->
+    <item name="pinch_excluded" type="id" />
+</resources>

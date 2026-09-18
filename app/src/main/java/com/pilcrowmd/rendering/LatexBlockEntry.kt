@@ -57,9 +57,12 @@ class LatexBlockEntry(
     ).toInt()
 
     override fun createHolder(inflater: LayoutInflater, parent: ViewGroup): Holder {
+        // Opt out of pinch scaling: the formula's size is deliberately independent of the reader
+        // font scale (it is preserved exact), so nothing re-applies it on bind. See M-04.
         val root = inflater.inflate(R.layout.adapter_latex_block, parent, false)
         // Let a wide LaTeX formula pan sideways inside the vertical RecyclerView.
         root.findViewById<HorizontalScrollView>(R.id.latex_scroll)?.enableHorizontalNestedScroll()
+        root.findViewById<TextView>(R.id.latex_text)?.setTag(R.id.pinch_excluded, true)
         return Holder(root)
     }
 

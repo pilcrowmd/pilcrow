@@ -107,6 +107,7 @@ class LocalStorageManager(
 
     private val lastFileUriKey = stringPreferencesKey("last_file_uri")
     private val lineNumbersEnabledKey = booleanPreferencesKey("line_numbers_enabled")
+    private val openInEditModeKey = booleanPreferencesKey("open_in_edit_mode")
     private val recentFilesKey = stringPreferencesKey("recent_files")
     private val scrollPositionsKey = stringPreferencesKey("scroll_positions")
     private val renderModeOverridesKey = stringPreferencesKey("render_mode_overrides")
@@ -130,6 +131,10 @@ class LocalStorageManager(
     override val lastFileUri: Flow<Uri?> = dataStore.data.map { prefs ->
         prefs[lastFileUriKey]?.let { Uri.parse(it) }
     }.distinctUntilChanged()
+
+    override val openInEditMode: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[openInEditModeKey] ?: false // Default: OFF - documents open in the reader
+    }
 
     override val lineNumbersEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[lineNumbersEnabledKey] ?: true // Default: enabled
@@ -181,6 +186,10 @@ class LocalStorageManager(
 
     override suspend fun setLineNumbersEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[lineNumbersEnabledKey] = enabled }
+    }
+
+    override suspend fun setOpenInEditMode(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[openInEditModeKey] = enabled }
     }
 
     override suspend fun addRecent(file: RecentFile) {

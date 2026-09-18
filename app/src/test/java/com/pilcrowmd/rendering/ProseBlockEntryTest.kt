@@ -4,6 +4,7 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.compose.ui.graphics.toArgb
@@ -15,6 +16,7 @@ import io.noties.markwon.Markwon
 import org.commonmark.node.Paragraph
 import org.commonmark.node.Text
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -89,5 +91,45 @@ class ProseBlockEntryTest {
 
         assertEquals("plain prose line", holder.textView.text.toString())
         assertTrue(holder.textView.currentTextColor == DarkColorScheme.primaryText.toArgb())
+    }
+
+    @Test
+    fun `recycled holder recovers its text size after the live pinch scaled it`() {
+        // M-04. The pinch writes a PX size straight onto the attached TextView, and the
+        // end-of-gesture rebuild calls `swapAdapter(_, false)`, which RE-BINDS existing holders
+        // instead of recreating them — so `createHolder` never runs again for a reused holder. If
+        // bindHolder does not re-apply the size, the gesture's size survives at rest forever, which
+        // is the reported symptom: title huge, the paragraph under it tiny.
+        val markwon = mockk<Markwon>(relaxed = true)
+        every { markwon.render(any()) } returns android.text.SpannableString("rendered")
+        val committed = holder.textView.textSize
+        assertTrue("precondition: createHolder must have set a real size", committed > 0f)
+
+        // Simulate the live pinch leaving the view at a wildly different size.
+        holder.textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, committed * 2.5f)
+        assertNotEquals(committed, holder.textView.textSize, 0.001f)
+
+        entry.bindHolder(markwon, holder, paragraphNode("hello"))
+
+        assertEquals(
+            "a rebound holder must come back at the committed size, not the gesture's",
+            committed,
+            holder.textView.textSize,
+            0.001f,
+        )
+    }
+
+    @Test
+    fun `a failed bind still restores the text size`() {
+        // The size reset must sit OUTSIDE the try, or the one path that already degrades (Safeguard
+        // 3) would be the one path left carrying a stale size.
+        val throwing = mockk<Markwon>()
+        every { throwing.render(any()) } throws RuntimeException("boom")
+        val committed = holder.textView.textSize
+        holder.textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, committed * 2.5f)
+
+        entry.bindHolder(throwing, holder, paragraphNode("hello"))
+
+        assertEquals(committed, holder.textView.textSize, 0.001f)
     }
 }

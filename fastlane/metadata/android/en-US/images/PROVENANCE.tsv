@@ -6,6 +6,21 @@
 # EVERY regular file in this directory needs an entry. A missing entry, a missing file,
 # a duplicate entry, or a checksum that does not match all FAIL.
 #
+# The COMMIT column is checked too, as of M-99: `zero-check.sh` in PRIVATE mode asserts
+# that the recorded commit resolves and that THIS FILE AT THAT COMMIT has the sha256 in
+# column 2. It is checked privately, not at publish, because these are private-repo
+# commits and the public repo's squashed history does not contain them. Before M-99
+# nothing read this column at all, and the value below was a commit at which this file
+# DID NOT EXIST — record a commit whose tree actually holds the bytes you are attesting.
+# The commit must be a full 40-char lowercase SHA and an ancestor of HEAD.
+#
+# ⚠️ THE COMMIT COLUMN REFERS TO THE PRIVATE DEVELOPMENT REPOSITORY, and these SHAs are
+# NOT resolvable in this public tree — its history is a squashed seed plus follow-ups.
+# The column is verified there, on every pull request, by the private gate; it is not a
+# claim a reader of this repo can check, and it is recorded here for traceability, not
+# as public evidence. Stated explicitly because an unverifiable field that LOOKS
+# checkable is the same decoration this manifest removed the `designed` buildType for.
+#
 # buildType:
 #   release            captured from a release build            -> pass
 #   unverified-legacy  provenance never established             -> pass, named loudly
@@ -25,4 +40,4 @@
 # device capture from this project is 1080x2340. That fact is true but the gate cannot
 # check it mechanically without rebuilding the same hole for the next asset made elsewhere
 # — so it is recorded here, in prose, for a human to verify, not encoded as a passing value.
-icon.png	745589147e83fa3c35f3e5809003eca2622d293ae84d62eb1de6c8f2ea8ede23	unverified-legacy	b453b9c
+icon.png	745589147e83fa3c35f3e5809003eca2622d293ae84d62eb1de6c8f2ea8ede23	unverified-legacy	5f2659ed3d8848da12eae8d9a0817b586f597073

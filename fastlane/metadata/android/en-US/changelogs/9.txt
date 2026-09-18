@@ -1,0 +1,7 @@
+Two new ways to start writing, and three fixes.
+
+- Create MD File: start a blank document straight from the welcome screen.
+- A new setting opens documents in the editor instead of the reader.
+- Pinch-to-zoom no longer leaves headings and paragraphs at different sizes.
+- Right-to-left text in the editor now starts at the right edge.
+- A document you start while your last file is still opening is no longer replaced.

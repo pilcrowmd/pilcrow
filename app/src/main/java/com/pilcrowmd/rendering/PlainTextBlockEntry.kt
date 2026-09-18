@@ -40,6 +40,13 @@ class PlainTextBlockEntry(
     }
 
     override fun bindHolder(markwon: Markwon, holder: Holder, node: PlainTextChunk) {
+        // Re-applied on every bind: the pinch writes a PX size onto the attached TextView and the
+        // end-of-gesture rebuild re-binds rather than recreates, so without this the gesture's size
+        // would survive at rest. Same value `createHolder` sets, so nothing moves at rest. See M-04.
+        holder.textView.setTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * fontScale,
+        )
         // Reset shared-holder state (mirrors ProseBlockEntry), then set the literal directly —
         // no markwon.render, no parsing: the text IS the content.
         holder.textView.setTextColor(colorScheme.primaryText.toArgb())

@@ -70,6 +70,19 @@ class ProseBlockEntry(
             holder.textView.paddingRight,
             verticalPaddingPx,
         )
+        // Re-apply the size on EVERY bind, for the same reason the padding and colour above are
+        // re-applied: a recycled holder must not carry state from its previous life. The live
+        // pinch-zoom writes a PX size straight onto the attached TextView, and the end-of-gesture
+        // rebuild uses `swapAdapter(_, false)`, which RE-BINDS existing holders instead of
+        // recreating them — so `createHolder` never runs for them and the gesture's size would
+        // survive at rest, permanently. That is M-04's visible symptom: after releasing a pinch the
+        // title stays huge while the paragraph under it stays tiny. Identical value to the one
+        // `createHolder` sets, so a freshly created holder is unaffected and resting layout is
+        // byte-identical (measured: zero goldens move).
+        holder.textView.setTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * fontScale,
+        )
         try {
             // Reset shared-holder state: a recycled holder may carry the fallback's secondaryText
             // color from a previous failed bind — restore primaryText on every healthy bind.

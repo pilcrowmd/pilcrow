@@ -38,6 +38,15 @@ interface StorageManager {
     val lineNumbersEnabled: Flow<Boolean>
 
     /**
+     * Flow of the "open documents in edit mode" preference. Default: false (open in the reader).
+     *
+     * When true, opening a document starts it in [com.pilcrowmd.viewmodel.ViewMode.EDITOR]
+     * instead of the reader. When false the view mode is left exactly as it was, which preserves
+     * the pre-existing behaviour of the mode being sticky within a session.
+     */
+    val openInEditMode: Flow<Boolean>
+
+    /**
      * Flow of recently-opened files, most-recent first, capped at 8.
      */
     val recentFiles: Flow<List<RecentFile>>
@@ -57,6 +66,9 @@ interface StorageManager {
      * Persist the line-numbers toggle state.
      */
     suspend fun setLineNumbersEnabled(enabled: Boolean)
+
+    /** Persist the "open documents in edit mode" preference. */
+    suspend fun setOpenInEditMode(enabled: Boolean)
 
     /** Add (or move to top, updating timestamp) a recent file. Caps the list at 8. */
     suspend fun addRecent(file: RecentFile)

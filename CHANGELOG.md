@@ -7,6 +7,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-09-18
+
+### Added
+
+- **You can start a new document without finding a file first.** The welcome screen has a second
+  button, **Create MD File**, which opens a blank document straight in the editor. Write first,
+  then save it wherever you like — the file is created when you save, not before.
+- **A setting to open documents ready to write.** *Settings → Open in edit mode.* With it on, a
+  document opens in the editor instead of the reader, so writing no longer costs a tap on every
+  file. Off by default, and the reader is still one tap away.
+
+### Fixed
+
+- **Pinch-to-zoom in the reader no longer leaves blocks at different sizes.** While your fingers
+  were still on the screen, headings and paragraphs could drift apart — a title could even end up
+  smaller than before you started — and everything then snapped to one size the moment you let go.
+  Text now grows and shrinks together throughout the gesture, so what you see while pinching is
+  what you get when you release. Reading size only; your file is never touched.
+- **Right-to-left text in the editor now starts at the right edge.** Arabic and other right-to-left
+  lines were laid out from the left, which is the wrong side of the screen to begin reading on. The
+  characters themselves were always in the correct order — only the alignment of the row was wrong.
+  Left-to-right lines are unchanged, and so are your file's contents. Reported and fixed by
+  **[yshalsager](https://github.com/yshalsager)** (Youssif Shaaban Alsager).
+- **A document you start while your last file is still opening is no longer overwritten.** When
+  Pilcrow reopened your most recent file at startup, the welcome screen stayed fully usable while
+  that file was still being read. You could tap **Create MD File** and begin writing — and the
+  moment the old file finished loading it took the screen, silently discarding what you had just
+  typed. The screen now tells you a document is opening and waits: **Open**, **Create MD File**,
+  **Browse all files** and the recent files become available again as soon as it has finished. Only
+  those few seconds are affected, and nothing already saved to disk is touched.
+
 ## [1.0.7] - 2026-09-08
 
 ### Fixed
