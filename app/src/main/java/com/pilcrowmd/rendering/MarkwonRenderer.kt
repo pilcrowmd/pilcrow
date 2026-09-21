@@ -111,6 +111,14 @@ internal fun buildPilcrowMarkwon(context: Context): Markwon {
     val builder = Markwon.builder(context)
         // Core markdown parsing (CommonMark)
         .usePlugin(CorePlugin.create())
+        // M-119: CorePlugin's ListItem visitor MUTATES the parsed tree as it renders, advancing
+        // each ordered list's start number by one per item. The reader re-renders the same Node
+        // objects on every bind, so the numbers climbed. This plugin snapshots and restores them.
+        // Registration order is IRRELEVANT here: Markwon runs every plugin's beforeRender, THEN
+        // node.accept(visitor), THEN every plugin's afterRender (MarkwonImpl.render), so the
+        // mutation always lands between the two phases whatever the order. Placed next to
+        // CorePlugin because that is the plugin it compensates for, not because it must be.
+        .usePlugin(OrderedListRebindPlugin())
         // Render leading `---…---` as a styled `yaml` code block via a custom
         // BlockParser (no source mutation → char offsets stay aligned with the editor).
         .usePlugin(FrontmatterPlugin())

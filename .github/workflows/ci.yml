@@ -9,11 +9,83 @@ name: CI
 # `--rerun-tasks` defeats Gradle task-output caching; a from-scratch compile is the only result we
 # trust.
 
+# PATH FILTERING — why a docs-only change does not build the app.
+# This gate is ~11 minutes of compile, lint, unit tests, Roborazzi and R8. A commit that touches
+# only prose cannot change any of those results, so running it proves nothing and bills the time
+# twice (once on the PR, once on the merge commit). PR #145 — 128 lines of `docs/MAINTENANCE.md` —
+# cost 24 billed minutes to tell us the app still compiled.
+#
+# MEASURED, NOT ASSUMED: no Gradle task and no test reads `docs/**.md` or a root `*.md`. The
+# licence assets that `bundleRelease` packages come from `app/src/main/assets/licenses` and
+# `open_source_licenses.json`, NOT from the root `LICENSES.md`; the markdown fixtures the tests do
+# read all live under `app/src/**` and are deliberately NOT ignored here. Re-run that check before
+# widening these patterns — the moment a `.md` under these paths becomes a build input, this filter
+# starts hiding real failures.
+#
+# It applies to `push` as well as `pull_request` on purpose: the merge commit of a docs-only PR has
+# the same property as the PR did, and it was the single largest remaining docs cost. `main` stays
+# releasable because the last commit that could affect the build is still the last one this gate
+# ran on.
+#
+# `.github/workflows/**` is NOT ignored, so a change to this file still builds — including the PR
+# that introduced the filter.
+#
+# BOTH GLOB SPELLINGS ARE LISTED ON PURPOSE — it is not redundancy.
+# Whether `docs/**.md` matches NESTED markdown depends on how GitHub's matcher treats `**` when it
+# is not a whole path segment: as "any character, slashes included" it matches `docs/a/b.md`; under
+# minimatch's stricter reading it degrades to `docs/*.md` and nested files would keep triggering
+# 11-minute builds. I could not settle that from the outside, and simulating it only re-encoded my
+# own assumption — a test whose oracle is the belief under test proves nothing. `paths-ignore` is a
+# UNION, so listing `docs/**/*.md` as well is correct under EITHER reading, which beats betting on
+# one. Safe to widen because it is already established that nothing under `docs/` is a build input.
+#
+# THE LATENT TRAP, recorded because it is invisible until the day it bites: if the `CI` check ever
+# becomes REQUIRED in branch protection or a repository ruleset, a skipped run leaves that check
+# pending for ever and no docs PR can merge again. Verified on 2026-09-18 that `main` has neither
+# (`/branches/main/protection` → 404 "Branch not protected", `/rulesets` → `[]`), which is the only
+# reason this simple form is safe. Turning protection on means adding an always-run job that
+# reports the required name — do that in the same change, not afterwards.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**.md'
+      - 'docs/**/*.md'
+      - '*.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**.md'
+      - 'docs/**/*.md'
+      - '*.md'
+
+# CONCURRENCY — one live run per branch, superseded runs stop.
+# Without this, three pushes in a row to a PR bill three full ~11-minute builds and only the last
+# one is ever read. PR #144 ran the gate SIX times for 57.4 billed minutes; five of those were
+# already obsolete when they finished.
+#
+# `cancel-in-progress` is deliberately an expression, not `true`: a run on `push` to `main` must
+# always finish, because `main` is the live release line and its build result is the thing the
+# release is cut from. Only `pull_request` runs — which are re-run from scratch on the next push
+# anyway — are cancellable. `github.ref` is `refs/pull/<n>/merge` for a PR and `refs/heads/main`
+# for a push, so the two never share a group.
+#
+# THE GROUP KEY IS NOT `github.ref`, AND THAT IS THE LOAD-BEARING PART.
+# `cancel-in-progress: false` stops a RUNNING job being cancelled. It does NOT stop a PENDING one:
+# GitHub allows exactly one pending run per concurrency group, and a newly queued run CANCELS the
+# one already waiting. Keying `main` pushes on `refs/heads/main` would put them all in one group, so
+# three merges in quick succession would silently drop the middle run's build entirely — the precise
+# opposite of the guarantee above. Not hypothetical here: PR #145 and PR #146 merged EIGHT SECONDS
+# apart, so the queue is real and a third merge would have hit it.
+# Keying pushes on `github.run_id` instead makes every push its own group, so main runs never queue
+# against each other and none can be dropped. Pull requests keep `github.ref`
+# (`refs/pull/<n>/merge`), which is what lets a newer push cancel the obsolete run.
+# With the group unique per push, `cancel-in-progress` is belt-and-braces for `push` rather than the
+# protection — it is kept because it states the intent where a reader looks, but if you ever change
+# the group expression, THAT is what you are changing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

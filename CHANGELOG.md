@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-09-21
+
+### Fixed
+
+- **Saving a copy can no longer attach the new file to the wrong document.** If another document
+  opened while *Save a copy* was still writing — a file arriving from another app, or discarding
+  changes to open a pending one — the new file's name and location were attached to whichever
+  document had just appeared, rather than the one whose text had been written. The next save then
+  wrote that document over the copy you had just made, destroying it. The copy itself was always
+  written correctly; it was the *next* save that did the damage. Saving a copy now attaches the new
+  location only to the document whose text actually went to disk.
+- **Starting to open a file no longer unlocks the controls during a save.** The check that stops a
+  second save, a close or an export from starting mid-write shared its state with file loading, so
+  beginning to open a document switched every one of those guards back on while the write was still
+  running. Each guard now reads a dedicated flag that only a write can hold.
+- **The system Back button no longer closes a file while it is being saved.** The toolbar's close
+  button was already disabled during a save; Back was not, so it could close the document mid-write
+  — after which the file you had just closed was added back to your recent files and reopened on the
+  next launch. Back now does nothing during a save, exactly as the close button does. Dismissing
+  search or the drawer with Back is unaffected.
+
 ## [1.0.8] - 2026-09-18
 
 ### Added

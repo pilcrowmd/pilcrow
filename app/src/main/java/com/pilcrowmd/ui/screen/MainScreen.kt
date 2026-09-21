@@ -105,6 +105,8 @@ fun MainScreen(
     val currentDocument = viewModel.currentDocument.collectAsStateWithLifecycle()
     val mode = viewModel.mode.collectAsStateWithLifecycle()
     val fileLoadState = viewModel.fileLoadState.collectAsStateWithLifecycle()
+    // M-149: admission control reads the write CLAIM, not the shared load state.
+    val writeInFlight = viewModel.writeInFlight.collectAsStateWithLifecycle()
     // Transient = no persisted write grant (read-only "Open with"): show a banner + route Save→Save-As.
     val transient = viewModel.transient.collectAsStateWithLifecycle()
     // Stranded WAL slots (escape hatch): non-empty → persistent indicator; dialog when visible.
@@ -165,6 +167,11 @@ fun MainScreen(
     // Transient centered status toast (save + export feedback): the message, whether it's an error,
     // and a visible flag.
     var statusToastText by remember { mutableStateOf("") }
+    // M-126: whether the last load failure left the user with nothing on screen. The ViewModel
+    // decides that at the moment of the failure (it is the only place that knows whether a
+    // document was open); this layer only supplies the words, and being ViewModel state it also
+    // survives rotation, which a `remember` here would not.
+    val loadFailedWithNoDocument = viewModel.loadFailedWithNoDocument.collectAsStateWithLifecycle()
     var statusToastError by remember { mutableStateOf(false) }
     var statusToastVisible by remember { mutableStateOf(false) }
 
@@ -260,6 +267,7 @@ fun MainScreen(
                 hasDocument = currentDocument.value != null,
                 documentDirty = currentDocument.value?.dirty == true,
                 exitArmed = exitArmed,
+                isSaving = writeInFlight.value, // M-148: the same gate the toolbar X uses
             ),
         )
         when (intent) {
@@ -276,6 +284,7 @@ fun MainScreen(
             BackIntent.CloseSettings -> showSettings = false
             // Reuse the existing unsaved-edits guard — never invent a new save dialog here.
             BackIntent.PromptUnsavedClose -> showCloseConfirm = true
+            BackIntent.None -> Unit // M-148: a write is in flight; Back is inert, like the X
             BackIntent.CloseFile -> viewModel.closeFile()
             BackIntent.ArmExit -> {
                 exitArmed = true
@@ -313,9 +322,16 @@ fun MainScreen(
 
     // Transient centered status toast — visible over the editor. (The bottom SnackBar was unreliable:
     // hidden behind the keyboard while editing, and under the gesture nav bar otherwise.) "Saved" /
-    // "Exported" use the accent background; "Save failed" / "Export failed" use the red error
-    // background, so a failure is never silent (Safeguard 1). Each one-shot outcome is consumed
-    // immediately (reset → Idle) so a recomposition / screen remount can't replay it.
+    // "Exported" use the accent background; failures use the red error background. Each one-shot
+    // outcome is consumed immediately (reset → Idle) so a recomposition / screen remount can't
+    // replay it.
+    //
+    // ⚠️ THE "never silent" CLAIM THIS COMMENT USED TO MAKE WAS SCOPED TO SAVES AND READ AS
+    // GLOBAL, which is how M-126 survived: sitting above a `when` that omitted FileLoadState.Error,
+    // it told the next reader that loads were covered when they were not. Saves and exports are
+    // covered by Safeguard 1. LOADS are covered by the Error branch below, added in M-126 — and a
+    // load failure needs MORE than this toast, because the user who hit one is looking at the
+    // welcome screen: see loadErrorMessage on WelcomeScreen, which persists after this clears.
     androidx.compose.runtime.LaunchedEffect(fileLoadState.value) {
         when (fileLoadState.value) {
             is FileLoadState.SaveSuccess -> {
@@ -329,6 +345,22 @@ fun MainScreen(
                 statusToastError = true
                 statusToastVisible = true
                 viewModel.resetSaveState()
+            }
+            // M-126: every load failure was silent — this state had no consumer anywhere. The
+            // toast reports it wherever the user is (including with a document still open, where
+            // the welcome screen is not visible); `loadFailedWithNoDocument` then keeps the
+            // message on the welcome screen after the toast clears, but only in the case where
+            // the welcome screen is what the user is actually left looking at.
+            //
+            // The state's own `message` is deliberately NOT shown: it is `e.message ?: "Unknown
+            // error"` straight off the caught exception, so it is either a framework string the
+            // reader cannot act on or the literal words "Unknown error". A plain sentence is more
+            // use to them than either. The cause still reaches the log at the throw site.
+            is FileLoadState.Error -> {
+                statusToastText = "Couldn't open that file"
+                statusToastError = true
+                statusToastVisible = true
+                viewModel.resetLoadErrorState()
             }
             else -> {}
         }
@@ -544,7 +576,7 @@ fun MainScreen(
                                     ?.takeIf { it.isNotBlank() }
                                 exportPdfLauncher.launch("${baseName ?: "document"}.pdf")
                             },
-                            isSaving = fileLoadState.value is FileLoadState.Saving,
+                            isSaving = writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                             onUndo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.undo() }) else null,
                             onRedo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.redo() }) else null,
                         )
@@ -554,7 +586,7 @@ fun MainScreen(
                         // it (or Save) routes to "Save a copy". Informational, never auto-pops the picker.
                         if (transient.value) {
                             TransientBanner(
-                                enabled = fileLoadState.value !is FileLoadState.Saving,
+                                enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                                 onClick = { launchSaveAs() },
                             )
                         }
@@ -643,6 +675,10 @@ fun MainScreen(
                                     // M-115: a restore is in flight and will emit its document over
                                     // anything created or opened meanwhile.
                                     isLoading = fileLoadState.value is FileLoadState.Loading,
+                                    // M-126: a failed open is otherwise invisible here. Null unless
+                                    // the failure actually left the user on this screen.
+                                    loadErrorMessage =
+                                    "Couldn't open that file".takeIf { loadFailedWithNoDocument.value },
                                     onOpenFile = {
                                         // Default: soft-filter the picker to text/Markdown so document
                                         // files surface and binaries (PNG/PDF) don't. Providers that

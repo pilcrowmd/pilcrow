@@ -65,6 +65,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -204,6 +205,17 @@ fun WelcomeScreen(
      * redesign; see that row.
      */
     isLoading: Boolean = false,
+    /**
+     * The reason the last open attempt failed, or null if none. **M-126.** Shown as a persistent
+     * line here rather than only as a toast, because this is where a user whose file failed to
+     * open actually ends up: a toast that clears itself after 2.8s leaves them looking at a
+     * welcome screen with no document and no explanation, which is what they read as "the app is
+     * broken". It stays until the next open attempt.
+     *
+     * Defaults to null, so every existing call site and every golden renders exactly as before —
+     * the same construction `isLoading` uses above.
+     */
+    loadErrorMessage: String? = null,
     onOpenFile: () -> Unit = {},
     onCreateFile: () -> Unit = {},
     onOpenAnyFile: () -> Unit = {},
@@ -515,6 +527,19 @@ fun WelcomeScreen(
                                             fontSize = 13.sp,
                                         )
                                     }
+                                }
+                                // M-126: a failed open says so, and keeps saying so. Colour from
+                                // the token layer only (Safeguard 4); rendered only when a load has
+                                // actually failed, so the resting layout and every golden are
+                                // untouched.
+                                if (loadErrorMessage != null) {
+                                    Spacer(Modifier.height(16.dp))
+                                    Text(
+                                        text = loadErrorMessage,
+                                        color = c.error,
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center,
+                                    )
                                 }
                                 // Recents list
                                 if (recentFiles.isNotEmpty()) {

@@ -25,7 +25,57 @@ class BackNavigationTest {
         hasDocument = false,
         documentDirty = false,
         exitArmed = false,
+        isSaving = false,
     )
+
+    // ── M-148 ────────────────────────────────────────────────────────────────────────────────
+    //
+    // The toolbar's Close (X) is `enabled = !isSaving`; BackNavState had no such input, so system
+    // Back closed a file mid-save. The state below is built so that ONLY the isSaving clause can
+    // decide it: every earlier branch is false, and hasDocument/documentDirty are set so the
+    // control case resolves to a real close. Without the control, this would pass against a
+    // resolver that returned None for everything.
+
+    @Test
+    fun backIsInertWhileAWriteIsInFlight() {
+        val saving = root.copy(hasDocument = true, isSaving = true)
+        assertEquals("Back must not close a file mid-write", BackIntent.None, resolveBackIntent(saving))
+        // THE CONTROL: the identical state with the write finished still closes. Without this the
+        // assertion above is satisfied by a resolver that never closes anything.
+        assertEquals(
+            "control: the same state closes once the write is done",
+            BackIntent.CloseFile,
+            resolveBackIntent(saving.copy(isSaving = false)),
+        )
+    }
+
+    @Test
+    fun backDoesNotEvenPromptWhileAWriteIsInFlight() {
+        // A DIRTY document would otherwise resolve to PromptUnsavedClose, which is a close path
+        // too — the gate sits above both, so it must beat the prompt as well as the close.
+        val savingDirty = root.copy(hasDocument = true, documentDirty = true, isSaving = true)
+        assertEquals(BackIntent.None, resolveBackIntent(savingDirty))
+        assertEquals(
+            "control: the same state prompts once the write is done",
+            BackIntent.PromptUnsavedClose,
+            resolveBackIntent(savingDirty.copy(isSaving = false)),
+        )
+    }
+
+    @Test
+    fun aWriteInFlightDoesNotSwallowTheOtherBackTargets() {
+        // The gate is NOT a blanket "Back does nothing while saving": search and the drawer are
+        // still dismissible, because they close nothing on disk. Ordering, proved rather than
+        // assumed.
+        assertEquals(
+            BackIntent.CloseSearch,
+            resolveBackIntent(root.copy(hasDocument = true, isSaving = true, searchVisible = true)),
+        )
+        assertEquals(
+            BackIntent.CloseDrawer,
+            resolveBackIntent(root.copy(hasDocument = true, isSaving = true, drawerOpen = true)),
+        )
+    }
 
     @Test
     fun rootFirstBackArmsExit() {

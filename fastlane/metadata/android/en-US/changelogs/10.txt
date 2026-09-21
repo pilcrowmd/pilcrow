@@ -1,0 +1,5 @@
+Three fixes to how saving works.
+
+- Save a copy no longer attaches the new file to a document that opened while it was writing, which could destroy the copy on the next save.
+- Starting to open a file no longer unlocks the save, close and export controls while a save is still running.
+- The system Back button no longer closes a file mid-save, which could bring the closed file back on the next launch.

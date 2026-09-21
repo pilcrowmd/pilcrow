@@ -60,6 +60,11 @@ data class Document(
     // SAF display name (e.g. "notes.md"); drives the default PDF export filename. Empty until
     // resolved (intent/cold paths still route through loadFile, which populates it).
     val displayName: String = "",
+    /**
+     * Opaque per-instance identity (M-147). Defaulted and LAST so no construction site changes;
+     * `copy()` carries it, so typing never changes identity. See [DocumentId].
+     */
+    val id: DocumentId = DocumentId.mint(),
 ) {
     /**
      * True when this document has no file on disk yet, so an in-place save is impossible and
@@ -261,9 +266,38 @@ constructor(
     private val _pendingOpenUri = MutableStateFlow<Uri?>(null)
     val pendingOpenUri: StateFlow<Uri?> = _pendingOpenUri.asStateFlow()
 
+    // M-126: a load failure earns a PERSISTENT message only when it leaves the user with nothing
+    // on screen. That is decided HERE, at the instant the load fails, because only then is it
+    // known whether a document was open. Deciding it later in the UI cannot work: the failure is
+    // consumed immediately (resetLoadErrorState) so the toast cannot replay, and a message stored
+    // while a document was open would surface — stale — the moment the user closed that document,
+    // which is a "couldn't open that file" greeting for an action they took an hour ago.
+    // Declared below _fileScrollPositions on purpose: app/config/ktlint/baseline.xml pins this
+    // file's backing-property-naming suppression to line 257 BY NUMBER (see loadDocument).
+    private val _loadFailedWithNoDocument = MutableStateFlow(false)
+    val loadFailedWithNoDocument: StateFlow<Boolean> = _loadFailedWithNoDocument.asStateFlow()
+
     // File I/O state
     private val _fileLoadState = MutableStateFlow<FileLoadState>(FileLoadState.Idle)
     val fileLoadState: StateFlow<FileLoadState> = _fileLoadState.asStateFlow()
+
+    // ── The write claim (M-149) ───────────────────────────────────────────────────────────────
+    //
+    // ⚠️ DO NOT GO BACK TO `_fileLoadState.value is FileLoadState.Saving` FOR ADMISSION CONTROL.
+    // `Saving` is a VALUE of a shared state flow, not a held claim, and every load overwrites it:
+    // `loadDocumentOrThrow` emits `Loading` as its FIRST statement, before `readFile`, and its own
+    // terminal emit keeps `Saving` gone afterwards. So the guard re-opened the instant any load
+    // STARTED, and all four save paths plus the whole toolbar went live mid-write. That is M-149,
+    // and removing `:417` would not have fixed it — the terminal emit clobbers it too.
+    //
+    // THE SPLIT, in one line:
+    //   *** writeInFlight decides what is ALLOWED. FileLoadState decides what the user is TOLD. ***
+    //
+    // `FileLoadState.Saving` is deliberately KEPT and still emitted: it is the observable marker
+    // that a write started — the progress affordance, and what the test barriers wait on. It is no
+    // longer read to decide whether anything may happen.
+    private val _writeInFlight = MutableStateFlow(false)
+    val writeInFlight: StateFlow<Boolean> = _writeInFlight.asStateFlow()
 
     // Preference flows (from storage)
     val lineNumbersEnabled: StateFlow<Boolean> = storage.lineNumbersEnabled
@@ -391,6 +425,7 @@ constructor(
             throw e
         } catch (e: Exception) {
             if (_fileLoadState.value is FileLoadState.Loading) {
+                _loadFailedWithNoDocument.value = _currentDocument.value == null
                 _fileLoadState.emit(FileLoadState.Error(e.message ?: "Unknown error"))
             } else {
                 android.util.Log.e("MarkdownViewModel", "load threw after its outcome was published", e)
@@ -399,6 +434,9 @@ constructor(
     }
 
     private suspend fun loadDocumentOrThrow(uri: Uri) {
+        // A new attempt retires the last failure's message (M-126) — one place, because this is
+        // the single point every load passes through.
+        _loadFailedWithNoDocument.value = false
         _fileLoadState.emit(FileLoadState.Loading)
         val result = repository.readFile(uri)
         result
@@ -412,6 +450,24 @@ constructor(
                 // Both passes are cheap now, but they are grouped into ONE hop on purpose: the next
                 // expensive thing added to the load path should land on this side of the boundary by
                 // default, not on Main. Only the results cross back.
+                //
+                // ⚠️ IF YOU ARE ADDING THAT NEXT CALL, READ THIS FIRST — M-128.
+                // `_lineEnding` and `originalContent` below are written for the NEW file BEFORE
+                // `_currentDocument.emit` publishes it. A throw anywhere between those two points is
+                // caught by loadDocument's wrapper (M-115), which leaves the PREVIOUS document
+                // current — now carrying the NEW file's line ending and dirty baseline. Its next
+                // save goes through contentForDisk and applies that ending, silently rewriting a
+                // CRLF file as LF or the reverse. That is a SAFEGUARD 2 BREAK: saving must write
+                // back exactly what the user wrote.
+                //
+                // It is unreachable TODAY only because nothing in that gap throws an Exception —
+                // `displayName` swallows every one of them (LocalFileRepository.displayName) and
+                // the CPU block can only raise an Error, which `catch (e: Exception)` does not
+                // catch. A single throwing call added between here and the emit makes it real.
+                // Put the call AFTER the document is published, or move the two writes down with
+                // it — and re-run MarkdownViewModelLineEndingTest rather than assuming: its
+                // barriers may depend on where the `_lineEnding` emit sits, and moving load work
+                // off the main thread broke that entire suite once already.
                 //
                 // Detect and remember the original line-ending format (CRLF vs LF).
                 // EditText normalizes \r\n → \n, so we detect here and restore on save.
@@ -471,6 +527,7 @@ constructor(
                 storage.addRecent(RecentFile(uri, displayName, System.currentTimeMillis()))
             }
             .onFailure { error ->
+                _loadFailedWithNoDocument.value = _currentDocument.value == null
                 _fileLoadState.emit(FileLoadState.Error(error.message ?: "Unknown error"))
             }
     }
@@ -511,25 +568,26 @@ constructor(
     fun saveAndOpenPending() {
         val uri = _pendingOpenUri.value ?: return
         viewModelScope.launch {
-            if (_fileLoadState.value is FileLoadState.Saving) return@launch // no concurrent save
-            val doc = _currentDocument.value
-            // `doc.uri != null` joins the dirty check rather than sitting inside it: an unsaved
-            // document (M-91) has no in-place target, and the View routes that case to Save-As
-            // before it ever gets here. Falling through drops the save, not the edits — the pending
-            // open is only cleared below, after the branch.
-            if (doc != null && doc.dirty && doc.uri != null) {
-                _fileLoadState.emit(FileLoadState.Saving)
-                val result = repository.saveFile(doc.uri, contentForDisk(doc))
-                if (result.isFailure) {
-                    _fileLoadState.emit(
-                        FileLoadState.SaveError(result.exceptionOrNull()?.message ?: "Unknown error"),
-                    )
-                    return@launch // keep current file + pending prompt; do not lose data
+            withWriteClaim {
+                val doc = _currentDocument.value
+                // `doc.uri != null` joins the dirty check rather than sitting inside it: an unsaved
+                // document (M-91) has no in-place target, and the View routes that case to Save-As
+                // before it ever gets here. Falling through drops the save, not the edits — the pending
+                // open is only cleared below, after the branch.
+                if (doc != null && doc.dirty && doc.uri != null) {
+                    _fileLoadState.emit(FileLoadState.Saving)
+                    val result = repository.saveFile(doc.uri, contentForDisk(doc))
+                    if (result.isFailure) {
+                        _fileLoadState.emit(
+                            FileLoadState.SaveError(result.exceptionOrNull()?.message ?: "Unknown error"),
+                        )
+                        return@withWriteClaim // keep current file + pending prompt; do not lose data
+                    }
+                    _currentDocument.update { it?.copy(dirty = false) }
                 }
-                _currentDocument.update { it?.copy(dirty = false) }
+                _pendingOpenUri.value = null
+                loadFile(uri)
             }
-            _pendingOpenUri.value = null
-            loadFile(uri)
         }
     }
 
@@ -558,26 +616,27 @@ constructor(
      */
     fun saveAndClose() {
         viewModelScope.launch {
-            if (_fileLoadState.value is FileLoadState.Saving) return@launch // no concurrent save
-            val doc = _currentDocument.value ?: return@launch
-            // An unsaved document (M-91) has no in-place target. The View routes Save→Save-As for
-            // it, so reaching here with a null URI would mean closing WITHOUT the save the user
-            // asked for — return instead of closing, and the document stays open with its text.
-            val target = doc.uri ?: return@launch
-            _fileLoadState.emit(FileLoadState.Saving)
-            repository.saveFile(target, contentForDisk(doc))
-                .onSuccess {
-                    storage.clearLastFileUri()
-                    _currentDocument.emit(null)
-                    _transient.emit(false)
-                    _mode.emit(ViewMode.READER)
-                    _previewScroll.emit(ScrollAnchor())
-                    _editorScroll.emit(0)
-                    _fileLoadState.emit(FileLoadState.Idle)
-                }
-                .onFailure { error ->
-                    _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
-                }
+            withWriteClaim {
+                val doc = _currentDocument.value ?: return@withWriteClaim
+                // An unsaved document (M-91) has no in-place target. The View routes Save→Save-As for
+                // it, so reaching here with a null URI would mean closing WITHOUT the save the user
+                // asked for — return instead of closing, and the document stays open with its text.
+                val target = doc.uri ?: return@withWriteClaim
+                _fileLoadState.emit(FileLoadState.Saving)
+                repository.saveFile(target, contentForDisk(doc))
+                    .onSuccess {
+                        storage.clearLastFileUri()
+                        _currentDocument.emit(null)
+                        _transient.emit(false)
+                        _mode.emit(ViewMode.READER)
+                        _previewScroll.emit(ScrollAnchor())
+                        _editorScroll.emit(0)
+                        _fileLoadState.emit(FileLoadState.Idle)
+                    }
+                    .onFailure { error ->
+                        _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
+                    }
+            }
         }
     }
 
@@ -717,39 +776,91 @@ constructor(
         _headingJump.value = HeadingJump(heading.adapterPosition, headingJumpSeq)
     }
 
+    /**
+     * Runs [block] only if no write is already in flight, and ALWAYS releases the claim afterwards.
+     * The single admission gate for every path that writes a file (M-149).
+     *
+     * **THE RULE, STATED ONCE AND NOT DECIDED PER CALL SITE:**
+     *
+     * > **The claim covers the OPERATION, including its persistence tail — not just the write,
+     * > and not just up to the terminal emit.**
+     *
+     * `lastFileUri` and the recents entry are *persisted pointers to the document*. A claim that
+     * ended at the "Saved" toast would leave them unguarded, which is precisely the shape M-145
+     * is about — releasing early would rebuild the thing being fixed. **Accepted consequence: the
+     * toolbar re-enables after DataStore, not after the write.**
+     *
+     * All four claimed blocks conform, and the tails differ: `saveActiveDocumentAs` persists
+     * render mode, `lastFileUri` and recents; `saveAndClose` clears `lastFileUri`; `saveFile` and
+     * `saveAndOpenPending` have no persistence after their outcome.
+     *
+     * **The one write path deliberately NOT claimed is [rescueStrandedSlot]** — it writes a
+     * stranded WAL slot to a target of its own and never touches the open document, and it was
+     * unguarded before this change. Named as the exception rather than swept in.
+     *
+     * **Can the tail block for an unbounded time? NO — established at source.**
+     * Everything after the terminal emit is `LocalStorageManager`, which has **zero**
+     * `ContentResolver` references and no network or binder call: DataStore reads and writes
+     * against the app's own private storage, plus CPU passes over the document. Bounded by disk
+     * and document size. The genuinely unbounded calls — the SAF write and the `ContentResolver`
+     * queries into a third-party `DocumentsProvider` — sit *before* the tail and were inside the
+     * old guard too, so extending the claim over the tail adds bounded time only. **`finally`
+     * bounds the claim on the tail RETURNING; the tail returns in bounded time.**
+     *
+     * **`compareAndSet`, not read-then-set.** The old guard read `_fileLoadState` and emitted
+     * separately, so two callers could both pass the check before either marked it. Claiming
+     * atomically closes that on top of the defect this exists for.
+     *
+     * **⚠️ THE `finally` IS LOAD-BEARING, AND SO IS ITS POSITION.** A claim that is not released
+     * bricks every save for the rest of the session — worse than the bug being fixed — and a
+     * suite of refusal assertions would go GREENER, not redder, for it. A claim released at the
+     * terminal emit instead would pass a naive release test while leaving the tail unguarded.
+     * **Both are covered by `theClaimIsReleasedAfterThePersistenceTailNotAtTheTerminalEmit`, and
+     * both mutations are recorded in M-149.**
+     */
+    private suspend fun withWriteClaim(block: suspend () -> Unit) {
+        if (!_writeInFlight.compareAndSet(expect = false, update = true)) return
+        try {
+            block()
+        } finally {
+            _writeInFlight.value = false
+        }
+    }
+
     fun saveFile() {
         viewModelScope.launch {
-            // Guard against a concurrent save (e.g. double-tap) — two simultaneous writes to the
-            // same URI could interleave/truncate each other (Safeguard 1).
-            if (_fileLoadState.value is FileLoadState.Saving) return@launch
-            val doc = _currentDocument.value ?: return@launch
-            // No file on disk yet (M-91): there is nothing to save IN PLACE. The View routes this
-            // case to Save-As before calling here; returning rather than inventing a target is the
-            // safe half of that contract — a wrong guess would write the user's text somewhere they
-            // did not choose (Safeguard 1).
-            val target = doc.uri ?: return@launch
+            withWriteClaim {
+                // Guard against a concurrent save (e.g. double-tap) — two simultaneous writes to
+                // the same URI could interleave/truncate each other (Safeguard 1).
+                val doc = _currentDocument.value ?: return@withWriteClaim
+                // No file on disk yet (M-91): there is nothing to save IN PLACE. The View routes this
+                // case to Save-As before calling here; returning rather than inventing a target is the
+                // safe half of that contract — a wrong guess would write the user's text somewhere they
+                // did not choose (Safeguard 1).
+                val target = doc.uri ?: return@withWriteClaim
 
-            _fileLoadState.emit(FileLoadState.Saving)
+                _fileLoadState.emit(FileLoadState.Saving)
 
-            // contentForDisk restores the original line ending before the write (Safeguard 2),
-            // shared by every save path so a CRLF file is never silently converted to LF.
-            repository.saveFile(target, contentForDisk(doc))
-                .onSuccess {
-                    // Baseline = the content we just persisted, in the editor's LF form (doc.content).
-                    // The disk form (contentForDisk) may be CRLF; the editor/model always work in LF, so
-                    // the baseline and the dirty comparison MUST use the LF doc.content, not the disk
-                    // form — otherwise dirty would never clear for a CRLF file.
-                    originalContent = doc.content
-                    // Only clear the dirty flag if nothing was typed during the save — otherwise
-                    // those newer edits would be silently marked saved and lost (Safeguard 2).
-                    _currentDocument.update {
-                        if (it != null && it.content == doc.content) it.copy(dirty = false) else it
+                // contentForDisk restores the original line ending before the write (Safeguard 2),
+                // shared by every save path so a CRLF file is never silently converted to LF.
+                repository.saveFile(target, contentForDisk(doc))
+                    .onSuccess {
+                        // Baseline = the content we just persisted, in the editor's LF form (doc.content).
+                        // The disk form (contentForDisk) may be CRLF; the editor/model always work in LF, so
+                        // the baseline and the dirty comparison MUST use the LF doc.content, not the disk
+                        // form — otherwise dirty would never clear for a CRLF file.
+                        originalContent = doc.content
+                        // Only clear the dirty flag if nothing was typed during the save — otherwise
+                        // those newer edits would be silently marked saved and lost (Safeguard 2).
+                        _currentDocument.update {
+                            if (it != null && it.content == doc.content) it.copy(dirty = false) else it
+                        }
+                        _fileLoadState.emit(FileLoadState.SaveSuccess)
                     }
-                    _fileLoadState.emit(FileLoadState.SaveSuccess)
-                }
-                .onFailure { error ->
-                    _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
-                }
+                    .onFailure { error ->
+                        _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
+                    }
+            }
         }
     }
 
@@ -768,46 +879,80 @@ constructor(
     fun saveActiveDocumentAs(targetUri: Uri) {
         viewModelScope.launch {
             // Reuse the concurrent-save guard: never start a Save-As while a save is in flight.
-            if (_fileLoadState.value is FileLoadState.Saving) return@launch
-            val doc = _currentDocument.value ?: return@launch
-            _fileLoadState.emit(FileLoadState.Saving)
+            withWriteClaim {
+                val doc = _currentDocument.value ?: return@withWriteClaim
+                // M-147: the identity of the document whose bytes we are about to write. Compared
+                // before the stamp below, because the slot can change while the write is suspended.
+                val savedId = doc.id
+                _fileLoadState.emit(FileLoadState.Saving)
 
-            // Best-effort persist; result ignored so a provider that rejects it can't abort the write.
-            repository.takePersistableUriPermission(targetUri)
+                // Best-effort persist; result ignored so a provider that rejects it can't abort the write.
+                repository.takePersistableUriPermission(targetUri)
 
-            repository.saveFile(targetUri, contentForDisk(doc))
-                .onSuccess {
-                    val displayName = repository.displayName(targetUri)
-                    // Baseline = the LF content we persisted (contentForDisk may be CRLF; model is LF).
-                    originalContent = doc.content
-                    // Adopt the new identity. Preserve any edits typed during the write: keep the live
-                    // content and only clear dirty if nothing changed since (mirrors saveFile, Safeguard 2).
-                    _currentDocument.update { current ->
-                        current?.copy(
-                            uri = targetUri,
-                            displayName = displayName,
-                            dirty = current.content != doc.content,
-                        )
+                repository.saveFile(targetUri, contentForDisk(doc))
+                    .onSuccess {
+                        val displayName = repository.displayName(targetUri)
+
+                        // ── M-147: ADOPT ONLY ONTO THE DOCUMENT WE ACTUALLY WROTE ───────────────
+                        // The slot can change while the write is suspended — `loadFile` carries no
+                        // save guard, so a warm intent or a Discard can publish a different
+                        // document here. Stamping `targetUri` onto whatever happens to be current
+                        // left B on screen wearing the copy's URI, and B's next save overwrote the
+                        // copy. Compared by opaque DocumentId, NOT by URI: two unsaved documents
+                        // both have `uri == null`, so `null == null` is not an identity check.
+                        //
+                        // compareAndSet, not `update {}`: update's block can re-run under
+                        // contention, so a flag set inside it is not reliable. A failed CAS means
+                        // something published between the read and the write — treated as NOT
+                        // adopted, which is the conservative direction.
+                        val current = _currentDocument.value
+                        val adopted = current != null &&
+                            current.id == savedId &&
+                            _currentDocument.compareAndSet(
+                                current,
+                                current.copy(
+                                    uri = targetUri,
+                                    displayName = displayName,
+                                    // Preserve edits typed during the write: keep the live content
+                                    // and only clear dirty if nothing changed (Safeguard 2).
+                                    dirty = current.content != doc.content,
+                                ),
+                            )
+                        if (adopted) {
+                            // Baseline = the LF content we persisted (contentForDisk may be CRLF).
+                            originalContent = doc.content
+                            // The adopted file is persistable+writable → clears the banner.
+                            _transient.emit(!repository.hasPersistedWritePermission(targetUri))
+                        }
+
+                        // ALWAYS: the bytes reached disk. A failure report would be false, and
+                        // would invite a retry that writes a SECOND stray file.
+                        _fileLoadState.emit(FileLoadState.SaveSuccess)
+
+                        if (adopted) {
+                            // Everything below is derived from the document's identity, so on a
+                            // mismatch it would describe a document that is not on screen: the
+                            // render mode would follow the target's extension, the TOC would be
+                            // rebuilt from the captured content, and `lastFileUri` would make the
+                            // next launch open a file the user was not looking at — which is
+                            // M-145's shape exactly.
+                            applyDerivedRenderMode(targetUri, displayName)
+                            refreshHeadings(doc.content)
+                            refreshActiveSearch()
+                            storage.saveLastFileUri(targetUri)
+                        }
+
+                        // ALWAYS, and deliberately outside the gate. On a
+                        // failed adoption every other trace of the target is discarded, so recents
+                        // is the ONLY surviving pointer to a file the user just created. Safe
+                        // because M-148 and M-149 leave no close path inside the write window —
+                        // IF THIS BRANCH IS EVER SPLIT, THE QUESTION REOPENS (see M-147).
+                        storage.addRecent(RecentFile(targetUri, displayName, System.currentTimeMillis()))
                     }
-                    // The adopted file is persistable+writable → recompute transient (clears the banner).
-                    _transient.emit(!repository.hasPersistedWritePermission(targetUri))
-                    // Surface success (and the "Saved" toast) before the recents/last-file persistence,
-                    // which suspends on DataStore I/O — the outcome must not wait on it (mirrors loadFile,
-                    // which persists last). The in-memory adoption above is what the session relies on.
-                    _fileLoadState.emit(FileLoadState.SaveSuccess)
-                    // Identity changed → re-derive the render mode for the NEW name/URI (a .txt
-                    // saved-as .md must not stay stuck in plain). Sits with
-                    // the other post-outcome persistence: it reads DataStore, and the save outcome
-                    // above must not wait on that I/O.
-                    applyDerivedRenderMode(targetUri, displayName)
-                    refreshHeadings(doc.content)
-                    refreshActiveSearch()
-                    storage.saveLastFileUri(targetUri)
-                    storage.addRecent(RecentFile(targetUri, displayName, System.currentTimeMillis()))
-                }
-                .onFailure { error ->
-                    _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
-                }
+                    .onFailure { error ->
+                        _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
+                    }
+            }
         }
     }
 
@@ -904,6 +1049,12 @@ constructor(
      */
     fun newDocument() {
         viewModelScope.launch {
+            // M-126: creating a document retires a previous open failure's message as surely as
+            // opening one does. Without this the user who fails an open, creates a blank file
+            // instead, and later closes it is greeted by "Couldn't open that file" for the
+            // attempt they abandoned — the same staleness the review caught on the load path,
+            // through the door M-91 added.
+            _loadFailedWithNoDocument.value = false
             originalContent = ""
             _currentDocument.emit(
                 Document(uri = null, content = "", dirty = false, displayName = NEW_DOCUMENT_NAME),
@@ -1055,6 +1206,17 @@ constructor(
      * or screen remount can't replay it. Only resets those two terminal outcomes → Idle, so a newer
      * Saving/Loading that began meanwhile is never clobbered.
      */
+    /**
+     * Clear a reported load failure once it has been shown (**M-126**).
+     *
+     * Narrow on purpose: it clears **only** [FileLoadState.Error], so it can never swallow a
+     * `Loading` that is still in flight or a terminal save state that its own consumer has not
+     * read yet. Same shape as [resetSaveState], which clears only the two save outcomes.
+     */
+    fun resetLoadErrorState() {
+        _fileLoadState.update { if (it is FileLoadState.Error) FileLoadState.Idle else it }
+    }
+
     fun resetSaveState() {
         _fileLoadState.update {
             if (it is FileLoadState.SaveSuccess || it is FileLoadState.SaveError) FileLoadState.Idle else it
