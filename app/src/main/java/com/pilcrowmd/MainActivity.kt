@@ -22,6 +22,9 @@ import com.pilcrowmd.viewmodel.MarkdownViewModel
 /** Bounded minimum the branded splash stays up so its lines→¶ morph plays. */
 private const val SPLASH_MIN_DISPLAY_MS = 900L
 
+/** Saved-state key: the Activity's current intent has already been handed to the app (M-139). */
+private const val KEY_INTENT_HANDLED = "com.pilcrowmd.INTENT_HANDLED"
+
 /**
  * Pilcrow main activity.
  * Single-activity Compose app. No Hilt — manual ViewModel construction (simplicity-first).
@@ -40,6 +43,13 @@ class MainActivity : ComponentActivity() {
     // loaded. The composable observes this state and loads on each change.
     private val _intentFileUri = mutableStateOf<Uri?>(null)
     val intentFileUri: State<Uri?> get() = _intentFileUri
+
+    // True once the current intent's file has been consumed by the app. Saved across recreation,
+    // because getIntent() survives recreation too: without this, every rotation re-published the
+    // launch file and loaded it over whatever the user had opened since (M-139). Set only on
+    // consumption, not on publish, so a recreation that lands before the first composition still
+    // opens the file.
+    private var intentHandled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install the system splash before super.onCreate so the OS draws the branded launch frame
@@ -68,8 +78,18 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        // Handle intent-opened file (ACTION_VIEW from file manager, ACTION_SEND from share sheet).
-        handleIntentFile(intent)
+        // Handle intent-opened file (ACTION_VIEW from file manager, ACTION_SEND from share sheet),
+        // unless a previous instance of this Activity already consumed it (M-139).
+        if (savedInstanceState?.getBoolean(KEY_INTENT_HANDLED) == true) {
+            intentHandled = true
+        } else {
+            handleIntentFile(intent)
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_INTENT_HANDLED, intentHandled)
     }
 
     /** True if [intent] launched the app to open a specific file (ACTION_VIEW data / ACTION_SEND stream). */
@@ -101,7 +121,8 @@ class MainActivity : ComponentActivity() {
         if (uri != null) {
             // Request persistent permission so app can re-open file later.
             takePermission(uri)
-            // Publish for PilcrowApp to observe and load.
+            // Publish for PilcrowApp to observe and load. A new file is not handled until consumed.
+            intentHandled = false
             _intentFileUri.value = uri
         }
     }
@@ -123,9 +144,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Clear the intent URI once handled, so it isn't re-loaded on the next recomposition. */
+    /**
+     * Mark the intent's file as handled. Clearing the Compose mirror stops a re-load on the next
+     * recomposition; [intentHandled], saved in [onSaveInstanceState], stops one on the next
+     * Activity *recreation*, which is the case that mattered (M-139).
+     */
     fun consumeIntentFileUri() {
         _intentFileUri.value = null
+        intentHandled = true
     }
 }
 

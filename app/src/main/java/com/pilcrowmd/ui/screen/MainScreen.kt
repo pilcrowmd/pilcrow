@@ -31,12 +31,10 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -70,7 +68,6 @@ import com.pilcrowmd.ui.components.WelcomeScreen
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSets
 import com.pilcrowmd.ui.theme.LightColorScheme
-import com.pilcrowmd.ui.theme.LocalMDColors
 import com.pilcrowmd.ui.theme.mdColors
 import com.pilcrowmd.viewmodel.ExportState
 import com.pilcrowmd.viewmodel.FileLoadState
@@ -123,6 +120,7 @@ fun MainScreen(
     val fontSetId = viewModel.fontSetId.collectAsStateWithLifecycle()
     val fontSet = FontSets.byId(fontSetId.value)
     val mermaidCloudEnabled = viewModel.mermaidCloudEnabled.collectAsStateWithLifecycle()
+    val wrapCodeLines = viewModel.wrapCodeLines.collectAsStateWithLifecycle()
     // Theme mode (Dark/Light)
     val themeMode = viewModel.themeMode.collectAsStateWithLifecycle()
     // appInfo injected from ViewModel (PackageManager call deferred to AppContainer init)
@@ -481,12 +479,12 @@ fun MainScreen(
     // primary background; systemBarsPadding() then insets the toolbar + content below the
     // status bar and above the nav bar (API 35 enforces edge-to-edge — without this the
     // toolbar renders under the system clock/battery and its controls are unreachable).
-    val c = mdColors()
     val activeColorScheme = when (themeMode.value) {
         ThemeMode.DARK -> DarkColorScheme
         ThemeMode.LIGHT -> LightColorScheme
     }
-    ModalNavigationDrawer(
+    ThemedNavigationDrawer(
+        colorScheme = activeColorScheme,
         drawerState = drawerState,
         // Button-to-open, swipe-to-close. Gestures enabled ONLY while the drawer is
         // open — so edge-swipe can't accidentally OPEN the TOC during normal reading (the toolbar
@@ -507,406 +505,406 @@ fun MainScreen(
                 },
             )
         },
-        scrimColor = c.scrimOverlay,
         modifier = modifier.fillMaxSize(),
     ) {
-        CompositionLocalProvider(LocalMDColors provides activeColorScheme) {
-            // Box wrapper so the "Saved" message can stack ON TOP of the content as a true
-            // overlay. (If the message lived in the Column below, its fillMaxSize would steal
-            // the weight(1f) content's height and make everything vanish while it showed.)
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(mdColors().primaryBackground)
-                        .systemBarsPadding(),
-                ) {
-                    // Persistent stranded-WAL-slot indicator (escape hatch): shows on every screen
-                    // (welcome + document) whenever recovery files await action, and opens the dialog
-                    // on tap. The dialog itself (auto-popped on a cold launcher start, else opened
-                    // from here) lives at the Box level below.
-                    if (strandedSlots.value.isNotEmpty()) {
-                        StrandedSlotIndicator(
-                            count = strandedSlots.value.size,
-                            onClick = { viewModel.showStrandedDialog() },
+        // Box wrapper so the "Saved" message can stack ON TOP of the content as a true
+        // overlay. (If the message lived in the Column below, its fillMaxSize would steal
+        // the weight(1f) content's height and make everything vanish while it showed.)
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(mdColors().primaryBackground)
+                    .systemBarsPadding(),
+            ) {
+                // Persistent stranded-WAL-slot indicator (escape hatch): shows on every screen
+                // (welcome + document) whenever recovery files await action, and opens the dialog
+                // on tap. The dialog itself (auto-popped on a cold launcher start, else opened
+                // from here) lives at the Box level below.
+                if (strandedSlots.value.isNotEmpty()) {
+                    StrandedSlotIndicator(
+                        count = strandedSlots.value.size,
+                        onClick = { viewModel.showStrandedDialog() },
+                    )
+                }
+                // Toolbar only when a file is open — the welcome screen has its own Open
+                // action, so toggle/save/close would be no-ops there.
+                if (currentDocument.value != null) {
+                    PilcrowToolbar(
+                        currentMode = mode.value,
+                        onModeSelected = { selected -> viewModel.setMode(selected) },
+                        // Neither a transient doc (read-only "Open with") nor a never-saved one
+                        // (M-91) can save in place → route Save to Save-As; otherwise the normal
+                        // in-place save. The ViewModel refuses both cases too rather than
+                        // trusting this routing — a wrong target is a data-loss bug (Safeguard 1).
+                        onSave = {
+                            if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                launchSaveAs()
+                            } else {
+                                viewModel.saveFile()
+                            }
+                        },
+                        onSaveACopy = { launchSaveAs() },
+                        // Quiet .txt render toggle: item present only for .txt documents;
+                        // label names the mode to switch TO. Viewing-only — never touches bytes.
+                        plainToggleLabel = if (plainToggleAvailable.value) {
+                            if (renderMode.value == RenderMode.PLAIN) "View as Markdown" else "View as plain text"
+                        } else {
+                            null
+                        },
+                        onTogglePlainView = { viewModel.toggleRenderMode() },
+                        onClose = {
+                            // Safeguard against silent data loss: prompt if there are unsaved edits.
+                            if (currentDocument.value?.dirty == true) {
+                                showCloseConfirm = true
+                            } else {
+                                viewModel.closeFile()
+                            }
+                        },
+                        onSearch = { viewModel.setSearchVisible(true) },
+                        onTOC = { scope.launch { drawerState.open() } },
+                        onExportPdf = {
+                            // Launch SAF CREATE_DOCUMENT dialog for PDF export. Default name = the
+                            // open doc's SAF display name with its extension swapped for .pdf (a
+                            // content-URI lastPathSegment is a doc ID like "msf:47", not a name).
+                            val baseName = currentDocument.value?.displayName
+                                ?.substringBeforeLast('.')
+                                ?.takeIf { it.isNotBlank() }
+                            exportPdfLauncher.launch("${baseName ?: "document"}.pdf")
+                        },
+                        isSaving = writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
+                        onUndo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.undo() }) else null,
+                        onRedo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.redo() }) else null,
+                    )
+
+                    // Transient (read-only "Open with") banner: opened from another app, no
+                    // persisted write grant → won't stay in Recents and can't save in place. Tapping
+                    // it (or Save) routes to "Save a copy". Informational, never auto-pops the picker.
+                    if (transient.value) {
+                        TransientBanner(
+                            enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
+                            onClick = { launchSaveAs() },
                         )
                     }
-                    // Toolbar only when a file is open — the welcome screen has its own Open
-                    // action, so toggle/save/close would be no-ops there.
-                    if (currentDocument.value != null) {
-                        PilcrowToolbar(
-                            currentMode = mode.value,
-                            onModeSelected = { selected -> viewModel.setMode(selected) },
-                            // Neither a transient doc (read-only "Open with") nor a never-saved one
-                            // (M-91) can save in place → route Save to Save-As; otherwise the normal
-                            // in-place save. The ViewModel refuses both cases too rather than
-                            // trusting this routing — a wrong target is a data-loss bug (Safeguard 1).
-                            onSave = {
-                                if (transient.value || currentDocument.value?.isUnsaved == true) {
-                                    launchSaveAs()
-                                } else {
-                                    viewModel.saveFile()
-                                }
-                            },
-                            onSaveACopy = { launchSaveAs() },
-                            // Quiet .txt render toggle: item present only for .txt documents;
-                            // label names the mode to switch TO. Viewing-only — never touches bytes.
-                            plainToggleLabel = if (plainToggleAvailable.value) {
-                                if (renderMode.value == RenderMode.PLAIN) "View as Markdown" else "View as plain text"
-                            } else {
-                                null
-                            },
-                            onTogglePlainView = { viewModel.toggleRenderMode() },
-                            onClose = {
-                                // Safeguard against silent data loss: prompt if there are unsaved edits.
-                                if (currentDocument.value?.dirty == true) {
-                                    showCloseConfirm = true
-                                } else {
-                                    viewModel.closeFile()
-                                }
-                            },
-                            onSearch = { viewModel.setSearchVisible(true) },
-                            onTOC = { scope.launch { drawerState.open() } },
-                            onExportPdf = {
-                                // Launch SAF CREATE_DOCUMENT dialog for PDF export. Default name = the
-                                // open doc's SAF display name with its extension swapped for .pdf (a
-                                // content-URI lastPathSegment is a doc ID like "msf:47", not a name).
-                                val baseName = currentDocument.value?.displayName
-                                    ?.substringBeforeLast('.')
-                                    ?.takeIf { it.isNotBlank() }
-                                exportPdfLauncher.launch("${baseName ?: "document"}.pdf")
-                            },
-                            isSaving = writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
-                            onUndo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.undo() }) else null,
-                            onRedo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.redo() }) else null,
+
+                    // Conditionally render search bar when visible (works in both Reader and Editor modes)
+                    if (searchVisible.value) {
+                        SearchBar(
+                            query = searchQuery.value,
+                            onQueryChange = { viewModel.updateSearchQuery(it) },
+                            matchCount = searchMatches.value.size,
+                            currentIndex = currentMatchIndex.value,
+                            onPrevious = { viewModel.previousMatch() },
+                            onNext = { viewModel.nextMatch() },
+                            onClose = { viewModel.setSearchVisible(false) },
                         )
-
-                        // Transient (read-only "Open with") banner: opened from another app, no
-                        // persisted write grant → won't stay in Recents and can't save in place. Tapping
-                        // it (or Save) routes to "Save a copy". Informational, never auto-pops the picker.
-                        if (transient.value) {
-                            TransientBanner(
-                                enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
-                                onClick = { launchSaveAs() },
-                            )
-                        }
-
-                        // Conditionally render search bar when visible (works in both Reader and Editor modes)
-                        if (searchVisible.value) {
-                            SearchBar(
-                                query = searchQuery.value,
-                                onQueryChange = { viewModel.updateSearchQuery(it) },
-                                matchCount = searchMatches.value.size,
-                                currentIndex = currentMatchIndex.value,
-                                onPrevious = { viewModel.previousMatch() },
-                                onNext = { viewModel.nextMatch() },
-                                onClose = { viewModel.setSearchVisible(false) },
-                            )
-                        }
                     }
+                }
 
-                    // Settings screen (full-screen modal)
-                    if (showSettings) {
-                        SettingsScreen(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            fontSetId = fontSetId.value,
-                            onFontSetSelected = { viewModel.setFontSet(it) },
-                            previewFontScale = previewFontScale.value,
-                            onPreviewFontScaleChanged = { viewModel.setPreviewFontScale(it) },
-                            editorFontScale = editorFontScale.value,
-                            onEditorFontScaleChanged = { viewModel.setEditorFontScale(it) },
-                            lineNumbersEnabled = lineNumbersEnabled.value,
-                            onLineNumbersChanged = { viewModel.setLineNumbersEnabled(it) },
-                            openInEditMode = openInEditMode.value,
-                            onOpenInEditModeChanged = { viewModel.setOpenInEditMode(it) },
-                            mermaidCloudEnabled = mermaidCloudEnabled.value,
-                            onMermaidCloudChanged = { viewModel.setMermaidCloudEnabled(it) },
-                            themeMode = themeMode.value,
-                            onThemeSelected = { viewModel.setThemeMode(it) },
-                            appVersion = appInfo.versionName,
-                            onClose = { showSettings = false },
-                            // Close Settings as we open Licenses — the modal blocks are checked
-                            // showSettings-first, so leaving it true would keep Settings on top.
-                            onOpenLicenses = {
-                                showSettings = false
-                                showLicenses = true
-                            },
-                            // Same pattern as Licenses: close Settings, open the GitHub teaser.
-                            onOpenGitHub = {
-                                showSettings = false
-                                showGitHub = true
-                            },
-                        )
-                    } else if (showLicenses) {
-                        LicensesScreen(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            // Back from Licenses returns to Settings (where the user came from).
-                            onClose = {
-                                showLicenses = false
-                                showSettings = true
-                            },
-                        )
-                    } else if (showGitHub) {
-                        GitHubIntegrationScreen(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            // Back from the GitHub teaser returns to Settings (where the user came from).
-                            onClose = {
-                                showGitHub = false
-                                showSettings = true
-                            },
-                        )
-                    } else {
-                        // Main content area — weight(1f) gives it exactly the space BELOW the toolbar.
-                        // clipToBounds() is essential: the preview hosts a RecyclerView via AndroidView, and
-                        // interop views can paint outside their layout bounds (here, up over the toolbar).
-                        // Clipping confines that draw to this box so content never overlaps the toolbar/search bar.
-                        Box(modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                            if (currentDocument.value == null) {
-                                // Welcome screen (no file open)
-                                WelcomeScreen(
-                                    modifier = Modifier.fillMaxSize(),
-                                    recentFiles = recentFiles.value,
-                                    // M-115: a restore is in flight and will emit its document over
-                                    // anything created or opened meanwhile.
-                                    isLoading = fileLoadState.value is FileLoadState.Loading,
-                                    // M-126: a failed open is otherwise invisible here. Null unless
-                                    // the failure actually left the user on this screen.
-                                    loadErrorMessage =
-                                    "Couldn't open that file".takeIf { loadFailedWithNoDocument.value },
-                                    onOpenFile = {
-                                        // Default: soft-filter the picker to text/Markdown so document
-                                        // files surface and binaries (PNG/PDF) don't. Providers that
-                                        // mislabel .md as application/octet-stream are served by the
-                                        // "Browse all files" fallback below (onOpenAnyFile).
-                                        filePickerLauncher.launch(
-                                            arrayOf("text/markdown", "text/plain", "text/*"),
-                                        )
-                                    },
-                                    // M-91: a blank document straight in the editor. No picker here
-                                    // on purpose — it gets a file from Save-As when the writer wants
-                                    // one, which is the whole point of the request.
-                                    onCreateFile = { viewModel.newDocument() },
-                                    onOpenAnyFile = {
-                                        // Show-all fallback for a mislabeled .md (octet-stream/etc.).
-                                        // Uses the no-MIME-filter contract so every file is selectable;
-                                        // same read-only load path — opening never writes to the file.
-                                        openAnyFileLauncher.launch(Unit)
-                                    },
-                                    onOpenRecent = { uri -> viewModel.loadFile(uri) },
-                                    onRemoveRecent = { uri -> viewModel.removeRecent(uri) },
-                                    onClearRecents = { viewModel.clearRecents() },
-                                    onOpenSettings = { showSettings = true },
-                                )
-                            } else {
-                                // File is open: show preview or editor based on mode
-                                // Scroll position and edits preserved across mode toggles
-                                when (mode.value) {
-                                    ViewMode.READER -> {
-                                        // Preview mode (block-level RecyclerView). Restores scroll
-                                        // from previewScroll and reports changes via callback.
-                                        // imePadding so the open search keyboard insets the preview
-                                        // (like the editor already does) — otherwise a scrolled-to
-                                        // search match near the document end is painted correctly but
-                                        // hidden behind the keyboard with no room to scroll above it.
-                                        MarkdownPreview(
-                                            modifier = Modifier.fillMaxSize().imePadding(),
+                // Settings screen (full-screen modal)
+                if (showSettings) {
+                    SettingsScreen(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        fontSetId = fontSetId.value,
+                        onFontSetSelected = { viewModel.setFontSet(it) },
+                        previewFontScale = previewFontScale.value,
+                        onPreviewFontScaleChanged = { viewModel.setPreviewFontScale(it) },
+                        editorFontScale = editorFontScale.value,
+                        onEditorFontScaleChanged = { viewModel.setEditorFontScale(it) },
+                        lineNumbersEnabled = lineNumbersEnabled.value,
+                        onLineNumbersChanged = { viewModel.setLineNumbersEnabled(it) },
+                        openInEditMode = openInEditMode.value,
+                        onOpenInEditModeChanged = { viewModel.setOpenInEditMode(it) },
+                        mermaidCloudEnabled = mermaidCloudEnabled.value,
+                        onMermaidCloudChanged = { viewModel.setMermaidCloudEnabled(it) },
+                        wrapCodeLines = wrapCodeLines.value,
+                        onWrapCodeLinesChanged = { viewModel.setWrapCodeLines(it) },
+                        themeMode = themeMode.value,
+                        onThemeSelected = { viewModel.setThemeMode(it) },
+                        appVersion = appInfo.versionName,
+                        onClose = { showSettings = false },
+                        // Close Settings as we open Licenses — the modal blocks are checked
+                        // showSettings-first, so leaving it true would keep Settings on top.
+                        onOpenLicenses = {
+                            showSettings = false
+                            showLicenses = true
+                        },
+                        // Same pattern as Licenses: close Settings, open the GitHub teaser.
+                        onOpenGitHub = {
+                            showSettings = false
+                            showGitHub = true
+                        },
+                    )
+                } else if (showLicenses) {
+                    LicensesScreen(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        // Back from Licenses returns to Settings (where the user came from).
+                        onClose = {
+                            showLicenses = false
+                            showSettings = true
+                        },
+                    )
+                } else if (showGitHub) {
+                    GitHubIntegrationScreen(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        // Back from the GitHub teaser returns to Settings (where the user came from).
+                        onClose = {
+                            showGitHub = false
+                            showSettings = true
+                        },
+                    )
+                } else {
+                    // Main content area — weight(1f) gives it exactly the space BELOW the toolbar.
+                    // clipToBounds() is essential: the preview hosts a RecyclerView via AndroidView, and
+                    // interop views can paint outside their layout bounds (here, up over the toolbar).
+                    // Clipping confines that draw to this box so content never overlaps the toolbar/search bar.
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                        if (currentDocument.value == null) {
+                            // Welcome screen (no file open)
+                            WelcomeScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                recentFiles = recentFiles.value,
+                                // M-115: a restore is in flight and will emit its document over
+                                // anything created or opened meanwhile.
+                                isLoading = fileLoadState.value is FileLoadState.Loading,
+                                // M-126: a failed open is otherwise invisible here. Null unless
+                                // the failure actually left the user on this screen.
+                                loadErrorMessage =
+                                "Couldn't open that file".takeIf { loadFailedWithNoDocument.value },
+                                onOpenFile = {
+                                    // Default: soft-filter the picker to text/Markdown so document
+                                    // files surface and binaries (PNG/PDF) don't. Providers that
+                                    // mislabel .md as application/octet-stream are served by the
+                                    // "Browse all files" fallback below (onOpenAnyFile).
+                                    filePickerLauncher.launch(
+                                        arrayOf("text/markdown", "text/plain", "text/*"),
+                                    )
+                                },
+                                // M-91: a blank document straight in the editor. No picker here
+                                // on purpose — it gets a file from Save-As when the writer wants
+                                // one, which is the whole point of the request.
+                                onCreateFile = { viewModel.newDocument() },
+                                onOpenAnyFile = {
+                                    // Show-all fallback for a mislabeled .md (octet-stream/etc.).
+                                    // Uses the no-MIME-filter contract so every file is selectable;
+                                    // same read-only load path — opening never writes to the file.
+                                    openAnyFileLauncher.launch(Unit)
+                                },
+                                onOpenRecent = { uri -> viewModel.loadFile(uri) },
+                                onRemoveRecent = { uri -> viewModel.removeRecent(uri) },
+                                onClearRecents = { viewModel.clearRecents() },
+                                onOpenSettings = { showSettings = true },
+                            )
+                        } else {
+                            // File is open: show preview or editor based on mode
+                            // Scroll position and edits preserved across mode toggles
+                            when (mode.value) {
+                                ViewMode.READER -> {
+                                    // Preview mode (block-level RecyclerView). Restores scroll
+                                    // from previewScroll and reports changes via callback.
+                                    // imePadding so the open search keyboard insets the preview
+                                    // (like the editor already does) — otherwise a scrolled-to
+                                    // search match near the document end is painted correctly but
+                                    // hidden behind the keyboard with no room to scroll above it.
+                                    MarkdownPreview(
+                                        modifier = Modifier.fillMaxSize().imePadding(),
+                                        content = currentDocument.value!!.content,
+                                        renderer = renderer,
+                                        fontScale = previewFontScale.value,
+                                        fontSet = fontSet,
+                                        mermaidCloudEnabled = mermaidCloudEnabled.value,
+                                        wrapCodeLines = wrapCodeLines.value,
+                                        scrollPosition = previewScroll.value,
+                                        onScrollChanged = { position ->
+                                            viewModel.updatePreviewScroll(position)
+                                        },
+                                        // Pinch-to-zoom commits the new preview scale through the
+                                        // same setting the Settings A−/A+ slider writes (stays in sync).
+                                        onFontScaleChange = { viewModel.setPreviewFontScale(it) },
+                                        searchMatches = searchMatches.value,
+                                        currentMatchIndex = currentMatchIndex.value,
+                                        jumpPosition = headingJump.value?.position ?: -1,
+                                        jumpSeq = headingJump.value?.seq ?: 0,
+                                        renderMode = renderMode.value,
+                                    )
+                                }
+                                ViewMode.EDITOR -> {
+                                    // Editor mode: editable source with line numbers + One Dark highlighting.
+                                    // Restores scroll from editorScroll.
+                                    // key(uri): the editor owns its TextFieldValue locally; re-seed it only
+                                    // when a different file is opened, never on every keystroke echo.
+                                    key(currentDocument.value!!.uri) {
+                                        MarkdownEditor(
+                                            modifier = Modifier.fillMaxSize(),
                                             content = currentDocument.value!!.content,
-                                            renderer = renderer,
-                                            fontScale = previewFontScale.value,
-                                            fontSet = fontSet,
-                                            mermaidCloudEnabled = mermaidCloudEnabled.value,
-                                            scrollPosition = previewScroll.value,
-                                            onScrollChanged = { position ->
-                                                viewModel.updatePreviewScroll(position)
+                                            onContentChange = { newContent ->
+                                                // Update ViewModel: marks content dirty, flows to UI
+                                                viewModel.updateContent(newContent)
                                             },
-                                            // Pinch-to-zoom commits the new preview scale through the
-                                            // same setting the Settings A−/A+ slider writes (stays in sync).
-                                            onFontScaleChange = { viewModel.setPreviewFontScale(it) },
-                                            searchMatches = searchMatches.value,
-                                            currentMatchIndex = currentMatchIndex.value,
-                                            jumpPosition = headingJump.value?.position ?: -1,
-                                            jumpSeq = headingJump.value?.seq ?: 0,
-                                            renderMode = renderMode.value,
+                                            lineNumbersEnabled = lineNumbersEnabled.value,
+                                            fontScale = editorFontScale.value,
+                                            fontSet = fontSet,
+                                            themeMode = themeMode.value,
+                                            scrollPosition = editorScroll.value,
+                                            onScrollChanged = { position ->
+                                                viewModel.updateEditorScroll(position)
+                                            },
+                                            initialCursor = editorCursor.value,
+                                            onCursorChange = { offset ->
+                                                viewModel.updateEditorCursor(offset)
+                                            },
+                                            codeEditorInstance = soraCodeEditor,
                                         )
-                                    }
-                                    ViewMode.EDITOR -> {
-                                        // Editor mode: editable source with line numbers + One Dark highlighting.
-                                        // Restores scroll from editorScroll.
-                                        // key(uri): the editor owns its TextFieldValue locally; re-seed it only
-                                        // when a different file is opened, never on every keystroke echo.
-                                        key(currentDocument.value!!.uri) {
-                                            MarkdownEditor(
-                                                modifier = Modifier.fillMaxSize(),
-                                                content = currentDocument.value!!.content,
-                                                onContentChange = { newContent ->
-                                                    // Update ViewModel: marks content dirty, flows to UI
-                                                    viewModel.updateContent(newContent)
-                                                },
-                                                lineNumbersEnabled = lineNumbersEnabled.value,
-                                                fontScale = editorFontScale.value,
-                                                fontSet = fontSet,
-                                                themeMode = themeMode.value,
-                                                scrollPosition = editorScroll.value,
-                                                onScrollChanged = { position ->
-                                                    viewModel.updateEditorScroll(position)
-                                                },
-                                                initialCursor = editorCursor.value,
-                                                onCursorChange = { offset ->
-                                                    viewModel.updateEditorCursor(offset)
-                                                },
-                                                codeEditorInstance = soraCodeEditor,
-                                            )
-                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    // Unsaved-changes guard. Closing a dirty file asks to Save or Discard
-                    // rather than silently dropping edits. Save-then-close happens in one VM
-                    // coroutine; a failed save keeps the file open and surfaces the error
-                    // (Safeguard 1: never lose the user's content).
-                    if (showCloseConfirm) {
-                        AlertDialog(
-                            onDismissRequest = { showCloseConfirm = false },
-                            containerColor = mdColors().secondarySurface,
-                            titleContentColor = mdColors().primaryText,
-                            textContentColor = mdColors().secondaryText,
-                            title = { Text("Unsaved changes") },
-                            text = { Text("You have unsaved edits. Save before closing?") },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    showCloseConfirm = false
-                                    // Neither a transient doc nor a never-saved one (M-91) can save
-                                    // in place → route to Save-As (adopts a persistable location; the
-                                    // user can then close it normally). Otherwise the atomic
-                                    // save-then-close. Without the unsaved case here, tapping Save on
-                                    // the close prompt for a brand-new document would close it and
-                                    // DISCARD the text (Safeguard 1).
-                                    if (transient.value || currentDocument.value?.isUnsaved == true) {
-                                        launchSaveAs()
-                                    } else {
-                                        viewModel.saveAndClose()
-                                    }
-                                }) {
-                                    Text("Save", color = mdColors().primaryText)
+                // Unsaved-changes guard. Closing a dirty file asks to Save or Discard
+                // rather than silently dropping edits. Save-then-close happens in one VM
+                // coroutine; a failed save keeps the file open and surfaces the error
+                // (Safeguard 1: never lose the user's content).
+                if (showCloseConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showCloseConfirm = false },
+                        containerColor = mdColors().secondarySurface,
+                        titleContentColor = mdColors().primaryText,
+                        textContentColor = mdColors().secondaryText,
+                        title = { Text("Unsaved changes") },
+                        text = { Text("You have unsaved edits. Save before closing?") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showCloseConfirm = false
+                                // Neither a transient doc nor a never-saved one (M-91) can save
+                                // in place → route to Save-As (adopts a persistable location; the
+                                // user can then close it normally). Otherwise the atomic
+                                // save-then-close. Without the unsaved case here, tapping Save on
+                                // the close prompt for a brand-new document would close it and
+                                // DISCARD the text (Safeguard 1).
+                                if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                    launchSaveAs()
+                                } else {
+                                    viewModel.saveAndClose()
                                 }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = {
-                                    showCloseConfirm = false
-                                    viewModel.closeFile()
-                                }) {
-                                    Text("Discard", color = mdColors().secondaryText)
-                                }
-                            },
-                        )
-                    }
+                            }) {
+                                Text("Save", color = mdColors().primaryText)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                showCloseConfirm = false
+                                viewModel.closeFile()
+                            }) {
+                                Text("Discard", color = mdColors().secondaryText)
+                            }
+                        },
+                    )
+                }
 
-                    // Warm-intent open while the current file has unsaved edits. Same
-                    // Save/Discard guard as Close, so switching files can't silently drop edits.
-                    if (pendingOpenUri.value != null) {
-                        AlertDialog(
-                            onDismissRequest = { viewModel.cancelPendingOpen() },
-                            containerColor = mdColors().secondarySurface,
-                            titleContentColor = mdColors().primaryText,
-                            textContentColor = mdColors().secondaryText,
-                            title = { Text("Unsaved changes") },
-                            text = { Text("Open the new file? Save your current edits first, or discard them.") },
-                            confirmButton = {
-                                // Neither a transient doc nor a never-saved one (M-91) can save in
-                                // place → route to Save-As (adopts a persistable location); the prompt
-                                // stays up so a second Save (now clean) proceeds to open the pending
-                                // file. Otherwise the atomic save-then-open.
-                                TextButton(onClick = {
-                                    if (transient.value || currentDocument.value?.isUnsaved == true) {
-                                        launchSaveAs()
-                                    } else {
-                                        viewModel.saveAndOpenPending()
-                                    }
-                                }) {
-                                    Text("Save", color = mdColors().primaryText)
+                // Warm-intent open while the current file has unsaved edits. Same
+                // Save/Discard guard as Close, so switching files can't silently drop edits.
+                if (pendingOpenUri.value != null) {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.cancelPendingOpen() },
+                        containerColor = mdColors().secondarySurface,
+                        titleContentColor = mdColors().primaryText,
+                        textContentColor = mdColors().secondaryText,
+                        title = { Text("Unsaved changes") },
+                        text = { Text("Open the new file? Save your current edits first, or discard them.") },
+                        confirmButton = {
+                            // Neither a transient doc nor a never-saved one (M-91) can save in
+                            // place → route to Save-As (adopts a persistable location); the prompt
+                            // stays up so a second Save (now clean) proceeds to open the pending
+                            // file. Otherwise the atomic save-then-open.
+                            TextButton(onClick = {
+                                if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                    launchSaveAs()
+                                } else {
+                                    viewModel.saveAndOpenPending()
                                 }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { viewModel.discardAndOpenPending() }) {
-                                    Text("Discard", color = mdColors().secondaryText)
-                                }
-                            },
-                        )
-                    }
+                            }) {
+                                Text("Save", color = mdColors().primaryText)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.discardAndOpenPending() }) {
+                                Text("Discard", color = mdColors().secondaryText)
+                            }
+                        },
+                    )
+                }
 
-                    // Stranded-WAL-slot dialog (escape hatch): lists 1..N stranded slots, each with its
-                    // own "Save a copy" (rescue raw bytes to a new file) and "Discard". Auto-popped on a
-                    // cold launcher start with slots; otherwise opened from the persistent indicator.
-                    // Closes itself when the last slot is rescued/discarded (list goes empty). Never
-                    // auto-discards — dismiss leaves every slot intact.
-                    if (strandedDialogVisible.value && strandedSlots.value.isNotEmpty()) {
-                        AlertDialog(
-                            onDismissRequest = { viewModel.dismissStrandedDialog() },
-                            containerColor = mdColors().secondarySurface,
-                            titleContentColor = mdColors().primaryText,
-                            textContentColor = mdColors().secondaryText,
-                            title = { Text("Recover unsaved files") },
-                            text = {
-                                Column {
-                                    Text(
-                                        "These saves couldn't be written to their original location. " +
-                                            "Save a copy of each to keep it, or discard it.",
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    strandedSlots.value.forEach { slot ->
-                                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                                            Text(slot.displayName, color = mdColors().primaryText)
-                                            Row {
-                                                TextButton(onClick = { launchRescue(slot) }) {
-                                                    Text("Save a copy", color = mdColors().primaryText)
-                                                }
-                                                TextButton(onClick = { viewModel.discardStrandedSlot(slot.key) }) {
-                                                    Text("Discard", color = mdColors().secondaryText)
-                                                }
+                // Stranded-WAL-slot dialog (escape hatch): lists 1..N stranded slots, each with its
+                // own "Save a copy" (rescue raw bytes to a new file) and "Discard". Auto-popped on a
+                // cold launcher start with slots; otherwise opened from the persistent indicator.
+                // Closes itself when the last slot is rescued/discarded (list goes empty). Never
+                // auto-discards — dismiss leaves every slot intact.
+                if (strandedDialogVisible.value && strandedSlots.value.isNotEmpty()) {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissStrandedDialog() },
+                        containerColor = mdColors().secondarySurface,
+                        titleContentColor = mdColors().primaryText,
+                        textContentColor = mdColors().secondaryText,
+                        title = { Text("Recover unsaved files") },
+                        text = {
+                            Column {
+                                Text(
+                                    "These saves couldn't be written to their original location. " +
+                                        "Save a copy of each to keep it, or discard it.",
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                strandedSlots.value.forEach { slot ->
+                                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                        Text(slot.displayName, color = mdColors().primaryText)
+                                        Row {
+                                            TextButton(onClick = { launchRescue(slot) }) {
+                                                Text("Save a copy", color = mdColors().primaryText)
+                                            }
+                                            TextButton(onClick = { viewModel.discardStrandedSlot(slot.key) }) {
+                                                Text("Discard", color = mdColors().secondaryText)
                                             }
                                         }
                                     }
                                 }
-                            },
-                            confirmButton = {
-                                TextButton(onClick = { viewModel.dismissStrandedDialog() }) {
-                                    Text("Close", color = mdColors().primaryText)
-                                }
-                            },
-                        )
-                    }
-                }
-
-                // Transient centered save-status message. Lives at the Box level (sibling of the
-                // Column above) so it overlays the content instead of displacing it. Accent
-                // background on success, red on failure — clearly visible over the editor.
-                AnimatedVisibility(
-                    visible = statusToastVisible,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                    modifier = Modifier.align(Alignment.Center),
-                ) {
-                    Text(
-                        text = statusToastText,
-                        color = if (statusToastError) mdColors().onError else mdColors().onAccent,
-                        fontSize = 16.sp,
-                        modifier = Modifier
-                            .background(
-                                if (statusToastError) mdColors().error else mdColors().accent,
-                                shape = RoundedCornerShape(8.dp),
-                            )
-                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.dismissStrandedDialog() }) {
+                                Text("Close", color = mdColors().primaryText)
+                            }
+                        },
                     )
                 }
+            }
+
+            // Transient centered save-status message. Lives at the Box level (sibling of the
+            // Column above) so it overlays the content instead of displacing it. Accent
+            // background on success, red on failure — clearly visible over the editor.
+            AnimatedVisibility(
+                visible = statusToastVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                Text(
+                    text = statusToastText,
+                    color = if (statusToastError) mdColors().onError else mdColors().onAccent,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .background(
+                            if (statusToastError) mdColors().error else mdColors().accent,
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                )
             }
         }
     }

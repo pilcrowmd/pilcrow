@@ -92,15 +92,15 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
         renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
     ): List<Pair<Int, Int>> = runCatching {
         val pageContentWidthPx = (ptToPx(PAGE_CONTENT_WIDTH_PT.toFloat()) / PRINT_SCALE).toInt()
-        val nodes = topLevelBlocksForMode(markwonRenderer.markwon, content, renderMode)
-        layoutBuilder.measureBlockBounds(markwonRenderer.markwon, nodes, pageContentWidthPx, fontScale)
+        val nodes = topLevelBlocksForMode(markwonRenderer.printMarkwon, content, renderMode)
+        layoutBuilder.measureBlockBounds(markwonRenderer.printMarkwon, nodes, pageContentWidthPx, fontScale)
     }.getOrThrow()
 
     /**
      * Helper: get the Markwon instance from the renderer singleton.
      * (The renderer is usually accessed via AppContainer; this is a convenience.)
      */
-    internal fun getMarkwon(): Markwon = markwonRenderer.markwon
+    internal fun getMarkwon(): Markwon = markwonRenderer.printMarkwon
 
     /**
      * Test visibility: get the peak number of concurrently-live block views from the builder.
@@ -130,11 +130,11 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
         // (per-page render), so a P-page export parses once — not P+1 times. The same node objects
         // are bound multiple times (a block spanning two pages renders on both); binding is a
         // read-only render, so it is idempotent and heights stay deterministic across passes.
-        val nodes = topLevelBlocksForMode(markwonRenderer.markwon, content, renderMode)
+        val nodes = topLevelBlocksForMode(markwonRenderer.printMarkwon, content, renderMode)
 
         // Pass 1: Compute block bounds (streaming, O(1) live views)
         val blockBounds =
-            layoutBuilder.measureBlockBounds(markwonRenderer.markwon, nodes, pageContentWidthPx, fontScale)
+            layoutBuilder.measureBlockBounds(markwonRenderer.printMarkwon, nodes, pageContentWidthPx, fontScale)
         if (blockBounds.isEmpty()) {
             // Empty document: still produce a blank page
             val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH_PT, A4_HEIGHT_PT, 1).create()
@@ -195,7 +195,7 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
                 bottom > pageStartY && top < pageEndY
             }.toSet()
             layoutBuilder.forEachBlock(
-                PdfContentLayoutBuilder.ParseSpec(markwonRenderer.markwon, nodes, pageContentWidthPx, fontScale),
+                PdfContentLayoutBuilder.ParseSpec(markwonRenderer.printMarkwon, nodes, pageContentWidthPx, fontScale),
                 visibleIndices,
             ) { index, _, blockView ->
                 canvas.save()

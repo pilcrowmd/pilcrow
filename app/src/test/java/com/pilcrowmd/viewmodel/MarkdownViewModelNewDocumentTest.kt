@@ -19,8 +19,12 @@ import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -35,6 +39,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * **M-90** (open documents in edit mode, by setting) and **M-91** (a blank document created from
@@ -95,6 +100,20 @@ class MarkdownViewModelNewDocumentTest {
         storage = RecordingStorage(LocalStorageManager(context, dataStore))
     }
 
+    /**
+     * The open-in-edit-mode setting is ON, but the ViewModel's own `openInEditMode` StateFlow never
+     * hears it: the first collector — the ViewModel's `stateIn`, started at construction — waits for
+     * ever, and every later collector gets `true`. That is a cold "Open with" in which the load
+     * outruns DataStore, made deterministic.
+     */
+    private class UnheardSettingStorage(delegate: StorageManager) : StorageManager by delegate {
+        private val collections = AtomicInteger()
+        override val openInEditMode: Flow<Boolean> = flow {
+            if (collections.getAndIncrement() == 0) awaitCancellation()
+            emit(true)
+        }
+    }
+
     @After
     fun tearDown() {
         storageScope.cancel()
@@ -117,7 +136,7 @@ class MarkdownViewModelNewDocumentTest {
         override suspend fun discardSlot(key: String) = Result.success(Unit)
     }
 
-    private fun vmWith(repo: FakeRepo = FakeRepo()): MarkdownViewModel {
+    private fun vmWith(repo: FakeRepo = FakeRepo(), storage: StorageManager = this.storage): MarkdownViewModel {
         val parseHeadings = ParseMarkdownHeadingsUseCase()
         return MarkdownViewModel(
             repository = repo,
@@ -223,6 +242,61 @@ class MarkdownViewModelNewDocumentTest {
             ViewMode.EDITOR,
             vm.mode.value,
         )
+    }
+
+    /**
+     * **M-111.** With the setting on, the new document must never be observable in the READER —
+     * not even for the frames between its publish and the mode flip. If it is, the screen
+     * composes the reader for it and runs the full Markwon parse on Main, only to throw it away.
+     *
+     * **Why an Unconfined collector and not a final-state read.** The final state is EDITOR either
+     * way, so a read after the load settles passes against the bug. A collector on
+     * `Dispatchers.Unconfined` runs synchronously inside the document emit, so it samples the mode
+     * at the exact moment the document becomes observable. The barrier after it is only there to
+     * make sure that moment has happened.
+     */
+    @Test
+    fun settingOnFlipsToTheEditorBeforeTheDocumentIsPublished() {
+        val vm = vmWith()
+        runBlocking { storage.setOpenInEditMode(true) }
+        awaitValue(true, "setting reaches the ViewModel") { vm.openInEditMode.value }
+        assertEquals("precondition: the session starts in the reader", ViewMode.READER, vm.mode.value)
+
+        val modeWhenPublished = mutableListOf<ViewMode>()
+        val observer = CoroutineScope(Dispatchers.Unconfined + Job())
+        observer.launch {
+            vm.currentDocument.collect { doc -> if (doc?.uri == mdUri) modeWhenPublished += vm.mode.value }
+        }
+        try {
+            vm.loadFile(mdUri)
+            vm.awaitSettled("load")
+        } finally {
+            observer.cancel()
+        }
+
+        assertEquals(
+            "the document must first appear with the editor already selected",
+            listOf(ViewMode.EDITOR),
+            modeWhenPublished,
+        )
+    }
+
+    /**
+     * **M-111's other half.** The fast path reads `openInEditMode.value`, which is `false` until
+     * DataStore delivers. The storage read after the publish is what still honours the setting
+     * when the load gets there first, so it must not be removed as redundant. Delete that read and
+     * this test fails; the fast path alone leaves the document in the reader.
+     */
+    @Test
+    fun settingOnStillOpensTheEditorWhenTheViewModelHasNotHeardItYet() {
+        val vm = vmWith(storage = UnheardSettingStorage(storage))
+        assertFalse("precondition: the ViewModel has not heard the setting", vm.openInEditMode.value)
+
+        vm.loadFile(mdUri)
+        vm.awaitSettled("load")
+
+        assertFalse("precondition: it still has not", vm.openInEditMode.value)
+        assertEquals("the storage read still opens it in the editor", ViewMode.EDITOR, vm.mode.value)
     }
 
     // ── M-91: a blank document with no file ──────────────────────────────────────────

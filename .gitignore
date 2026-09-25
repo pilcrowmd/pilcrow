@@ -34,6 +34,12 @@ keystore.properties
 .DS_Store
 Thumbs.db
 
+# Agent scratch output (gate logs, mutation results, .bak, verdicts, PR drafts,
+# review prompts) — never source, never published. Gitignored files never enter
+# `git ls-files --cached --others --exclude-standard`, so .planning/zero-check.sh's
+# scan surface excludes it with no deny-list entry needed.
+.scratch/
+
 # Logs
 *.log
 

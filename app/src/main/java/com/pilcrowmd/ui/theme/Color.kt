@@ -58,6 +58,105 @@ data class PilcrowColorScheme(
 
     // Scrim overlay
     val scrimOverlay: Color,
+
+    // Reader code-token colours for fenced code (M-135). One set per scheme so light-theme code
+    // stays readable on its own background.
+    val codeSyntax: CodeSyntaxColors,
+
+    // Footnote markers and back-arrows (M-96). Separate from `accent`, which is a fill colour.
+    val footnoteMarker: Color,
+)
+
+/**
+ * Reader syntax-highlighting colours for fenced code, per token role.
+ *
+ * The first six roles are the original map. The rest were added for M-132/M-133 (Markdown, `git`/diff,
+ * CSS and friends) and are nullable: a null role leaves its tokens in the default code text colour,
+ * exactly as they rendered before those roles existed. Print leaves them all null, which is how the
+ * exported PDF stays unchanged.
+ */
+data class CodeSyntaxColors(
+    val keyword: Color,
+    val string: Color,
+    val number: Color,
+    val comment: Color,
+    val error: Color,
+    val function: Color,
+    /** Markdown heading text (`title`). */
+    val heading: Color? = null,
+    /** Markdown `bold` and `italic`: a colour only, the code font stays regular. */
+    val emphasis: Color? = null,
+    /** `url` and `url-reference`. */
+    val link: Color? = null,
+    /** Structural markers: Markdown `list`, `hr`, `blockquote`; a diff's `@@` hunk header (`coord`). */
+    val marker: Color? = null,
+    /** Literal-ish tokens with no role of their own: Markdown `code`, `regex`, `symbol`, `commit_sha1`. */
+    val literal: Color? = null,
+    /** `variable`, `property`, `entity`. */
+    val variable: Color? = null,
+    /** `builtin`, `namespace`, CSS `selector` and `atrule`, a git `command` line. */
+    val builtin: Color? = null,
+    /** A diff's added line (`inserted`). */
+    val inserted: Color? = null,
+    /** A diff's removed line (`deleted`). */
+    val deleted: Color? = null,
+)
+
+/**
+ * One Dark code tokens for the Dark theme. The added roles take the One Dark hues the editor's
+ * `md-dark.json` already uses for the same Markdown constructs.
+ */
+val OneDarkCodeSyntax = CodeSyntaxColors(
+    keyword = Color(0xFF61AFEF),
+    string = Color(0xFF98C379),
+    number = Color(0xFFD19A66),
+    comment = Color(0xFFABB2BF),
+    error = Color(0xFFE06C75),
+    function = Color(0xFFC678DD),
+    heading = Color(0xFF61AFEF),
+    emphasis = Color(0xFFE5C07B),
+    link = Color(0xFF98C379),
+    marker = Color(0xFF56B6C2),
+    literal = Color(0xFFD19A66),
+    variable = Color(0xFFE06C75),
+    builtin = Color(0xFF56B6C2),
+    inserted = Color(0xFF98C379),
+    deleted = Color(0xFFE06C75),
+)
+
+/**
+ * Print code tokens: the six original One Dark roles and nothing else. The added roles stay null, so
+ * the exported PDF colours exactly the tokens it always did (M-132 must not change the export).
+ */
+val PrintCodeSyntax = CodeSyntaxColors(
+    keyword = Color(0xFF61AFEF),
+    string = Color(0xFF98C379),
+    number = Color(0xFFD19A66),
+    comment = Color(0xFFABB2BF),
+    error = Color(0xFFE06C75),
+    function = Color(0xFFC678DD),
+)
+
+/**
+ * Light-theme code tokens: the editor's `md-light.json` hues, darkened just enough to reach 4.5:1
+ * on the light code-block background. Every role is held to that by `CodeSyntaxContrastTest`.
+ */
+val LightCodeSyntax = CodeSyntaxColors(
+    keyword = Color(0xFF2A64A0),
+    string = Color(0xFF3F6B2F),
+    number = Color(0xFF9A4A36),
+    comment = Color(0xFF6A5E4C),
+    error = Color(0xFFA8352B),
+    function = Color(0xFF7E449F),
+    heading = Color(0xFF8049A2),
+    emphasis = Color(0xFF29649E),
+    link = Color(0xFF446A33),
+    marker = Color(0xFF39696E),
+    literal = Color(0xFF974C39),
+    variable = Color(0xFFA33E62),
+    builtin = Color(0xFF256C62),
+    inserted = Color(0xFF3F6B2F),
+    deleted = Color(0xFFA8352B),
 )
 
 /**
@@ -76,7 +175,8 @@ val DarkColorScheme = PilcrowColorScheme(
     // Gutter sits a touch LIGHTER than the editor area (#2C2C2B) so the line-number column
     // reads as a distinct strip (matching the Sora demo look).
     gutterBg = Color(0xFF353534),
-    inlineCodeBg = Color(0xFF3A3535),
+    // Inline code shares the code-block surface in Dark (unchanged look).
+    inlineCodeBg = Color(0xFF313131),
     inlineCodeText = Color(0xFFE8A39A),
     inlineCodeBorder = Color(0xFF524949),
     codeBlockBg = Color(0xFF313131),
@@ -91,6 +191,8 @@ val DarkColorScheme = PilcrowColorScheme(
     creamButton = Color(0xFFE4E1DC),
     onCreamButton = Color(0xFF2C2C2B),
     scrimOverlay = Color.Black.copy(alpha = 0.32f),
+    codeSyntax = OneDarkCodeSyntax,
+    footnoteMarker = Color(0xFF8E7CD6), // same as accent: it already reads in Dark
 )
 
 /**
@@ -109,10 +211,11 @@ val LightColorScheme = PilcrowColorScheme(
     // Gutter a touch LIGHTER (toward white) than the cream editor area (#F6EFE1); the
     // current-line band (#EFE7D5 in md-light.json) stays distinct below it.
     gutterBg = Color(0xFFFCF8EF),
-    inlineCodeBg = Color(0xFFECE1CE),
+    // Inline code gets its own chip in Light, darker than both the page and the code block.
+    inlineCodeBg = Color(0xFFE2D3B5),
     inlineCodeText = Color(0xFFA8543F),
     inlineCodeBorder = Color(0xFFDECFB6),
-    codeBlockBg = Color(0xFFEFE6D2),
+    codeBlockBg = Color(0xFFE9DEC6),
     codeBlockBorder = Color(0xFFDDD0B6),
     toolbarBorder = Color(0xFFE0D6C2),
     searchHighlight = Color(0xFFEAD9A0),
@@ -126,6 +229,8 @@ val LightColorScheme = PilcrowColorScheme(
     // No scrimOverlay is specified for light; use same as Dark (soft dark still reads on cream)
     // May need a visual pass if adjustment is needed.
     scrimOverlay = Color.Black.copy(alpha = 0.32f),
+    codeSyntax = LightCodeSyntax,
+    footnoteMarker = Color(0xFF5B3FC4), // more saturated than accent, so a small raised digit is findable
 )
 
 /**
@@ -162,6 +267,8 @@ val PrintColorScheme = PilcrowColorScheme(
     creamButton = Color(0xFF2A2A2A), // Dark text on white for buttons
     onCreamButton = Color(0xFFFFFFFF), // White text on dark buttons
     scrimOverlay = Color.Black.copy(alpha = 0.32f), // Not used in PDF, for consistency
+    codeSyntax = PrintCodeSyntax, // the PDF's code tokens stay as they were; the export must not change
+    footnoteMarker = Color(0xFF5A4A8A), // same as the print accent: the export must not change
 )
 
 /**
@@ -180,16 +287,8 @@ val LocalMDColors = staticCompositionLocalOf { DarkColorScheme }
 fun mdColors(): PilcrowColorScheme = LocalMDColors.current
 
 /**
- * One Dark syntax highlighting palette for Markdown source tokens.
- * Derived from One Dark theme (Atom).
+ * Opacity of an action that is on screen but cannot be used right now (M-117). Applied to the whole
+ * control, so fill, border, icon and label dim together and every colour is still a token of the
+ * active scheme. Same value as the transient banner's disabled state in `MainScreen`.
  */
-object EditorSyntaxColors {
-    // Markdown source token colors (not for per-language code highlighting)
-    val headers = Color(0xFFC678DD)
-    val codeFenceContent = Color(0xFF98C379)
-    val keywords = Color(0xFF61AFEF)
-    val strings = Color(0xFF98C379)
-    val numbers = Color(0xFFD19A66)
-    val errors = Color(0xFFE06C75)
-    val comments = Color(0xFFABB2BF)
-}
+const val DISABLED_ACTION_ALPHA = 0.5f

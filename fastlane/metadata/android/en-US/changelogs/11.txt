@@ -1,0 +1,7 @@
+Brighter code, a fully light theme, and fixes.
+
+- Diff and Markdown code blocks are now in colour.
+- New setting: wrap long lines in code blocks.
+- The light theme is light everywhere, including code and the headings drawer.
+- Headings follow a clearer size scale.
+- A file opened from another app is no longer replaced by your last file, or reopened when you turn the phone.

@@ -208,7 +208,11 @@ class TableBlockEntry(
         val spanned = markwon.render(cell)
         // Same accent treatment a marker gets in prose — a footnote in a table cell must not read
         // as a different thing from the identical footnote one paragraph above it.
-        if (spanned.isNullOrEmpty()) plainText(cell) else tintFootnoteMarkers(spanned, colorScheme.accent.toArgb())
+        if (spanned.isNullOrEmpty()) {
+            plainText(cell)
+        } else {
+            tintFootnoteMarkers(spanned, colorScheme.footnoteMarker.toArgb())
+        }
     } catch (e: Exception) {
         plainText(cell)
     }

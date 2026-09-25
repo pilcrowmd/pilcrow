@@ -20,6 +20,7 @@ import com.pilcrowmd.ui.theme.PilcrowTypography
 import com.pilcrowmd.ui.theme.PreviewLineHeightMultiplier
 import io.noties.markwon.Markwon
 import io.noties.markwon.recycler.MarkwonAdapter
+import org.commonmark.node.Heading
 import org.commonmark.node.Node
 import org.commonmark.node.Paragraph
 
@@ -55,20 +56,25 @@ class ProseBlockEntry(
     override fun bindHolder(markwon: Markwon, holder: Holder, node: Node) {
         // Tighten the gap between body paragraphs only. The prose layout's 8dp top+bottom puts
         // consecutive paragraphs 16dp apart, which reads as over-spaced; settled on 6dp (→12dp between
-        // two paragraphs). Headings, lists, blockquotes and rules keep the 8dp default.
+        // two paragraphs). Headings get their own asymmetric padding (M-164); lists, blockquotes and
+        // rules keep the 8dp default.
         // Set on every bind so a recycled holder never carries a stale paragraph padding.
         // Only top-level body paragraphs are tightened. MarkwonAdapter dispatches only top-level
         // document blocks to this default entry (and UNLINKS each node from the tree before binding,
         // so `node.parent` is null here — a `parent is Document` guard would wrongly disable this).
         // Paragraphs nested in lists/blockquotes render inside their parent block's single TextView,
         // never via bindHolder, so a plain `node is Paragraph` already scopes to body paragraphs.
-        val verticalPaddingDp = if (node is Paragraph) PARAGRAPH_VERTICAL_PADDING_DP else PROSE_VERTICAL_PADDING_DP
-        val verticalPaddingPx = (verticalPaddingDp * context.resources.displayMetrics.density).toInt()
+        val (topPaddingDp, bottomPaddingDp) = when (node) {
+            is Paragraph -> PARAGRAPH_VERTICAL_PADDING_DP to PARAGRAPH_VERTICAL_PADDING_DP
+            is Heading -> HEADING_TOP_PADDING_DP to HEADING_BOTTOM_PADDING_DP
+            else -> PROSE_VERTICAL_PADDING_DP to PROSE_VERTICAL_PADDING_DP
+        }
+        val density = context.resources.displayMetrics.density
         holder.textView.setPadding(
             holder.textView.paddingLeft,
-            verticalPaddingPx,
+            (topPaddingDp * density).toInt(),
             holder.textView.paddingRight,
-            verticalPaddingPx,
+            (bottomPaddingDp * density).toInt(),
         )
         // Re-apply the size on EVERY bind, for the same reason the padding and colour above are
         // re-applied: a recycled holder must not carry state from its previous life. The live
@@ -87,10 +93,10 @@ class ProseBlockEntry(
             // Reset shared-holder state: a recycled holder may carry the fallback's secondaryText
             // color from a previous failed bind — restore primaryText on every healthy bind.
             holder.textView.setTextColor(colorScheme.primaryText.toArgb())
-            // Footnote markers take the accent from the ACTIVE scheme (Dark/Light/Print). The
+            // Footnote markers take `footnoteMarker` from the ACTIVE scheme (Dark/Light/Print). The
             // Markwon visitor that emits them is one shared singleton across all three, so it
             // cannot pick the colour itself — the entry, which knows the scheme, does (Safeguard 4).
-            val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.accent.toArgb())
+            val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.footnoteMarker.toArgb())
             markwon.setParsedMarkdown(holder.textView, rendered)
             // A footnote marker paints at 0.75 of body size — about 20 px, which missed two taps
             // in three during UAT. This widens the HIT AREA only; the glyph is untouched (M-06).
@@ -115,10 +121,15 @@ class ProseBlockEntry(
 
     internal companion object {
         // Vertical padding for prose blocks. Paragraphs use 6dp → 12dp between two body paragraphs;
-        // all other prose blocks (headings, lists, blockquotes, rules) keep 8dp
+        // lists, blockquotes and rules keep 8dp
         // (adapter_default_prose.xml default) so their spacing is unaffected.
         const val PARAGRAPH_VERTICAL_PADDING_DP = 6f
         const val PROSE_VERTICAL_PADDING_DP = 8f
+
+        // M-164: headings sit further from the text above than from the text they
+        // introduce. With a paragraph's 6dp either side: 30dp above a heading, 18dp below it.
+        const val HEADING_TOP_PADDING_DP = 24f
+        const val HEADING_BOTTOM_PADDING_DP = 12f
 
         // Shown when a prose block fails to render (Safeguard 3 fallback). Internal so the
         // failure-path test asserts the exact degradation contract.

@@ -52,6 +52,7 @@ import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
 import com.pilcrowmd.ui.theme.mdColors
+import io.noties.markwon.Markwon
 import io.noties.markwon.recycler.MarkwonAdapter
 
 /**
@@ -84,6 +85,7 @@ fun MarkdownPreview(
     fontScale: Float = 1.0f,
     fontSet: FontSet = FontSets.DEFAULT,
     mermaidCloudEnabled: Boolean = false,
+    wrapCodeLines: Boolean = false,
     scrollPosition: ScrollAnchor = ScrollAnchor(),
     onScrollChanged: (ScrollAnchor) -> Unit = {},
     onFontScaleChange: (Float) -> Unit = {},
@@ -147,12 +149,13 @@ fun MarkdownPreview(
                     applyReaderJumpBehaviour(this, c.searchHighlightFocused.toArgb())
                     adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         context,
-                        renderer.markwon,
+                        renderer.markwonFor(c),
                         fontScale,
                         fontSet,
                         mermaidCloudEnabled,
                         searchHighlight,
                         c,
+                        wrapCodeLines,
                     )
                     addOnScrollListener(object : RecyclerView.OnScrollListener() {
                         override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -267,7 +270,7 @@ fun MarkdownPreview(
                     liveFontScale.value = fontScale
                 }
 
-                // (0) Rebuild the adapter if the font set, scale, mermaid toggle, or theme changed since it
+                // (0) Rebuild the adapter if the font set, scale, mermaid or wrap toggle, or theme changed since it
                 // was built (e.g. after file open, user toggled theme, or a pinch moved the live scale).
                 // Font size is baked into each holder at createHolder, so a scale change needs new holders
                 // — i.e. a fresh adapter. To do that WITHOUT a flicker during a live pinch: parse the
@@ -276,8 +279,8 @@ fun MarkdownPreview(
                 // first layout of the new adapter lands in place — no blank frame, no reposition flash.
                 // renderMode is part of the key: the .txt plain⇄markdown toggle re-renders
                 // through the flicker-free rebuild path like a font-scale change.
-                val configKey =
-                    "${liveFontScale.value}|${fontSet.id}|$mermaidCloudEnabled|${c.primaryBackground}|$renderMode"
+                val configKey = "${liveFontScale.value}|${fontSet.id}|$mermaidCloudEnabled|$wrapCodeLines|" +
+                    "${c.primaryBackground}|$renderMode"
                 if (configKey != lastConfig.value) {
                     // Keep the user's place across the rebuild: the live anchor mid-reading (e.g. the
                     // commit at the end of a pinch lands where the live reflow left the viewport), or the
@@ -291,15 +294,16 @@ fun MarkdownPreview(
                     clearReaderHighlight(rv)
                     val newAdapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         rv.context,
-                        renderer.markwon,
+                        renderer.markwonFor(c),
                         liveFontScale.value,
                         fontSet,
                         mermaidCloudEnabled,
                         searchHighlight,
                         c,
+                        wrapCodeLines,
                     )
                     // Populate before attaching → no empty frame.
-                    newAdapter.setContentForMode(renderer, content, renderMode)
+                    newAdapter.setContentForMode(renderer.markwonFor(c), content, renderMode)
                     lastContent.value = content // content is now rendered; the (1) re-render is skipped this pass
                     rv.swapAdapter(newAdapter, false)
                     (rv.layoutManager as? LinearLayoutManager)
@@ -316,7 +320,7 @@ fun MarkdownPreview(
                 // block-height changes that an absolute pixel offset could not.
                 if (content != lastContent.value) {
                     lastContent.value = content
-                    adapter.setContentForMode(renderer, content, renderMode)
+                    adapter.setContentForMode(renderer.markwonFor(c), content, renderMode)
                     val lm = rv.layoutManager as? LinearLayoutManager
                     rv.post { lm?.scrollToPositionWithOffset(initialScroll.index, initialScroll.offset) }
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
@@ -511,12 +515,12 @@ private fun JumpButton(icon: ImageVector, description: String, onClick: () -> Un
  * Populate the adapter for the active render mode: MARKDOWN parses as always; PLAIN
  * injects the pre-built verbatim chunk tree — no parser runs, so Markdown syntax stays literal.
  */
-private fun MarkwonAdapter.setContentForMode(renderer: MarkwonRenderer, content: String, renderMode: RenderMode) {
+private fun MarkwonAdapter.setContentForMode(markwon: Markwon, content: String, renderMode: RenderMode) {
     if (renderMode == RenderMode.PLAIN) {
-        setParsedMarkdown(renderer.markwon, PlainTextBlocks.build(content))
+        setParsedMarkdown(markwon, PlainTextBlocks.build(content))
     } else {
         // setMarkdown() IS setParsedMarkdown(markwon, markwon.parse(md)); we parse explicitly so the
         // shared footnote pass runs before the adapter splits the document into items.
-        setParsedMarkdown(renderer.markwon, Footnotes.transform(renderer.markwon.parse(content)))
+        setParsedMarkdown(markwon, Footnotes.transform(markwon.parse(content)))
     }
 }

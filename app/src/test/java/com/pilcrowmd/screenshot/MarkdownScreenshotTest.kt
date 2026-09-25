@@ -82,8 +82,10 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
         // they were recorded on differs ONLY by sub-pixel font anti-aliasing — measured at ≤0.5% of
         // pixels across every markdown sample (record-and-diff on macOS vs the goldens). 0.01 sits
         // just above that floor, so the SAME goldens pass on macOS and the CI runner WITHOUT
-        // re-recording, while still failing any real layout/typography/color regression (which moves
-        // far more than 1% of pixels — a single shifted block or token change is ≫1%).
+        // re-recording, while still failing a layout or typography regression, which moves far more
+        // than 1% of pixels. A code-TOKEN colour change does NOT: measured for M-132, recolouring one
+        // Markdown heading moves 0.026% of the frame and losing the diff grammar 0.24%, so both pass
+        // verify. Token colours are held by CodeTokenColoursTest instead, not by these goldens.
         compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.01f),
     )
 

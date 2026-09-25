@@ -114,6 +114,17 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
     fun goldenWithRecents() = captureWelcome(suffix = themeSuffix() + "_recents", recentFiles = sampleRecents())
 
     /**
+     * M-117: a restore in flight — the three actions and the recent rows dimmed, the progress line
+     * showing. A visual record of the disabled state, NOT its guard: at this suite's 0.05 threshold
+     * a golden cannot be trusted to notice the dimming go missing. `WelcomeDisabledActionsTest`
+     * measures that directly. New goldens; every existing one must stay byte-identical, because
+     * `isLoading` defaults to false.
+     */
+    @Test
+    fun goldenLoadingWithRecents() =
+        captureWelcome(suffix = themeSuffix() + "_loading_recents", recentFiles = sampleRecents(), isLoading = true)
+
+    /**
      * Same composition under the short landscape viewport. Method-level [Config] overrides only the
      * size qualifiers; everything else is inherited from the class.
      */
@@ -150,7 +161,11 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
         RecentFileUi(Uri.parse("content://uat/c.md"), "c.md", 700L, available = true),
     )
 
-    private fun captureWelcome(suffix: String, recentFiles: List<RecentFileUi> = emptyList()) {
+    private fun captureWelcome(
+        suffix: String,
+        recentFiles: List<RecentFileUi> = emptyList(),
+        isLoading: Boolean = false,
+    ) {
         val colorScheme = when (themeMode) {
             ThemeMode.DARK -> DarkColorScheme
             ThemeMode.LIGHT -> LightColorScheme
@@ -163,7 +178,7 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
                     .background(colorScheme.primaryBackground),
             ) {
                 CompositionLocalProvider(LocalMDColors provides colorScheme) {
-                    WelcomeScreen(recentFiles = recentFiles)
+                    WelcomeScreen(recentFiles = recentFiles, isLoading = isLoading)
                 }
             }
         }

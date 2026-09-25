@@ -21,6 +21,8 @@ import com.pilcrowmd.storage.RecentFile
 import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.storage.StorageManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -323,6 +325,10 @@ constructor(
     val mermaidCloudEnabled: StateFlow<Boolean> = storage.mermaidCloudEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    // Reader code blocks: wrap long lines instead of side-scrolling (default off, M-134).
+    val wrapCodeLines: StateFlow<Boolean> = storage.wrapCodeLines
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     // Theme mode selection (Dark or Light). Persisted in DataStore.
     val themeMode: StateFlow<ThemeMode> = storage.themeMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.DARK)
@@ -340,23 +346,45 @@ constructor(
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
     val exportState: StateFlow<ExportState> = _exportState.asStateFlow()
 
-    init {
-        // Restore the last-opened file ONCE on startup.
-        // This must NOT keep collecting lastFileUri. DataStore re-emits the whole
-        // Preferences on any write (e.g. saving a scroll position when switching to Reader),
-        // so a perpetual collector would call loadFile again with the same URI, reload from
-        // disk, and silently discard the user's unsaved edits (Safeguard 1/2). first() reads
-        // the current value once and stops.
-        viewModelScope.launch {
-            val lastUri = storage.lastFileUri.first()
-            if (lastUri != null) {
-                loadFile(lastUri)
-            }
+    // Restore the last-opened file ONCE on startup.
+    // This must NOT keep collecting lastFileUri. DataStore re-emits the whole
+    // Preferences on any write (e.g. saving a scroll position when switching to Reader),
+    // so a perpetual collector would call loadFile again with the same URI, reload from
+    // disk, and silently discard the user's unsaved edits (Safeguard 1/2). first() reads
+    // the current value once and stops.
+    //
+    // The restore is a fallback, so it yields to any file the user actually asked for (M-145).
+    // The load runs inside this job rather than through loadFile, so cancelling the job cancels
+    // the load; every explicit open (loadFile, openPickedFile) stops it first, in
+    // [stopStartupRestore]. Without that, a cold "Open with" raced the restore, and the restore
+    // usually finished last and replaced the file the user had opened.
+    private var restoreIsLoading = false
+    private val restoreJob: Job = viewModelScope.launch {
+        val lastUri = storage.lastFileUri.first()
+        if (lastUri != null) {
+            restoreIsLoading = true
+            loadDocument(lastUri)
         }
     }
 
+    /**
+     * Stop the startup restore before an explicit open loads (M-145). A no-op once it has finished.
+     *
+     * Once the restore is inside [loadDocument], it is cancelled AND joined: the cancelled load's
+     * handler resets `Loading` to `Idle`, and joining makes that reset land before this open sets
+     * `Loading`, not in the middle of its load. Before that point, while it is still reading the
+     * remembered URI, a plain cancel is enough — prompt cancellation stops it before it touches any
+     * state — and not joining keeps the explicit open starting at once, as it did before M-145.
+     */
+    private suspend fun stopStartupRestore() {
+        if (restoreIsLoading) restoreJob.cancelAndJoin() else restoreJob.cancel()
+    }
+
     fun loadFile(uri: Uri) {
-        viewModelScope.launch { loadDocument(uri) }
+        viewModelScope.launch {
+            stopStartupRestore()
+            loadDocument(uri)
+        }
     }
 
     /**
@@ -368,6 +396,7 @@ constructor(
      */
     fun openPickedFile(uri: Uri) {
         viewModelScope.launch {
+            stopStartupRestore()
             repository.takePersistableUriPermission(uri)
             loadDocument(uri)
         }
@@ -494,6 +523,12 @@ constructor(
                 // Resolve the SAF display name once and reuse it for both the open document
                 // (export filename) and the recents entry below.
                 val displayName = repository.displayName(uri)
+                // M-111: flip to the editor BEFORE the document is published, with no suspension
+                // between the two emits. Flipped after it, the screen composes the reader for the
+                // new document and runs the full Markwon parse on Main, only to throw it away.
+                // `.value` because it does not suspend: a DataStore read here would put a throwing
+                // call inside the M-128 gap above. It is only a fast path — see the M-90 read below.
+                if (openInEditMode.value) _mode.emit(ViewMode.EDITOR)
                 _currentDocument.emit(
                     Document(uri = uri, content = normalized, dirty = false, displayName = displayName),
                 )
@@ -510,6 +545,11 @@ constructor(
                 // which preserves the pre-existing behaviour of the mode being sticky within a
                 // session. Forcing READER in the off case would be a second behaviour change
                 // nobody asked for.
+                //
+                // This storage read is the AUTHORITATIVE one and must stay, although the M-111 fast
+                // path above usually has already flipped the mode. `openInEditMode.value` starts at
+                // `false` until DataStore delivers, and a cold "Open with" can reach the fast path
+                // first; this read is what still opens that document in the editor.
                 if (storage.openInEditMode.first()) _mode.emit(ViewMode.EDITOR)
 
                 // Render mode from the document identity (extension default ?: per-file override),
@@ -1085,6 +1125,10 @@ constructor(
 
     fun setMermaidCloudEnabled(enabled: Boolean) {
         viewModelScope.launch { storage.setMermaidCloudEnabled(enabled) }
+    }
+
+    fun setWrapCodeLines(enabled: Boolean) {
+        viewModelScope.launch { storage.setWrapCodeLines(enabled) }
     }
 
     fun setThemeMode(mode: ThemeMode) {

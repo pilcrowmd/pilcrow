@@ -61,7 +61,7 @@ class FootnoteBlockEntry(
         // Chrome, not content: the marker paints an ordinal that search does not model as part of
         // this block, so the intra-block scroll must not count matches inside it.
         holder.marker.tag = SEARCH_EXCLUDED_TAG
-        holder.marker.setTextColor(colorScheme.accent.toArgb())
+        holder.marker.setTextColor(colorScheme.footnoteMarker.toArgb())
         holder.marker.setTextSize(TypedValue.COMPLEX_UNIT_SP, noteSize)
         holder.marker.typeface = readingFont
 
@@ -70,7 +70,7 @@ class FootnoteBlockEntry(
         holder.body.setLineSpacing(0f, PreviewLineHeightMultiplier)
         holder.body.typeface = readingFont
 
-        holder.backLink.setColorFilter(colorScheme.accent.toArgb())
+        holder.backLink.setColorFilter(colorScheme.footnoteMarker.toArgb())
         // The back-link scales with the reader's zoom like everything else on the page: a fixed-dp
         // icon looks oversized against 0.85 text and lost against 1.6 text. Sized to about one line
         // of note text so a one-line note is not forced taller than its own words.
@@ -124,7 +124,7 @@ class FootnoteBlockEntry(
 
         try {
             holder.body.setTextColor(colorScheme.secondaryText.toArgb())
-            val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.accent.toArgb())
+            val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.footnoteMarker.toArgb())
             markwon.setParsedMarkdown(holder.body, rendered)
             SearchHighlighter.highlight(
                 holder.body,

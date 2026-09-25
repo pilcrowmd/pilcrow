@@ -83,6 +83,8 @@ fun SettingsScreen(
     onOpenInEditModeChanged: (Boolean) -> Unit = {},
     mermaidCloudEnabled: Boolean = false,
     onMermaidCloudChanged: (Boolean) -> Unit = {},
+    wrapCodeLines: Boolean = false,
+    onWrapCodeLinesChanged: (Boolean) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.DARK,
     onThemeSelected: (ThemeMode) -> Unit = {},
     appVersion: String = "",
@@ -226,7 +228,7 @@ fun SettingsScreen(
             }
         }
 
-        // M-91: a setting, not a per-session toggle. That distinction was made in public when the
+        // M-90: a setting, not a per-session toggle. That distinction was made in public when the
         // request was accepted, and it is what makes this worth building at all: a toggle would
         // still be a tap on every file, which is the thing being complained about.
         CardGap()
@@ -290,6 +292,36 @@ fun SettingsScreen(
         CardGap()
         // Mermaid — opt-in cloud rendering, OFF by default.
         MermaidToggleCard(checked = mermaidCloudEnabled, onCheckedChange = onMermaidCloudChanged)
+        // M-134: a setting, default OFF, because issue #8 asked for both behaviours — wrapping, and
+        // keeping side-scroll. The default was promised in public; it is not a tuning knob.
+        CardGap()
+        SettingsCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    CardTitle("Wrap long lines in code blocks")
+                    Text(
+                        text = "In reading mode, wrap instead of scrolling sideways",
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(
+                    checked = wrapCodeLines,
+                    onCheckedChange = onWrapCodeLinesChanged,
+                    modifier = Modifier.scale(0.8f),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = c.primaryText,
+                        checkedTrackColor = c.accent,
+                        uncheckedThumbColor = c.secondaryText,
+                        uncheckedTrackColor = c.secondarySurface,
+                    ),
+                )
+            }
+        }
 
         Spacer(Modifier.height(18.dp))
 

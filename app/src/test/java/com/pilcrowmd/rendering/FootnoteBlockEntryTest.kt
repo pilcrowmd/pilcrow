@@ -138,12 +138,12 @@ class FootnoteBlockEntryTest {
     fun `colours come from the active scheme, never a baked-in value`() {
         val note = definition("Ref[^1].\n\n[^1]: body\n")
         val dark = bind(note, FootnoteBlockEntry(context, colorScheme = DarkColorScheme))
-        assertEquals(DarkColorScheme.accent.toArgb(), dark.marker.currentTextColor)
+        assertEquals(DarkColorScheme.footnoteMarker.toArgb(), dark.marker.currentTextColor)
         assertEquals(DarkColorScheme.secondaryText.toArgb(), dark.body.currentTextColor)
 
         // The PDF export builds the same entry with PrintColorScheme.
         val print = bind(note, FootnoteBlockEntry(context, colorScheme = PrintColorScheme))
-        assertEquals(PrintColorScheme.accent.toArgb(), print.marker.currentTextColor)
+        assertEquals(PrintColorScheme.footnoteMarker.toArgb(), print.marker.currentTextColor)
         assertEquals(PrintColorScheme.secondaryText.toArgb(), print.body.currentTextColor)
     }
 }

@@ -156,6 +156,15 @@ interface StorageManager {
     suspend fun setMermaidCloudEnabled(enabled: Boolean)
 
     /**
+     * Flow of the reader's "Wrap long lines in code blocks" setting. Default: false — long lines
+     * side-scroll, as they always have (M-134; the default is a public commitment on issue #8).
+     */
+    val wrapCodeLines: Flow<Boolean>
+
+    /** Persist the code-block wrap setting. */
+    suspend fun setWrapCodeLines(enabled: Boolean)
+
+    /**
      * Flow of the selected theme mode. Default: ThemeMode.DARK (ensures Dark remains default).
      * v1: DataStore. vNext: could sync across devices.
      */

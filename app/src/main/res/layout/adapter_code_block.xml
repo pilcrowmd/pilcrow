@@ -16,7 +16,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <HorizontalScrollView
+        <!-- CodeScrollView: a HorizontalScrollView that can also wrap (M-134, set per bind). -->
+        <com.pilcrowmd.rendering.CodeScrollView
             android:id="@+id/code_scroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -31,7 +32,7 @@
                 android:paddingEnd="12dp"
                 android:paddingTop="8dp"
                 android:paddingBottom="8dp" />
-        </HorizontalScrollView>
+        </com.pilcrowmd.rendering.CodeScrollView>
 
         <!-- Mermaid diagram: shown instead of code_scroll when a ```mermaid block
              renders via the opt-in cloud renderer; gone for normal code/yaml blocks. Fills the card

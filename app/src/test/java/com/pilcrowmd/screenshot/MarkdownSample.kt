@@ -69,6 +69,18 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
             name = "code_fenced",
             markdown = "```kotlin\nfun greet(name: String): String {\n    return \"Hello, \$name\"\n}\n```",
         ),
+        // M-132: every Markdown token used to fall through to plain text, so this block was flat.
+        MarkdownSample(
+            name = "code_markdown",
+            markdown = "```markdown\n# Title\nSome **bold** and *italic*, a [link](https://example.com) " +
+                "and `code`.\n\n- list item\n> quoted\n\n---\n```",
+        ),
+        // M-133: `diff` resolves to the bundled `git` grammar (added, removed and @@ lines).
+        MarkdownSample(
+            name = "code_diff",
+            markdown = "```diff\n@@ -1,3 +1,3 @@\n val kept = \"same\"\n-val removed = 1\n" +
+                "+val added = 2\n```",
+        ),
         MarkdownSample(
             name = "table",
             markdown = "| Left | Center | Right |\n|:-----|:------:|------:|\n| a | b | c |\n| dd | ee | ff |",

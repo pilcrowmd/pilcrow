@@ -99,7 +99,7 @@ class FootnoteRenderingTest {
     }
 
     @Test
-    fun `the marker takes the accent of the active scheme, not a baked-in colour`() {
+    fun `the marker takes the footnoteMarker colour of the active scheme, not a baked-in colour`() {
         val entry = ProseBlockEntry(ApplicationProvider.getApplicationContext(), colorScheme = DarkColorScheme)
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val holder = entry.createHolder(LayoutInflater.from(context), FrameLayout(context))
@@ -108,7 +108,7 @@ class FootnoteRenderingTest {
         val painted = holder.textView.text as Spanned
         val markerStart = painted.toString().indexOf('1')
         assertEquals(
-            DarkColorScheme.accent.toArgb(),
+            DarkColorScheme.footnoteMarker.toArgb(),
             painted.getSpans(markerStart, markerStart + 1, ForegroundColorSpan::class.java).single().foregroundColor,
         )
 
@@ -118,7 +118,7 @@ class FootnoteRenderingTest {
         printEntry.bindHolder(markwon, printHolder, firstBlock("See[^1].\n\n[^1]: body\n"))
         val printed = printHolder.textView.text as Spanned
         assertEquals(
-            PrintColorScheme.accent.toArgb(),
+            PrintColorScheme.footnoteMarker.toArgb(),
             printed.getSpans(markerStart, markerStart + 1, ForegroundColorSpan::class.java).single().foregroundColor,
         )
     }

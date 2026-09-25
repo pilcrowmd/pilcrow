@@ -62,23 +62,8 @@ object PilcrowTypography {
         lineHeight = 1.7.em,
     )
 
-    // H1 — 29sp, weight 700, line height 1.2
-    val h1Style = TextStyle(
-        fontFamily = sourceSerif4Family,
-        fontSize = 29.sp,
-        fontWeight = FontWeight.Bold,
-        lineHeight = 1.2.em,
-    )
-
-    // H2 — 23sp, weight 700, line height 1.2
-    val h2Style = TextStyle(
-        fontFamily = sourceSerif4Family,
-        fontSize = 23.sp,
-        fontWeight = FontWeight.Bold,
-        lineHeight = 1.2.em,
-    )
-
-    // H3 — 19sp, weight 700, line height 1.2
+    // Settings screen title style (SettingsScreen). NOT the reader's H3: reader headings are sized
+    // in rendering/HeadingScalePlugin (M-164), which is why this stays at 19sp.
     val h3Style = TextStyle(
         fontFamily = sourceSerif4Family,
         fontSize = 19.sp,

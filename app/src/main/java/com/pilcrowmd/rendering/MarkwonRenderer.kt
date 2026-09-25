@@ -7,7 +7,11 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.pilcrowmd.rendering.GrammarLocatorDef
+import com.pilcrowmd.ui.theme.DarkColorScheme
+import com.pilcrowmd.ui.theme.LightColorScheme
+import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import com.pilcrowmd.ui.theme.PilcrowTypography
+import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.CorePlugin
 import io.noties.markwon.ext.latex.JLatexMathPlugin
@@ -18,6 +22,7 @@ import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import io.noties.markwon.syntax.SyntaxHighlightPlugin
+import io.noties.prism4j.GrammarLocator
 import io.noties.prism4j.Prism4j
 import java.util.concurrent.ForkJoinPool
 
@@ -50,11 +55,26 @@ import java.util.concurrent.ForkJoinPool
 class MarkwonRenderer(private val context: Context) {
 
     // Lazy singleton: configure once, reuse for all renders.
-    // Public so the block-level RecyclerView adapter can drive it (markwon-recycler).
     // The plugin chain is built by [buildPilcrowMarkwon] so a test can construct an identical,
     // pre-warm-free instance (the init{} pre-warm below parses on a background thread, and Markwon's
     // InlineProcessors are stateful/shared — concurrent parses would race).
-    val markwon: Markwon by lazy { buildPilcrowMarkwon(context) }
+    //
+    // M-135: a Markwon instance bakes its code colours in when it is built, so there is one instance
+    // per screen theme, each built once. [markwon] is the Dark one. The screen asks for the instance
+    // matching the active scheme through [markwonFor]; nothing is shared or mutated between the two,
+    // so a theme toggle only switches which instance the adapter is built with.
+    val markwon: Markwon by lazy { buildPilcrowMarkwon(context, DarkColorScheme) }
+    private val lightMarkwon: Markwon by lazy { buildPilcrowMarkwon(context, LightColorScheme) }
+
+    // The PDF export's instance (M-132). The export has always drawn code on the Dark code panel, so it
+    // keeps Dark's surface and text, but takes Print's token colours and the bundle's own grammar
+    // names: the token roles and the diff/patch aliases added for the screen must not change the
+    // export. Built lazily, on the first export.
+    val printMarkwon: Markwon by lazy { buildPrintMarkwon(context) }
+
+    /** The instance whose code colours match [colorScheme] — the reader's entry point. */
+    fun markwonFor(colorScheme: PilcrowColorScheme): Markwon =
+        if (colorScheme === LightColorScheme) lightMarkwon else markwon
 
     // The font pre-warm parse (see init) runs on this thread. Retained ONLY so a test can
     // deterministically await it ([awaitFontPreWarm]): Markwon's inline parser is stateful and not
@@ -97,11 +117,25 @@ class MarkwonRenderer(private val context: Context) {
  * Build the Pilcrow Markwon instance (full plugin chain). Extracted from [MarkwonRenderer] so
  * tests can build an identical instance without the init{} font pre-warm thread (whose background
  * parse would race the test on Markwon's shared, stateful InlineProcessors). Production always goes
- * through [MarkwonRenderer.markwon].
+ * through [MarkwonRenderer.markwonFor] (or [MarkwonRenderer.printMarkwon] for the PDF).
  */
-internal fun buildPilcrowMarkwon(context: Context): Markwon {
-    // Initialize Prism4j with kapt-generated GrammarLocator
-    val prism4j = Prism4j(GrammarLocatorDef())
+/**
+ * The PDF export's instance: Dark's code panel with Print's token colours, and the bundle's own grammar
+ * names (no diff/patch alias), so nothing added for the screen reaches the export (M-132).
+ */
+internal fun buildPrintMarkwon(context: Context): Markwon = buildPilcrowMarkwon(
+    context,
+    DarkColorScheme.copy(codeSyntax = PrintColorScheme.codeSyntax),
+    GrammarLocatorDef(),
+)
+
+internal fun buildPilcrowMarkwon(
+    context: Context,
+    colorScheme: PilcrowColorScheme = DarkColorScheme,
+    grammarLocator: GrammarLocator = AliasGrammarLocator(),
+): Markwon {
+    // Prism4j over the kapt-generated grammars, plus the diff/patch aliases unless told otherwise
+    val prism4j = Prism4j(grammarLocator)
 
     // Calculate body font size in pixels for JLatexMath (17sp)
     val baseFontSizePx = with(context.resources.displayMetrics) {
@@ -119,6 +153,8 @@ internal fun buildPilcrowMarkwon(context: Context): Markwon {
         // mutation always lands between the two phases whatever the order. Placed next to
         // CorePlugin because that is the plugin it compensates for, not because it must be.
         .usePlugin(OrderedListRebindPlugin())
+        // M-164: heading sizes H1–H6 relative to the body size.
+        .usePlugin(HeadingScalePlugin())
         // Render leading `---…---` as a styled `yaml` code block via a custom
         // BlockParser (no source mutation → char offsets stay aligned with the editor).
         .usePlugin(FrontmatterPlugin())
@@ -172,13 +208,16 @@ internal fun buildPilcrowMarkwon(context: Context): Markwon {
     }
 
     return builder
-        // Per-language syntax highlighting with One Dark theme
+        // Per-language syntax highlighting, coloured from the scheme's code tokens
         .usePlugin(
             SyntaxHighlightPlugin.create(
                 prism4j,
-                PilcrowTheme(),
+                PilcrowTheme(colorScheme),
             ),
         )
+        // Must follow SyntaxHighlightPlugin: overrides its single code background with separate
+        // inline and fenced-block backgrounds.
+        .usePlugin(CodeSurfacePlugin(colorScheme))
         // Limited HTML (only safe tags: <br>, <sub>, <sup>, <details>)
         .usePlugin(HtmlPlugin.create())
         .build()

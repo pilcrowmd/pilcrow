@@ -60,6 +60,7 @@ object RecyclerAdapterEntries {
      * @param mermaidCloudEnabled When true, ```mermaid blocks render via mermaid.ink
      * @param searchHighlight Search highlight state
      * @param colorScheme Active color scheme (Dark or Light) for rendering colors
+     * @param wrapCodeLines When true, long lines in code blocks wrap instead of side-scrolling (M-134)
      * @return MarkwonAdapter ready to be set on a RecyclerView
      */
     fun buildMarkdownAdapter(
@@ -70,6 +71,7 @@ object RecyclerAdapterEntries {
         mermaidCloudEnabled: Boolean = false,
         searchHighlight: SearchHighlight = SearchHighlight(),
         colorScheme: PilcrowColorScheme = DarkColorScheme,
+        wrapCodeLines: Boolean = false,
     ): MarkwonAdapter {
         // Default entry = styled prose (reading font / 17sp / primaryText / 1.35) so headings,
         // paragraphs, lists, blockquotes etc. match the reading design — NOT the unstyled SimpleEntry default.
@@ -86,6 +88,7 @@ object RecyclerAdapterEntries {
                     mermaidCloudEnabled,
                     colorScheme,
                     searchHighlight,
+                    wrapCodeLines,
                 ),
             )
             // Register custom entry for table blocks (renders into HorizontalScrollView)
@@ -123,6 +126,7 @@ object RecyclerAdapterEntries {
      *
      * This allows both entries to handle FencedCodeBlock without conflicts.
      */
+    @Suppress("LongParameterList") // Forwards the reader settings to the two lanes it routes between.
     private class ConditionalCodeBlockEntry(
         private val context: Context,
         private val fontScale: Float = 1.0f,
@@ -130,10 +134,12 @@ object RecyclerAdapterEntries {
         private val mermaidCloudEnabled: Boolean = false,
         private val colorScheme: PilcrowColorScheme = DarkColorScheme,
         private val searchHighlight: SearchHighlight = SearchHighlight(),
+        private val wrapCodeLines: Boolean = false,
     ) : MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder>() {
 
         private val yamlEntry = FrontmatterBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight)
-        private val codeEntry = FencedCodeBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight)
+        private val codeEntry =
+            FencedCodeBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight, wrapCodeLines)
 
         override fun createHolder(
             inflater: android.view.LayoutInflater,

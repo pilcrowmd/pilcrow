@@ -395,7 +395,7 @@ class PdfExporterTest {
         val body = view.findViewById<android.widget.TextView>(com.pilcrowmd.R.id.footnote_body)
         assertEquals("1", marker.text.toString())
         assertEquals("gravity", body.text.toString().trim())
-        assertEquals(PrintColorScheme.accent.toArgb(), marker.currentTextColor)
+        assertEquals(PrintColorScheme.footnoteMarker.toArgb(), marker.currentTextColor)
         assertEquals(PrintColorScheme.secondaryText.toArgb(), body.currentTextColor)
     }
 
@@ -425,7 +425,7 @@ class PdfExporterTest {
         assertEquals("Newton1 wrote it down.", printed.toString().trim())
         val markerStart = printed.toString().indexOf('1')
         assertEquals(
-            PrintColorScheme.accent.toArgb(),
+            PrintColorScheme.footnoteMarker.toArgb(),
             printed.getSpans(markerStart, markerStart + 1, android.text.style.ForegroundColorSpan::class.java)
                 .single().foregroundColor,
         )

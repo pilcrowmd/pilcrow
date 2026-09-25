@@ -7,6 +7,61 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-09-25
+
+### Added
+
+- **A setting to wrap long lines in code blocks.** *Settings → Wrap long lines in code blocks.*
+  With it on, a long line in a code block wraps inside the block in the reader, instead of
+  scrolling sideways. **Off by default** — side-scrolling stays exactly as it was unless you turn
+  this on. The editor already wraps, and exported PDFs already wrap code, so neither changes.
+  Requested by **[HuevosKicker](https://github.com/HuevosKicker)**. It is off by default because
+  **[unoukujou](https://github.com/unoukujou)** asked for side-scrolling to stay.
+
+### Changed
+
+- **Headings are sized as a clear, even scale.** The top headings are a little smaller and the lower
+  ones larger, so no heading is ever smaller than the body text: H1 to H6 now run 29, 23, 21, 19, 18
+  and 17 sp, where H5 and H6 used to be smaller than a paragraph. Headings also get more room above
+  them and a little below. Pinch-to-zoom scales headings and text together, as before. Exported PDFs
+  use the same sizes.
+- **The light theme is light all the way through.** In the light theme, code blocks, inline code and
+  a diagram shown as source used to keep the dark theme's dark background inside the cream page.
+  They now use light backgrounds with readable colours. The headings drawer and the shade behind it
+  are light too, where before they stayed dark, and footnote markers have their own colour. The dark
+  theme and exported PDFs are unchanged.
+
+### Fixed
+
+- **Markdown code blocks are highlighted.** A ```` ```markdown ```` block used to render in one flat
+  colour. Headings, emphasis, links, list markers and inline code are now coloured. Other languages
+  gain colour for tokens that were left plain, such as CSS selectors, regular expressions and
+  built-ins. Reported by **[HuevosKicker](https://github.com/HuevosKicker)**.
+- **Diff blocks are highlighted.** ```` ```diff ```` and ```` ```patch ```` blocks now show added
+  lines in green, removed lines in red, and `@@` hunk headers in their own colour. Exported PDFs are
+  unchanged by this and the entry above. Reported by **[HuevosKicker](https://github.com/HuevosKicker)**.
+- **Turning the phone no longer re-opens the file you launched the app with.** If Pilcrow was
+  opened from another app with *Open with*, that file was opened again every time the screen
+  rotated or the system switched between light and dark mode. On a document you had not edited,
+  it replaced whatever you had opened since, with no warning. On an edited document, you were
+  asked whether to discard your changes for a file you had not asked to open. The launch file is
+  now opened once.
+- **Opening a file from another app now opens that file, not the last one you had open.** If
+  Pilcrow was not already running, *Open with* on a file often showed the file you had open last
+  time instead, because the app's reopening of that last file finished after the new one and
+  replaced it. The file you open now takes priority over reopening the last one.
+- **With *Open in edit mode* on, opening a document no longer shows the reader first.** It used to
+  appear in the reader for a moment before switching to the editor, and on a large file the app could
+  pause briefly while it prepared a view it was about to throw away. Right after the app starts, the
+  reader can still show for a moment before the editor.
+- **While Pilcrow reopens your last document, the buttons you cannot use yet now look disabled.**
+  *Open MD File*, *Create MD File*, *Browse all files* and your recent files are dimmed until it has
+  finished. Before, they looked normal but did nothing when tapped.
+- **A metadata card that falls back to plain text keeps its own look.** If the reading font fails to
+  load, the card at the top of a document with front matter shows its text plainly, as designed. It
+  could also pick up a code block's monospace font and background and lose its line spacing. It now
+  keeps the card's own background and spacing and uses the standard font.
+
 ## [1.0.9] - 2026-09-21
 
 ### Fixed

@@ -4,8 +4,8 @@
 package com.pilcrowmd.rendering
 
 import androidx.compose.ui.graphics.Color
+import com.pilcrowmd.ui.theme.CodeSyntaxColors
 import com.pilcrowmd.ui.theme.DarkColorScheme
-import com.pilcrowmd.ui.theme.EditorSyntaxColors
 import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import io.noties.markwon.syntax.Prism4jTheme
 import io.noties.prism4j.Prism4j
@@ -13,7 +13,9 @@ import io.noties.prism4j.Prism4j
 /**
  * Custom Prism4j theme for Pilcrow.
  * Implements Prism4jTheme and applies per-language syntax highlighting to fenced code blocks.
- * Color scheme is passed in and reads from the active theme (Dark or Light).
+ * Every colour comes from [colorScheme]: the code-block background, the default text and the
+ * token colours ([PilcrowColorScheme.codeSyntax]). [MarkwonRenderer] builds one instance per
+ * theme, because a Markwon instance bakes its theme in when it is built.
  */
 class PilcrowTheme(private val colorScheme: PilcrowColorScheme = DarkColorScheme) : Prism4jTheme {
 
@@ -26,7 +28,7 @@ class PilcrowTheme(private val colorScheme: PilcrowColorScheme = DarkColorScheme
     }
 
     /**
-     * Maps Prism4j syntax token types to One Dark colors.
+     * Maps Prism4j syntax token types to the scheme's code-token colours.
      * Called for each syntax token in a code block.
      * Sets the foreground color for the token span.
      */
@@ -49,40 +51,35 @@ class PilcrowTheme(private val colorScheme: PilcrowColorScheme = DarkColorScheme
     }
 
     /**
-     * Map Prism4j syntax token type to One Dark color.
-     * Token types from Prism4j: keyword, string, number, punctuation, comment, etc.
+     * Map a Prism4j token type to its colour in the scheme's [PilcrowColorScheme.codeSyntax].
+     * Punctuation, every unmapped token and every unset role take the default code text colour.
      */
-    private fun mapTokenTypeToColor(tokenType: String): Int {
-        return when (tokenType) {
-            // Keywords (blue in One Dark)
-            "keyword" -> EditorSyntaxColors.keywords.toArgb()
-            "boolean" -> EditorSyntaxColors.keywords.toArgb()
-            "operator" -> EditorSyntaxColors.keywords.toArgb()
+    private fun mapTokenTypeToColor(tokenType: String): Int =
+        (TOKEN_ROLES[tokenType]?.invoke(colorScheme.codeSyntax) ?: colorScheme.editorText).toArgb()
 
-            // Strings (green in One Dark)
-            "string" -> EditorSyntaxColors.strings.toArgb()
-            "char" -> EditorSyntaxColors.strings.toArgb()
-
-            // Numbers (orange in One Dark)
-            "number" -> EditorSyntaxColors.numbers.toArgb()
-            "constant" -> EditorSyntaxColors.numbers.toArgb()
-
-            // Comments (gray in One Dark)
-            "comment" -> EditorSyntaxColors.comments.toArgb()
-
-            // Errors/important (red in One Dark)
-            "error" -> EditorSyntaxColors.errors.toArgb()
-            "invalid" -> EditorSyntaxColors.errors.toArgb()
-
-            // Function, class, attribute names (magenta in One Dark)
-            "function" -> EditorSyntaxColors.headers.toArgb()
-            "class-name" -> EditorSyntaxColors.headers.toArgb()
-            "attr-name" -> EditorSyntaxColors.headers.toArgb()
-            "tag" -> EditorSyntaxColors.headers.toArgb()
-
-            // Punctuation and default (primary text color)
-            "punctuation" -> colorScheme.editorText.toArgb()
-            else -> colorScheme.editorText.toArgb()
+    private companion object {
+        /**
+         * Token type → role. Tokens added for M-132/M-133 map ONLY to the added, nullable roles, never to
+         * one of the original six, so a scheme that leaves those roles null (Print) colours exactly the
+         * tokens it did before.
+         */
+        val TOKEN_ROLES: Map<String, (CodeSyntaxColors) -> Color?> = buildMap {
+            fun role(color: (CodeSyntaxColors) -> Color?, vararg tokens: String) = tokens.forEach { put(it, color) }
+            role(CodeSyntaxColors::keyword, "keyword", "boolean", "operator")
+            role(CodeSyntaxColors::string, "string", "char")
+            role(CodeSyntaxColors::number, "number", "constant")
+            role(CodeSyntaxColors::comment, "comment")
+            role(CodeSyntaxColors::error, "error", "invalid")
+            role(CodeSyntaxColors::function, "function", "class-name", "attr-name", "tag")
+            role(CodeSyntaxColors::heading, "title")
+            role(CodeSyntaxColors::emphasis, "bold", "italic")
+            role(CodeSyntaxColors::link, "url", "url-reference")
+            role(CodeSyntaxColors::marker, "list", "hr", "blockquote", "coord")
+            role(CodeSyntaxColors::literal, "code", "regex", "symbol", "commit_sha1")
+            role(CodeSyntaxColors::variable, "variable", "property", "entity")
+            role(CodeSyntaxColors::builtin, "builtin", "namespace", "selector", "atrule", "command")
+            role(CodeSyntaxColors::inserted, "inserted")
+            role(CodeSyntaxColors::deleted, "deleted")
         }
     }
 }

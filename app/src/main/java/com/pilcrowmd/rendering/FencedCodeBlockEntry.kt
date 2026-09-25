@@ -41,6 +41,10 @@ import org.commonmark.node.FencedCodeBlock
  * block's exact literal text. (The old span-based CodeBlockCopyPlugin was removed — it dropped
  * the code content.)
  *
+ * [wrapLines] is the reader's "Wrap long lines in code blocks" setting (M-134, default off). The
+ * holder is shared with the YAML and Mermaid lanes and survives an adapter swap, so every bind here
+ * sets it, on or off — never only when it is on.
+ *
  * try/catch in bindHolder degrades gracefully on unexpected content (Safeguard 3).
  */
 class FencedCodeBlockEntry(
@@ -49,6 +53,7 @@ class FencedCodeBlockEntry(
     private val fontSet: FontSet = FontSets.DEFAULT,
     private val colorScheme: PilcrowColorScheme = DarkColorScheme,
     private val searchHighlight: SearchHighlight = SearchHighlight(),
+    private val wrapLines: Boolean = false,
 ) : MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder>() {
 
     private fun dp(value: Float): Int = TypedValue.applyDimension(
@@ -77,6 +82,7 @@ class FencedCodeBlockEntry(
         holder.copyButton.visibility = View.VISIBLE
         holder.mermaidImage.visibility = View.GONE
         holder.mermaidCaption.visibility = View.GONE
+        holder.codeScroll.wrapLines = wrapLines
         // Size is re-applied on EVERY bind and BEFORE the try, not inside it. Two reasons, and the
         // second is why it moved: a reused holder must not keep the PX size the live pinch wrote
         // (createHolder does not run again for one — see M-04), and if `markwon.render` throws, the
@@ -165,6 +171,8 @@ class FencedCodeBlockEntry(
         holder.copyButton.visibility = View.GONE
         holder.mermaidImage.visibility = View.VISIBLE
         holder.mermaidCaption.visibility = View.GONE
+        // The code views are hidden here, but a failed fetch shows them again (fallbackToSource).
+        holder.codeScroll.wrapLines = wrapLines
         holder.mermaidImage.background = GradientDrawable().apply {
             cornerRadius = dp(6f).toFloat()
             setColor(colorScheme.codeBlockBg.toArgb())
@@ -221,7 +229,7 @@ class FencedCodeBlockEntry(
 
     /** ViewHolder: code views (shared with yaml + mermaid), plus the mermaid image. */
     class Holder(itemView: View) : MarkwonAdapter.Holder(itemView) {
-        val codeScroll: HorizontalScrollView = requireView(R.id.code_scroll)
+        val codeScroll: CodeScrollView = requireView(R.id.code_scroll)
         val codeView: TextView = requireView(R.id.code_text)
         val copyButton: TextView = requireView(R.id.code_copy)
         val mermaidImage: ImageView = requireView(R.id.mermaid_image)

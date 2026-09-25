@@ -47,10 +47,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -73,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
 import com.pilcrowmd.R
+import com.pilcrowmd.ui.theme.DISABLED_ACTION_ALPHA
 import com.pilcrowmd.ui.theme.mdColors
 import com.pilcrowmd.ui.theme.sourceSerif4Family
 import com.pilcrowmd.viewmodel.RecentFileUi
@@ -431,13 +434,19 @@ fun WelcomeScreen(
 
                                 Spacer(Modifier.height(44.dp))
 
-                                // Cream CTA
+                                // Cream CTA. M-117: while disabled it is dimmed with OPAQUE colours, the
+                                // dimmed colour pre-mixed with the screen background, not with alpha:
+                                // it is the one dimmed action with a FILL, and it sits over the ¶
+                                // watermark, so a translucent fill let the watermark show through it as a
+                                // dark band. Flat while disabled, as a disabled button is.
+                                val ctaFill = c.creamButton.dimmedOverWhen(isLoading, c.primaryBackground)
+                                val ctaContent = c.onCreamButton.dimmedOverWhen(isLoading, c.primaryBackground)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .shadow(12.dp, RoundedCornerShape(16.dp), clip = false)
+                                        .shadow(if (isLoading) 0.dp else 12.dp, RoundedCornerShape(16.dp), clip = false)
                                         .clip(RoundedCornerShape(16.dp))
-                                        .background(c.creamButton)
+                                        .background(ctaFill)
                                         .clickable(enabled = !isLoading) { onOpenFile() }
                                         .padding(vertical = 18.dp),
                                     horizontalArrangement = Arrangement.Center,
@@ -446,13 +455,13 @@ fun WelcomeScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.FolderOpen,
                                         contentDescription = null,
-                                        tint = c.onCreamButton,
+                                        tint = ctaContent,
                                         modifier = Modifier.size(22.dp),
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Text(
                                         text = "Open MD File",
-                                        color = c.onCreamButton,
+                                        color = ctaContent,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 18.sp,
                                     )
@@ -469,6 +478,7 @@ fun WelcomeScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .dimmedWhen(isLoading)
                                         .clip(RoundedCornerShape(16.dp))
                                         .border(1.dp, c.border, RoundedCornerShape(16.dp))
                                         .clickable(enabled = !isLoading) { onCreateFile() }
@@ -501,6 +511,7 @@ fun WelcomeScreen(
                                     color = c.secondaryText,
                                     fontSize = 13.sp,
                                     modifier = Modifier
+                                        .dimmedWhen(isLoading)
                                         .clip(RoundedCornerShape(8.dp))
                                         .clickable(enabled = !isLoading) { onOpenAnyFile() }
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -697,10 +708,11 @@ private fun RecentRow(
                     alpha = 0.4f,
                 )
             },
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(18.dp).dimmedWhen(isLoading),
         )
         Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        // The remove button to the right stays undimmed: it still works during a load.
+        Column(modifier = Modifier.weight(1f).dimmedWhen(isLoading)) {
             Text(
                 text = r.displayName,
                 color = nameColor,
@@ -726,6 +738,27 @@ private fun RecentRow(
         )
     }
 }
+
+/**
+ * M-117: an action the load gate has switched off must LOOK switched off. `clickable(enabled = false)`
+ * removes the click and the ripple and nothing else, so without this a disabled action rendered
+ * exactly like an enabled one. The opacity is a theme token; every colour stays a token.
+ *
+ * Translucent by design, which is right for a control with no fill of its own (an outline, text, an
+ * icon): whatever is behind it, the scrolling ¶ watermark included, already shows through it when it
+ * is enabled, so dimming cannot reveal anything new. A FILLED control is different: dimming turns
+ * its opaque fill translucent. The Open MD File button is the one such control, and uses
+ * [dimmedOverWhen] instead.
+ */
+private fun Modifier.dimmedWhen(disabled: Boolean): Modifier = if (disabled) alpha(DISABLED_ACTION_ALPHA) else this
+
+/**
+ * When [disabled], the colour [dimmedWhen] would produce over [background], as an OPAQUE colour: the
+ * same token opacity, pre-mixed. For a control drawn over something other than the plain background,
+ * where a translucent fill would let that something show through.
+ */
+private fun Color.dimmedOverWhen(disabled: Boolean, background: Color): Color =
+    if (disabled) copy(alpha = DISABLED_ACTION_ALPHA).compositeOver(background) else this
 
 private fun relativeTime(ts: Long): String =
     DateUtils.getRelativeTimeSpanString(ts, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()

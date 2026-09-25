@@ -4,6 +4,7 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -73,6 +74,9 @@ class FrontmatterBlockEntry(
         // and drop the code-only chrome (Copy button) so the card is clean.
         holder.codeScroll.visibility = View.VISIBLE
         holder.copyButton.visibility = View.GONE
+        // The metadata card is not a code block: it keeps side-scroll whatever the M-134 wrap setting
+        // says, and must clear a wrap a code block left on this shared holder.
+        holder.codeScroll.wrapLines = false
         // Excluded from pinch scaling by ROLE, not by the fact that it is currently hidden. This
         // entry shares `adapter_code_block` with the fenced-code entry, so the same chrome is in the
         // tree; today the GONE above keeps the scaler off it, but that is incidental — make this
@@ -90,13 +94,22 @@ class FrontmatterBlockEntry(
             TypedValue.COMPLEX_UNIT_SP,
             PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * fontScale,
         )
+        // Line spacing and the card surface cannot throw, so they sit outside the try for the same
+        // reason as the size: a degraded card must still look like a card, not keep a code block's
+        // surface or a fresh holder's default spacing. M-108.
+        holder.codeView.setLineSpacing(0f, PreviewLineHeightMultiplier)
+        // Soft metadata-card surface: a light surface + thin border (token layer, no hardcoded hex).
+        holder.codeScroll.background = GradientDrawable().apply {
+            cornerRadius = dp(CARD_CORNER_DP).toFloat()
+            setColor(colorScheme.secondarySurface.toArgb())
+            setStroke(dp(1f), colorScheme.lightBorder.toArgb())
+        }
         try {
             holder.codeView.movementMethod = null
             // Reading font (not mono) — the card reads like prose, not code. Stays INSIDE the try:
             // `getFont` is the throwing call, and hoisting it would put it outside the catch and
             // turn a graceful degrade into a crash (Safeguard 3).
             holder.codeView.typeface = ResourcesCompat.getFont(context, fontSet.readingRegular)
-            holder.codeView.setLineSpacing(0f, PreviewLineHeightMultiplier)
             // Reset the base colour every bind: the holder is recycled, and the row spans cover only
             // the key/value text (not the tab/newline separators), so unspanned chars must not inherit
             // a sibling's (or the catch-path's) colour.
@@ -109,15 +122,12 @@ class FrontmatterBlockEntry(
                 blockIsFocused = holder.bindingAdapterPosition == searchHighlight.focusedPosition,
                 occurrenceBase = 0,
             )
-            // Soft metadata-card surface: a light surface + thin border (token layer, no hardcoded hex).
-            holder.codeScroll.background = GradientDrawable().apply {
-                cornerRadius = dp(CARD_CORNER_DP).toFloat()
-                setColor(colorScheme.secondarySurface.toArgb())
-                setStroke(dp(1f), colorScheme.lightBorder.toArgb())
-            }
         } catch (e: Exception) {
             // Graceful-ignore: if rendering fails, show raw content (Safeguard 3).
             Log.e("FrontmatterBlockEntry", "Metadata card render failed: ${e.message}", e)
+            // The reading font is what failed to load, so fall back to the system face rather than
+            // keep whatever this shared holder last showed — a code block's mono. M-108.
+            holder.codeView.typeface = Typeface.DEFAULT
             holder.codeView.text = node.literal ?: "[frontmatter could not be rendered]"
             holder.codeView.setTextColor(colorScheme.secondaryText.toArgb())
         }
