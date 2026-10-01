@@ -12,6 +12,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.testing.MainDispatcherSuite
 import io.mockk.mockk
@@ -130,7 +131,7 @@ class MarkdownViewModelSaveAsTest {
         val capturedSaves = linkedMapOf<Uri, String>()
         var takePermCalls = 0
 
-        override suspend fun readFile(uri: Uri) = Result.success(readContent)
+        override suspend fun readFile(uri: Uri) = Result.success(FileText(readContent, isUtf8 = true))
 
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> {
             saveGate?.await()
@@ -253,7 +254,7 @@ class MarkdownViewModelSaveAsTest {
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
         vm.awaitLoaded(oldUri)
-        vm.updateContent("edited\n")
+        vm.updateContent(vm.currentDocument.value!!.id, "edited\n")
 
         vm.saveActiveDocumentAs(newUri)
         vm.awaitSaveSettled()
@@ -278,7 +279,8 @@ class MarkdownViewModelSaveAsTest {
 
         vm.saveActiveDocumentAs(newUri) // snapshots "orig\n", parks at the gate
         vm.awaitSaving() // the snapshot is taken by now; only then is typing a race worth testing
-        vm.updateContent("edited during save\n") // user types while the write is suspended
+        // user types while the write is suspended
+        vm.updateContent(vm.currentDocument.value!!.id, "edited during save\n")
         gate.complete(Unit)
         vm.awaitSaveSettled()
 
@@ -299,7 +301,7 @@ class MarkdownViewModelSaveAsTest {
         val vm = vmWith(repo)
         vm.loadFile(oldUri)
         vm.awaitLoaded(oldUri)
-        vm.updateContent("unsaved edit\n")
+        vm.updateContent(vm.currentDocument.value!!.id, "unsaved edit\n")
 
         vm.saveActiveDocumentAs(newUri)
         vm.awaitSaveSettled()

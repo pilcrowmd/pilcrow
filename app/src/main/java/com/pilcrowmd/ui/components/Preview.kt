@@ -37,11 +37,13 @@ import androidx.core.view.doOnNextLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
-import com.pilcrowmd.domain.markdown.Footnotes
+import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.SearchMatch
+import com.pilcrowmd.rendering.DetailsDecoration
+import com.pilcrowmd.rendering.DetailsState
 import com.pilcrowmd.rendering.MarkwonRenderer
-import com.pilcrowmd.rendering.PlainTextBlocks
+import com.pilcrowmd.rendering.ReaderTree
 import com.pilcrowmd.rendering.RecyclerAdapterEntries
 import com.pilcrowmd.rendering.SearchHighlight
 import com.pilcrowmd.rendering.applyReaderJumpBehaviour
@@ -110,6 +112,8 @@ fun MarkdownPreview(
             focusedColor = c.searchHighlightFocused.toArgb(),
         )
     }
+    // M-161: which <details> sections are open. One per screen; the adapters built here read it.
+    val detailsState = remember { DetailsState() }
     val lastSearchKey = remember { mutableStateOf<String?>(null) }
     val lastJumpSeq = remember { mutableStateOf(0) }
     // Tracks the font/scale/mermaid config the current adapter was built with, so the adapter
@@ -147,15 +151,18 @@ fun MarkdownPreview(
                     // definition — always the document's final block — can actually reach the top
                     // of the viewport instead of being clamped to the bottom.
                     applyReaderJumpBehaviour(this, c.searchHighlightFocused.toArgb())
+                    setTag(R.id.details_state, detailsState)
+                    addItemDecoration(DetailsDecoration(context, detailsState, c))
                     adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         context,
-                        renderer.markwonFor(c),
+                        renderer.markwonFor(c, fontScale),
                         fontScale,
                         fontSet,
                         mermaidCloudEnabled,
                         searchHighlight,
                         c,
                         wrapCodeLines,
+                        detailsState,
                     )
                     addOnScrollListener(object : RecyclerView.OnScrollListener() {
                         override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -294,16 +301,24 @@ fun MarkdownPreview(
                     clearReaderHighlight(rv)
                     val newAdapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         rv.context,
-                        renderer.markwonFor(c),
+                        // M-121: the instance matches the scale, so the maths is sized with the text.
+                        renderer.markwonFor(c, liveFontScale.value),
                         liveFontScale.value,
                         fontSet,
                         mermaidCloudEnabled,
                         searchHighlight,
                         c,
                         wrapCodeLines,
+                        detailsState,
                     )
                     // Populate before attaching → no empty frame.
-                    newAdapter.setContentForMode(renderer.markwonFor(c), content, renderMode)
+                    newAdapter.setContentForMode(
+                        renderer.markwonFor(c, liveFontScale.value),
+                        content,
+                        renderMode,
+                        detailsState,
+                    )
+                    rv.detailsDecoration()?.scheme = c
                     lastContent.value = content // content is now rendered; the (1) re-render is skipped this pass
                     rv.swapAdapter(newAdapter, false)
                     (rv.layoutManager as? LinearLayoutManager)
@@ -320,7 +335,12 @@ fun MarkdownPreview(
                 // block-height changes that an absolute pixel offset could not.
                 if (content != lastContent.value) {
                     lastContent.value = content
-                    adapter.setContentForMode(renderer.markwonFor(c), content, renderMode)
+                    adapter.setContentForMode(
+                        renderer.markwonFor(c, liveFontScale.value),
+                        content,
+                        renderMode,
+                        detailsState,
+                    )
                     val lm = rv.layoutManager as? LinearLayoutManager
                     rv.post { lm?.scrollToPositionWithOffset(initialScroll.index, initialScroll.offset) }
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
@@ -338,6 +358,8 @@ fun MarkdownPreview(
                     searchHighlight.query = query
                     searchHighlight.focusedPosition = focusedPos
                     searchHighlight.focusedOccurrence = focusedOccurrence
+                    // A match inside a closed <details> section opens it, as a browser's find does.
+                    if (focusedPos >= 0) detailsState.reveal(focusedPos)
                     adapter.notifyDataSetChanged()
                     // Bring the focused match into view. scrollToPositionWithOffset only tops
                     // the BLOCK, so a match deep in a tall block stays below the fold — after the block
@@ -361,6 +383,8 @@ fun MarkdownPreview(
                 if (jumpSeq != lastJumpSeq.value && jumpPosition >= 0) {
                     lastJumpSeq.value = jumpSeq
                     rv.post {
+                        // A heading inside a closed <details> section opens it first (M-161).
+                        detailsState.reveal(jumpPosition)?.let { adapter.notifyItemRangeChanged(it.first, it.count()) }
                         val layoutManager = rv.layoutManager as? LinearLayoutManager
                         if (layoutManager != null) {
                             // scrollToPositionWithOffset places the item at a pixel offset from the top
@@ -514,13 +538,20 @@ private fun JumpButton(icon: ImageVector, description: String, onClick: () -> Un
 /**
  * Populate the adapter for the active render mode: MARKDOWN parses as always; PLAIN
  * injects the pre-built verbatim chunk tree — no parser runs, so Markdown syntax stays literal.
+ * A Markdown document nested too deeply to render also gets the chunk tree ([ReaderTree], NEW-11).
  */
-private fun MarkwonAdapter.setContentForMode(markwon: Markwon, content: String, renderMode: RenderMode) {
-    if (renderMode == RenderMode.PLAIN) {
-        setParsedMarkdown(markwon, PlainTextBlocks.build(content))
-    } else {
-        // setMarkdown() IS setParsedMarkdown(markwon, markwon.parse(md)); we parse explicitly so the
-        // shared footnote pass runs before the adapter splits the document into items.
-        setParsedMarkdown(markwon, Footnotes.transform(markwon.parse(content)))
-    }
+private fun MarkwonAdapter.setContentForMode(
+    markwon: Markwon,
+    content: String,
+    renderMode: RenderMode,
+    details: DetailsState,
+) {
+    // The shared post-parse passes run before the adapter splits the document into items — and the
+    // <details> sections are read off the same tree the adapter paints (M-161); a chunk tree has none.
+    val document = ReaderTree.build(markwon, content, plain = renderMode == RenderMode.PLAIN)
+    details.load(content, Details.sections(document))
+    setParsedMarkdown(markwon, document)
 }
+
+private fun RecyclerView.detailsDecoration(): DetailsDecoration? =
+    (0 until itemDecorationCount).map { getItemDecorationAt(it) }.filterIsInstance<DetailsDecoration>().firstOrNull()

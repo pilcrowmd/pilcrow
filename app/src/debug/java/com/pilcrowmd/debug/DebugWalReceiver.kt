@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.pilcrowmd.PilcrowApplication
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.repository.LocalFileRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +44,12 @@ class DebugWalReceiver : BroadcastReceiver() {
                         Log.w(TAG, "No last file open — open a throwaway .md in Pilcrow first.")
                         return@withTimeout
                     }
-                    val current = repo.readFile(uri).getOrDefault("")
-                    val staged = current + "\n\n<!-- recovered-by-WAL ${System.currentTimeMillis()} -->\n"
+                    val marker = "\n\n<!-- recovered-by-WAL ${System.currentTimeMillis()} -->\n"
+                    val staged = walStagedContent(repo.readFile(uri), marker)
+                    if (staged == null) {
+                        Log.w(TAG, "Not staged: $uri could not be read or is not UTF-8.")
+                        return@withTimeout
+                    }
                     repo.debugStageWithoutCommit(uri, staged)
                         .onSuccess {
                             Log.w(TAG, "Staged + truncated $uri. Now force-stop and relaunch to recover.")
@@ -64,3 +69,11 @@ class DebugWalReceiver : BroadcastReceiver() {
         const val TIMEOUT_MS = 5000L
     }
 }
+
+/**
+ * What the hook stages for a file it has [read]: its text plus [marker], or null to leave the file
+ * alone. Recovery writes the staged text back as UTF-8, so a file that is not UTF-8 is never staged
+ * (NEW-12), and a failed read is not turned into empty content that would replace the file.
+ */
+internal fun walStagedContent(read: Result<FileText>, marker: String): String? =
+    read.getOrNull()?.takeIf { it.isUtf8 }?.let { it.content + marker }

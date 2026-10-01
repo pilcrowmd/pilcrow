@@ -22,7 +22,6 @@ import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.storage.StorageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +61,13 @@ data class Document(
     // SAF display name (e.g. "notes.md"); drives the default PDF export filename. Empty until
     // resolved (intent/cold paths still route through loadFile, which populates it).
     val displayName: String = "",
+    /**
+     * True when the file's bytes were not valid UTF-8 (NEW-12). Saves write UTF-8, so saving over
+     * the file would change its encoding and replace every invalid sequence (Safeguards 1 and 2):
+     * every in-place save refuses, and Save-As writes a UTF-8 copy to a new file instead. Carried by
+     * `copy()` with the identity, re-derived on every load, cleared when Save-As adopts the copy.
+     */
+    val notUtf8: Boolean = false,
     /**
      * Opaque per-instance identity (M-147). Defaulted and LAST so no construction site changes;
      * `copy()` carries it, so typing never changes identity. See [DocumentId].
@@ -116,18 +122,19 @@ constructor(
      */
     private val cpuDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
 ) : ViewModel() {
+    // The open document and everything derived from it. This class READS all of it, but can
+    // replace the document only through the slot's adjudicated doors (M-109) — see [DocumentSlot].
+    private val slot = DocumentSlot()
+
     // v1 holds single document, but the structure allows collection.
-    private val _currentDocument = MutableStateFlow<Document?>(null)
-    val currentDocument: StateFlow<Document?> = _currentDocument.asStateFlow()
+    val currentDocument: StateFlow<Document?> = slot.document
 
     // How the reader pane renders the current document: extension default, overridable
     // per file. Re-derived on EVERY document-identity change (load + Save-As adoption).
-    private val _renderMode = MutableStateFlow(RenderMode.MARKDOWN)
-    val renderMode: StateFlow<RenderMode> = _renderMode.asStateFlow()
+    val renderMode: StateFlow<RenderMode> = slot.renderMode
 
     // True iff the current document is a `.txt` — gates the "View as Markdown" overflow toggle.
-    private val _plainToggleAvailable = MutableStateFlow(false)
-    val plainToggleAvailable: StateFlow<Boolean> = _plainToggleAvailable.asStateFlow()
+    val plainToggleAvailable: StateFlow<Boolean> = slot.plainToggleAvailable
 
     /**
      * Flip the reader between plain and Markdown rendering for the current document and persist
@@ -136,12 +143,12 @@ constructor(
      */
     fun toggleRenderMode() {
         viewModelScope.launch {
-            val doc = _currentDocument.value ?: return@launch
-            val next = if (_renderMode.value == RenderMode.PLAIN) RenderMode.MARKDOWN else RenderMode.PLAIN
-            _renderMode.emit(next)
+            val doc = slot.document.value ?: return@launch
+            val next = if (slot.renderMode.value == RenderMode.PLAIN) RenderMode.MARKDOWN else RenderMode.PLAIN
+            slot.setRendering(doc.id, renderMode = next)
             // An unsaved document has no URI to key an override on; the in-memory mode still flips.
             doc.uri?.let { storage.setRenderModeOverride(it, next) }
-            refreshHeadings(doc.content)
+            refreshHeadings(doc.id, doc.content)
             refreshActiveSearch()
         }
     }
@@ -159,36 +166,34 @@ constructor(
 
     /**
      * Derive the render mode for a document identity: the user's remembered per-file override
-     * wins; otherwise the extension default. Called from BOTH identity-assignment sites
-     * ([loadDocument] and [saveActiveDocumentAs] adoption) so the state can never desync from
-     * the document (a review finding).
+     * wins; otherwise the extension default. Called on Save-As adoption, for document [expected]
+     * only. A load or a new document derives the same value before it publishes (M-127).
      */
-    private suspend fun applyDerivedRenderMode(uri: Uri?, displayName: String) {
+    private suspend fun applyDerivedRenderMode(expected: DocumentId, uri: Uri, displayName: String) {
         val kind = DocumentKind.fromDisplayName(displayName)
-        _plainToggleAvailable.emit(kind == DocumentKind.PLAIN_TEXT)
-        val default = if (kind == DocumentKind.PLAIN_TEXT) RenderMode.PLAIN else RenderMode.MARKDOWN
-        // A document with no file yet (M-91) has no URI to look an override up by, so the
-        // extension default is the whole answer. Its name is `.md`, so that default is MARKDOWN.
-        val override = uri?.let { storage.getRenderModeOverride(it) }
-        _renderMode.emit(override ?: default)
+        val override = storage.getRenderModeOverride(uri)
+        slot.setRendering(
+            expected,
+            renderMode = override ?: defaultRenderMode(kind),
+            plainToggleAvailable = kind == DocumentKind.PLAIN_TEXT,
+        )
     }
 
-    /** Headings feed the TOC drawer — a plain-text document has none. */
-    private suspend fun refreshHeadings(content: String) {
-        val headings = if (_renderMode.value == RenderMode.PLAIN) {
-            emptyList()
-        } else {
-            withContext(Dispatchers.Default) { parseHeadingsUseCase.extractHeadings(content) }
+    /** Headings feed the TOC drawer, for document [expected] only, and only if no newer pass has started. */
+    private suspend fun refreshHeadings(expected: DocumentId, content: String) {
+        val generation = ++headingsGeneration
+        val headings = headingsOrEmpty(content, slot.renderMode.value)
+        // A newer load, mode toggle or Save-As owns the TOC now; this result is for older content.
+        if (generation == headingsGeneration) {
+            slot.setRendering(expected, headings = headings)
         }
-        _headings.emit(headings)
     }
 
     // Transient = the open document holds no persisted *write* grant (e.g. opened read-only via
     // "Open with"), so an in-place save would fail. Derived from the repository at load/adopt time;
     // drives the transient banner and routes Save → Save-As. false when no
     // document is open.
-    private val _transient = MutableStateFlow(false)
-    val transient: StateFlow<Boolean> = _transient.asStateFlow()
+    val transient: StateFlow<Boolean> = slot.transient
 
     // Stranded WAL slots (the escape hatch): saves the WAL could not commit
     // because the target became permanently inaccessible. 1..N independent of the open document.
@@ -206,33 +211,22 @@ constructor(
     // Activity/composition recreate that re-runs the triggering LaunchedEffect on rotation).
     private var strandedStartEvaluated = false
 
-    // Baseline content for dirty detection. When a file loads, this captures the original.
-    // updateContent computes dirty = (newContent != originalContent). On save success, we update
-    // this to the saved content so type-then-undo also clears dirty.
-    private var originalContent: String = ""
-
     // Mode toggle state
-    private val _mode = MutableStateFlow<ViewMode>(ViewMode.READER)
-    val mode: StateFlow<ViewMode> = _mode.asStateFlow()
+    val mode: StateFlow<ViewMode> = slot.mode.asStateFlow()
 
     // Line-ending format preservation (Safeguard 2).
     // Tracks whether the file uses CRLF (\r\n) or LF (\n) so save can restore the original format.
-    private val _lineEnding = MutableStateFlow("LF")
-    val lineEnding: StateFlow<String> = _lineEnding.asStateFlow()
+    val lineEnding: StateFlow<String> = slot.lineEnding
 
     // Scroll position preservation: save position when toggling modes.
     // previewScroll: reader-mode anchor (first-visible block + intra-block offset)
     // editorScroll: editor/source-mode absolute pixel offset (Sora owns its own scroller)
-    private val _previewScroll = MutableStateFlow(ScrollAnchor())
-    val previewScroll: StateFlow<ScrollAnchor> = _previewScroll.asStateFlow()
-
-    private val _editorScroll = MutableStateFlow(0)
-    val editorScroll: StateFlow<Int> = _editorScroll.asStateFlow()
+    val previewScroll: StateFlow<ScrollAnchor> = slot.previewScroll.asStateFlow()
+    val editorScroll: StateFlow<Int> = slot.editorScroll.asStateFlow()
 
     // Editor caret offset, hoisted so it survives the editor leaving/re-entering composition on a
     // mode toggle (otherwise the cursor jumped to the top of the file each time).
-    private val _editorCursor = MutableStateFlow(0)
-    val editorCursor: StateFlow<Int> = _editorCursor.asStateFlow()
+    val editorCursor: StateFlow<Int> = slot.editorCursor.asStateFlow()
 
     // In-document search
     private val _searchQuery = MutableStateFlow("")
@@ -248,8 +242,7 @@ constructor(
     val searchVisible: StateFlow<Boolean> = _searchVisible.asStateFlow()
 
     // Heading table-of-contents navigation
-    private val _headings = MutableStateFlow<List<HeadingNode>>(emptyList())
-    val headings: StateFlow<List<HeadingNode>> = _headings.asStateFlow()
+    val headings: StateFlow<List<HeadingNode>> = slot.headings
 
     private val _tocVisible = MutableStateFlow(false)
     val tocVisible: StateFlow<Boolean> = _tocVisible.asStateFlow()
@@ -269,19 +262,24 @@ constructor(
     val pendingOpenUri: StateFlow<Uri?> = _pendingOpenUri.asStateFlow()
 
     // M-126: a load failure earns a PERSISTENT message only when it leaves the user with nothing
-    // on screen. That is decided HERE, at the instant the load fails, because only then is it
-    // known whether a document was open. Deciding it later in the UI cannot work: the failure is
-    // consumed immediately (resetLoadErrorState) so the toast cannot replay, and a message stored
-    // while a document was open would surface — stale — the moment the user closed that document,
-    // which is a "couldn't open that file" greeting for an action they took an hour ago.
-    // Declared below _fileScrollPositions on purpose: app/config/ktlint/baseline.xml pins this
-    // file's backing-property-naming suppression to line 257 BY NUMBER (see loadDocument).
-    private val _loadFailedWithNoDocument = MutableStateFlow(false)
-    val loadFailedWithNoDocument: StateFlow<Boolean> = _loadFailedWithNoDocument.asStateFlow()
+    // on screen. That is decided at the instant the load fails, because only then is it known
+    // whether a document was open (a message stored while a document was open would surface, stale,
+    // the moment the user closed it). The slot decides it, and every publish retires it.
+    val loadFailedWithNoDocument: StateFlow<Boolean> = slot.loadFailedWithNoDocument
+
+    // A close that was refused because the document has unsaved edits (M-152's close half): the UI
+    // answers it with its existing close prompt, then consumes it. One-shot, like the save outcomes.
+    private val _closeNeedsConfirm = MutableStateFlow(false)
+    val closeNeedsConfirm: StateFlow<Boolean> = _closeNeedsConfirm.asStateFlow()
 
     // File I/O state
     private val _fileLoadState = MutableStateFlow<FileLoadState>(FileLoadState.Idle)
     val fileLoadState: StateFlow<FileLoadState> = _fileLoadState.asStateFlow()
+
+    // The load whose `Loading` is on screen. Only it may end that state, so a load that lost the
+    // slot, or was cancelled, cannot reset `Loading` in the middle of a newer one (the job the
+    // restore's join used to do). Main-confined, like everything that touches it.
+    private var loadingClaim: Claim? = null
 
     // ── The write claim (M-149) ───────────────────────────────────────────────────────────────
     //
@@ -353,39 +351,18 @@ constructor(
     // disk, and silently discard the user's unsaved edits (Safeguard 1/2). first() reads
     // the current value once and stops.
     //
-    // The restore is a fallback, so it yields to any file the user actually asked for (M-145).
-    // The load runs inside this job rather than through loadFile, so cancelling the job cancels
-    // the load; every explicit open (loadFile, openPickedFile) stops it first, in
-    // [stopStartupRestore]. Without that, a cold "Open with" raced the restore, and the restore
-    // usually finished last and replaced the file the user had opened.
-    private var restoreIsLoading = false
+    // The restore is a fallback, so it yields to any file the user actually asked for (M-145). It
+    // claims FIRST — before it reads the remembered URI — so every open the user starts afterwards
+    // claims later and wins the slot however the two finish (M-109). Explicit opens still cancel it,
+    // but only to save the wasted read: they no longer join it, because the claim, not the join, is
+    // what keeps the right document on screen, and joining waited on an uninterruptible read.
     private val restoreJob: Job = viewModelScope.launch {
+        val claim = slot.claim()
         val lastUri = storage.lastFileUri.first()
-        if (lastUri != null) {
-            restoreIsLoading = true
-            loadDocument(lastUri)
-        }
+        if (lastUri != null) loadDocument(lastUri, claim, ReplacePolicy.IF_CLEAN)
     }
 
-    /**
-     * Stop the startup restore before an explicit open loads (M-145). A no-op once it has finished.
-     *
-     * Once the restore is inside [loadDocument], it is cancelled AND joined: the cancelled load's
-     * handler resets `Loading` to `Idle`, and joining makes that reset land before this open sets
-     * `Loading`, not in the middle of its load. Before that point, while it is still reading the
-     * remembered URI, a plain cancel is enough — prompt cancellation stops it before it touches any
-     * state — and not joining keeps the explicit open starting at once, as it did before M-145.
-     */
-    private suspend fun stopStartupRestore() {
-        if (restoreIsLoading) restoreJob.cancelAndJoin() else restoreJob.cancel()
-    }
-
-    fun loadFile(uri: Uri) {
-        viewModelScope.launch {
-            stopStartupRestore()
-            loadDocument(uri)
-        }
-    }
+    fun loadFile(uri: Uri) = open(uri, ReplacePolicy.IF_CLEAN)
 
     /**
      * Open a file chosen via the SAF picker. Persists read/write **before** loading so the transient
@@ -394,16 +371,27 @@ constructor(
      * file as transient. Best-effort: a provider that rejects the persist simply leaves the file
      * transient (which is then correct), so the result is ignored and never blocks the load.
      */
-    fun openPickedFile(uri: Uri) {
+    fun openPickedFile(uri: Uri) = open(uri, ReplacePolicy.IF_CLEAN, takePermission = true)
+
+    /**
+     * Every explicit open. The claim is taken HERE, before anything suspends, so the order of claims
+     * is the order the user asked (M-109).
+     */
+    private fun open(uri: Uri, policy: ReplacePolicy, takePermission: Boolean = false) {
+        val claim = slot.claim()
         viewModelScope.launch {
-            stopStartupRestore()
-            repository.takePersistableUriPermission(uri)
-            loadDocument(uri)
+            restoreJob.cancel()
+            if (takePermission) repository.takePersistableUriPermission(uri)
+            loadDocument(uri, claim, policy)
         }
     }
 
-    /** The results of the load-time CPU pass, carried back to Main as one value. */
-    private data class PreparedLoad(val lineEnding: String, val normalized: String)
+    /** End the load's `Loading` with [state] — only if this load still owns it (see [loadingClaim]). */
+    private fun finishLoad(claim: Claim, state: FileLoadState) {
+        if (loadingClaim != claim) return
+        loadingClaim = null
+        _fileLoadState.value = state
+    }
 
     /**
      * Guards [loadDocumentOrThrow] so the load ALWAYS leaves [FileLoadState.Loading]. **M-115.**
@@ -437,6 +425,9 @@ constructor(
      * compiles to `setValue(v); return Unit` with no `COROUTINE_SUSPENDED` path — so it performs no
      * cancellation check and takes effect even once the coroutine is cancelled.
      *
+     * **Only the load that owns `Loading` ends it** ([finishLoad]), so a cancelled or superseded load
+     * cannot reset it in the middle of a newer load.
+     *
      * **The state emit only fires while still `Loading`.** A throw in the post-outcome persistence
      * lands after `emit(Success)`, and retroactively turning a document that loaded fine into an
      * error would be a worse lie than the crash it replaces. It is logged rather than dropped: the
@@ -444,132 +435,154 @@ constructor(
      * all is how a persistence bug stays invisible.
      */
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun loadDocument(uri: Uri) {
+    private suspend fun loadDocument(uri: Uri, claim: Claim, policy: ReplacePolicy) {
         try {
-            loadDocumentOrThrow(uri)
+            loadDocumentOrThrow(uri, claim, policy)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-            if (_fileLoadState.value is FileLoadState.Loading) {
-                _fileLoadState.emit(FileLoadState.Idle)
-            }
+            if (_fileLoadState.value is FileLoadState.Loading) finishLoad(claim, FileLoadState.Idle)
             throw e
         } catch (e: Exception) {
-            if (_fileLoadState.value is FileLoadState.Loading) {
-                _loadFailedWithNoDocument.value = _currentDocument.value == null
-                _fileLoadState.emit(FileLoadState.Error(e.message ?: "Unknown error"))
+            if (_fileLoadState.value is FileLoadState.Loading && loadingClaim == claim) {
+                slot.markLoadFailure(true)
+                finishLoad(claim, FileLoadState.Error(e.message ?: "Unknown error"))
             } else {
                 android.util.Log.e("MarkdownViewModel", "load threw after its outcome was published", e)
             }
         }
     }
 
-    private suspend fun loadDocumentOrThrow(uri: Uri) {
+    private suspend fun loadDocumentOrThrow(uri: Uri, claim: Claim, policy: ReplacePolicy) {
         // A new attempt retires the last failure's message (M-126) — one place, because this is
         // the single point every load passes through.
-        _loadFailedWithNoDocument.value = false
-        _fileLoadState.emit(FileLoadState.Loading)
-        val result = repository.readFile(uri)
-        result
-            .onSuccess { content ->
-                // EVERY per-character pass over the document happens here, off the main thread.
-                // `readFile` is `withContext(Dispatchers.IO)`, so it RETURNS to this coroutine's
-                // context — `viewModelScope` = Dispatchers.Main.immediate — and until 1.0.4 that
-                // meant the whole block below ran on Main. On a large file that froze the UI for
-                // minutes and Play Vitals recorded it as an ANR (Pixel 6a, 1.0.3).
-                //
-                // Both passes are cheap now, but they are grouped into ONE hop on purpose: the next
-                // expensive thing added to the load path should land on this side of the boundary by
-                // default, not on Main. Only the results cross back.
-                //
-                // ⚠️ IF YOU ARE ADDING THAT NEXT CALL, READ THIS FIRST — M-128.
-                // `_lineEnding` and `originalContent` below are written for the NEW file BEFORE
-                // `_currentDocument.emit` publishes it. A throw anywhere between those two points is
-                // caught by loadDocument's wrapper (M-115), which leaves the PREVIOUS document
-                // current — now carrying the NEW file's line ending and dirty baseline. Its next
-                // save goes through contentForDisk and applies that ending, silently rewriting a
-                // CRLF file as LF or the reverse. That is a SAFEGUARD 2 BREAK: saving must write
-                // back exactly what the user wrote.
-                //
-                // It is unreachable TODAY only because nothing in that gap throws an Exception —
-                // `displayName` swallows every one of them (LocalFileRepository.displayName) and
-                // the CPU block can only raise an Error, which `catch (e: Exception)` does not
-                // catch. A single throwing call added between here and the emit makes it real.
-                // Put the call AFTER the document is published, or move the two writes down with
-                // it — and re-run MarkdownViewModelLineEndingTest rather than assuming: its
-                // barriers may depend on where the `_lineEnding` emit sits, and moving load work
-                // off the main thread broke that entire suite once already.
-                //
-                // Detect and remember the original line-ending format (CRLF vs LF).
-                // EditText normalizes \r\n → \n, so we detect here and restore on save.
-                //
-                // Normalize to LF for the in-memory model + editor (Sora/EditText work in LF). The
-                // original line ending is restored on save via applyLineEnding(). Keeping content,
-                // originalContent, and the editor all in LF avoids false-dirty and setText loops for
-                // CRLF files (otherwise the LF editor text never equals the CRLF in-memory content,
-                // so dirty could never clear and the update block would re-setText every recomposition).
-                val prepared = withContext(cpuDispatcher) {
-                    PreparedLoad(
-                        lineEnding = detectLineEnding(content),
-                        normalized = content.replace("\r\n", "\n"),
-                    )
+        slot.markLoadFailure(false)
+        loadingClaim = claim
+        _fileLoadState.value = FileLoadState.Loading
+        val file = repository.readFile(uri).getOrElse { error ->
+            if (loadingClaim == claim) slot.markLoadFailure(true)
+            finishLoad(claim, FileLoadState.Error(error.message ?: "Unknown error"))
+            return
+        }
+        val content = file.content
+        // ── PREPARE, THEN PUBLISH ONCE (M-127, M-128) ─────────────────────────────────────────
+        // Every value the new document needs is computed first, and NOTHING the screen reads is
+        // written until all of them exist. A throw or a cancellation during preparation — a
+        // DataStore IOException, the permission lookup, or the startup restore being cancelled by
+        // an explicit open (M-145) — leaves the previous document exactly as it was, with its own
+        // line ending and dirty baseline. Before this, the load wrote the new file's line ending
+        // and baseline ahead of the publish (M-128: the previous document's next save would apply
+        // the wrong ending, a Safeguard 2 break) and the transient flag, mode, render mode, TOC
+        // and scroll after it (M-127: a throw there left the new file on screen with the previous
+        // one's state).
+        //
+        // ⚠️ Add new load work to prepareLoad, never between the publish and the terminal state.
+        //
+        // The publish is ADJUDICATED (M-109): it lands only if no operation that started later has
+        // published, and — unless the user chose Discard — only if the document on screen has no
+        // unsaved edits. Text typed while this load ran is never replaced silently (M-180): the
+        // load stands down and the existing Save/Discard prompt asks instead.
+        val publication = prepareLoad(uri, content, notUtf8 = !file.isUtf8)
+        when (slot.publish(claim, publication, policy)) {
+            PublishOutcome.PUBLISHED -> {
+                // The TOC is the one value allowed to arrive AFTER the document: heading extraction
+                // is a full parse, about two seconds on a 25 MB file, and the reader must not wait
+                // for it. UNDISPATCHED, so this pass is registered before anything else can start
+                // one; a newer pass supersedes it and its result is dropped (refreshHeadings).
+                viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                    refreshHeadings(publication.document.id, content)
                 }
-                _lineEnding.emit(prepared.lineEnding)
-                val normalized = prepared.normalized
-
-                // Set baseline for dirty detection (type-then-undo clears dirty). Stays on Main:
-                // the dirty check reads it from Main, so keeping the write here avoids any
-                // cross-thread visibility question.
-                originalContent = normalized
-
-                // Resolve the SAF display name once and reuse it for both the open document
-                // (export filename) and the recents entry below.
-                val displayName = repository.displayName(uri)
-                // M-111: flip to the editor BEFORE the document is published, with no suspension
-                // between the two emits. Flipped after it, the screen composes the reader for the
-                // new document and runs the full Markwon parse on Main, only to throw it away.
-                // `.value` because it does not suspend: a DataStore read here would put a throwing
-                // call inside the M-128 gap above. It is only a fast path — see the M-90 read below.
-                if (openInEditMode.value) _mode.emit(ViewMode.EDITOR)
-                _currentDocument.emit(
-                    Document(uri = uri, content = normalized, dirty = false, displayName = displayName),
-                )
-                // Transient iff we hold no persisted write grant for this URI (read-only "Open with").
-                // The permission lookup is a synchronous ContentResolver/binder IPC — cheap in the
-                // common case, unbounded when the providing app is slow or cold-starting — so it is
-                // NOT left on Main either. IO rather than [cpuDispatcher]: it blocks, it does not compute.
-                val writable = withContext(Dispatchers.IO) { repository.hasPersistedWritePermission(uri) }
-                _transient.emit(!writable)
-                _editorCursor.value = 0 // new file starts at the top
-
-                // M-90: open straight in the editor when the user has asked for it. Deliberately
-                // ONE-DIRECTIONAL — when the setting is off, the mode is left exactly as it was,
-                // which preserves the pre-existing behaviour of the mode being sticky within a
-                // session. Forcing READER in the off case would be a second behaviour change
-                // nobody asked for.
-                //
-                // This storage read is the AUTHORITATIVE one and must stay, although the M-111 fast
-                // path above usually has already flipped the mode. `openInEditMode.value` starts at
-                // `false` until DataStore delivers, and a cold "Open with" can reach the fast path
-                // first; this read is what still opens that document in the editor.
-                if (storage.openInEditMode.first()) _mode.emit(ViewMode.EDITOR)
-
-                // Render mode from the document identity (extension default ?: per-file override),
-                // then headings for the TOC — gated to empty in plain mode.
-                applyDerivedRenderMode(uri, displayName)
-                refreshHeadings(content)
-
-                // Restore saved scroll anchor for this file.
-                val savedScroll = storage.getScrollPosition(uri)
-                _previewScroll.emit(savedScroll)
-
-                _fileLoadState.emit(FileLoadState.Success)
-                // Persist as last file + record in recents.
-                storage.saveLastFileUri(uri)
-                storage.addRecent(RecentFile(uri, displayName, System.currentTimeMillis()))
+                finishLoad(claim, FileLoadState.Success)
+                // Persist as last file + record in recents. The pointer is written only while this
+                // load is still what is on screen, so it cannot name a file the user moved away
+                // from (M-145).
+                if (slot.isLatestPublished(claim)) storage.saveLastFileUri(uri)
+                storage.addRecent(RecentFile(uri, publication.document.displayName, System.currentTimeMillis()))
             }
-            .onFailure { error ->
-                _loadFailedWithNoDocument.value = _currentDocument.value == null
-                _fileLoadState.emit(FileLoadState.Error(error.message ?: "Unknown error"))
+            PublishOutcome.SUPERSEDED -> finishLoad(claim, FileLoadState.Idle)
+            PublishOutcome.REFUSED_DIRTY -> {
+                _pendingOpenUri.value = uri
+                finishLoad(claim, FileLoadState.Idle)
             }
+        }
+    }
+
+    /**
+     * Compute everything a load publishes. **Changes no ViewModel state** — that is its whole
+     * contract, and what makes a throw or cancellation anywhere in here harmless.
+     */
+    private suspend fun prepareLoad(uri: Uri, content: String, notUtf8: Boolean): Publication {
+        // EVERY per-character pass over the document happens here, off the main thread.
+        // `readFile` is `withContext(Dispatchers.IO)`, so it RETURNS to this coroutine's context —
+        // `viewModelScope` = Dispatchers.Main.immediate — and until 1.0.4 that meant this ran on
+        // Main. On a large file that froze the UI for minutes and Play Vitals recorded it as an ANR
+        // (Pixel 6a, 1.0.3). Only the results cross back.
+        //
+        // The editor works in LF, so the content is normalised here and the original ending is
+        // restored on save (applyLineEnding). Content and baseline are both LF, so a CRLF file does
+        // not read as dirty the moment it opens.
+        val (lineEnding, normalized) = withContext(cpuDispatcher) {
+            detectLineEnding(content) to content.replace("\r\n", "\n")
+        }
+        // Resolved once; reused for the open document (export filename) and the recents entry.
+        val displayName = repository.displayName(uri)
+        // Transient iff we hold no persisted write grant (read-only "Open with"). A binder call, so
+        // not on Main; IO rather than [cpuDispatcher] because it blocks, it does not compute.
+        val writable = withContext(Dispatchers.IO) { repository.hasPersistedWritePermission(uri) }
+        // M-90: open straight in the editor when asked. The storage read, not `openInEditMode.value`:
+        // that StateFlow starts at `false` until DataStore delivers, and a cold "Open with" can get
+        // here first.
+        val openInEditor = storage.openInEditMode.first()
+        val kind = DocumentKind.fromDisplayName(displayName)
+        val renderMode = storage.getRenderModeOverride(uri) ?: defaultRenderMode(kind)
+        return Publication(
+            document = Document(
+                uri = uri,
+                content = normalized,
+                dirty = false,
+                displayName = displayName,
+                notUtf8 = notUtf8,
+            ),
+            lineEnding = lineEnding,
+            transient = !writable,
+            switchToEditor = openInEditor,
+            renderMode = renderMode,
+            plainToggleAvailable = kind == DocumentKind.PLAIN_TEXT,
+            headings = emptyList(), // filled in after the publish, see loadDocumentOrThrow
+            previewScroll = storage.getScrollPosition(uri),
+            resetEditorScroll = false,
+        )
+    }
+
+    /**
+     * The extension default: plain text renders as PLAIN, everything else as MARKDOWN. Declared
+     * down here, not beside [applyDerivedRenderMode], because app/config/ktlint/baseline.xml pins a
+     * suppression further up this file BY LINE NUMBER.
+     */
+    private fun defaultRenderMode(kind: DocumentKind): RenderMode =
+        if (kind == DocumentKind.PLAIN_TEXT) RenderMode.PLAIN else RenderMode.MARKDOWN
+
+    /**
+     * Bumped by every [refreshHeadings] pass, on Main. A pass applies its result only if the counter
+     * still holds the value it took, so a slow parse of an earlier document (or of the other render
+     * mode) can never overwrite the TOC of what is on screen now.
+     */
+    private var headingsGeneration = 0L
+
+    /**
+     * The TOC for the given content. **Safeguard 3:** a parser throw degrades to no TOC instead of
+     * escaping — the load's pass runs in its own coroutine after the document is shown, where an
+     * uncaught throw would crash the app. `Exception` only: an `Error` (OOM) still propagates.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun headingsOrEmpty(content: String, renderMode: RenderMode): List<HeadingNode> {
+        if (renderMode == RenderMode.PLAIN) return emptyList()
+        return try {
+            withContext(Dispatchers.Default) { parseHeadingsUseCase.extractHeadings(content) }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.e("MarkdownViewModel", "heading extraction failed; opening without a TOC", e)
+            emptyList()
+        }
     }
 
     /**
@@ -580,11 +593,11 @@ constructor(
      * it loads immediately.
      */
     fun openFromIntent(uri: Uri) {
-        val current = _currentDocument.value
+        val current = slot.document.value
         when {
             current?.uri == uri -> return // already viewing this file
             current?.dirty == true -> _pendingOpenUri.value = uri // confirm before discarding
-            else -> loadFile(uri)
+            else -> loadFile(uri) // IF_CLEAN: typing during the load still reaches the prompt (M-180)
         }
     }
 
@@ -597,33 +610,40 @@ constructor(
     fun discardAndOpenPending() {
         val uri = _pendingOpenUri.value ?: return
         _pendingOpenUri.value = null
-        loadFile(uri)
+        open(uri, ReplacePolicy.DISCARD)
     }
 
     /**
      * Save the current file, then open the pending intent file — sequentially, so the save
      * completes first. A failed save aborts the switch and surfaces the error, keeping both
      * the current file and the pending request intact (Safeguard 1).
+     *
+     * The open that follows is [ReplacePolicy.IF_CLEAN]: a keystroke typed while the save was
+     * writing keeps the document dirty ([DocumentSlot.markSaved] clears `dirty` only if nothing was
+     * typed), so the open stands down and the prompt comes back, instead of dropping the keystroke
+     * or marking it saved (M-152).
      */
     fun saveAndOpenPending() {
         val uri = _pendingOpenUri.value ?: return
         viewModelScope.launch {
             withWriteClaim {
-                val doc = _currentDocument.value
-                // `doc.uri != null` joins the dirty check rather than sitting inside it: an unsaved
-                // document (M-91) has no in-place target, and the View routes that case to Save-As
-                // before it ever gets here. Falling through drops the save, not the edits — the pending
-                // open is only cleared below, after the branch.
-                if (doc != null && doc.dirty && doc.uri != null) {
+                val doc = slot.document.value
+                if (doc != null && doc.dirty) {
+                    // M-110: an unsaved document (M-91) has no file to save in place. The View routes
+                    // it to Save-As first; if it ever reaches here anyway, stop — keep the document
+                    // and the prompt — rather than fall through to an open that would replace it.
+                    val target = doc.uri ?: return@withWriteClaim
+                    // NEW-12: keep the document, its edits and the prompt, exactly as a failed save.
+                    if (refuseNotUtf8(doc)) return@withWriteClaim
                     _fileLoadState.emit(FileLoadState.Saving)
-                    val result = repository.saveFile(doc.uri, contentForDisk(doc))
+                    val result = repository.saveFile(target, contentForDisk(doc))
                     if (result.isFailure) {
                         _fileLoadState.emit(
                             FileLoadState.SaveError(result.exceptionOrNull()?.message ?: "Unknown error"),
                         )
                         return@withWriteClaim // keep current file + pending prompt; do not lose data
                     }
-                    _currentDocument.update { it?.copy(dirty = false) }
+                    slot.markSaved(doc.id, doc.content)
                 }
                 _pendingOpenUri.value = null
                 loadFile(uri)
@@ -634,18 +654,45 @@ constructor(
     /**
      * Close the current file and return to the welcome screen (privacy).
      * Clears the in-memory document and the persisted last-file URI so the app
-     * does not auto-reopen it on next launch. Unsaved edits are discarded (explicit-save-only).
+     * does not auto-reopen it on next launch.
+     *
+     * [ReplacePolicy.IF_CLEAN]: a document with unsaved edits is NOT closed; the close prompt is
+     * raised instead ([closeNeedsConfirm]). Discarding the edits is [discardAndClose], which only
+     * that prompt calls — one method used to serve both, and no single policy fits both.
      */
-    fun closeFile() {
-        viewModelScope.launch {
-            storage.clearLastFileUri()
-            _currentDocument.emit(null)
-            _transient.emit(false)
-            _mode.emit(ViewMode.READER)
-            _previewScroll.emit(ScrollAnchor())
-            _editorScroll.emit(0)
-            _fileLoadState.emit(FileLoadState.Idle)
+    fun closeFile() = close(ReplacePolicy.IF_CLEAN)
+
+    /** Discard the unsaved edits and close — the close prompt's Discard, and nothing else. */
+    fun discardAndClose() = close(ReplacePolicy.DISCARD)
+
+    private fun close(policy: ReplacePolicy) {
+        // M-150: never close while a save is writing. The toolbar X and Back are already disabled
+        // on [writeInFlight] (M-148/M-149), but that made the rule depend on the View; a close that
+        // got through anyway left the write to report "Saved" on the welcome screen, for a document
+        // no longer open. The report itself is KEPT — a write that succeeded says so (C4, M-147) —
+        // so the fix is that the close cannot happen, not that the report is hidden. Checked
+        // before the claim, so a refused close takes no claim at all.
+        if (_writeInFlight.value) return
+        val claim = slot.claim()
+        when (slot.publishClose(claim, policy)) {
+            PublishOutcome.PUBLISHED -> onClosed(claim)
+            PublishOutcome.REFUSED_DIRTY -> _closeNeedsConfirm.value = true
+            PublishOutcome.SUPERSEDED -> Unit // cannot happen: a claim taken just now is the newest
         }
+    }
+
+    /** After a close published: nothing is loading any more, and the pointer is cleared. */
+    private fun onClosed(claim: Claim) {
+        loadingClaim = null
+        _fileLoadState.value = FileLoadState.Idle
+        viewModelScope.launch {
+            if (slot.isLatestPublished(claim)) storage.clearLastFileUri()
+        }
+    }
+
+    /** The UI has raised the close prompt for [closeNeedsConfirm]; do not raise it again. */
+    fun consumeCloseNeedsConfirm() {
+        _closeNeedsConfirm.value = false
     }
 
     /**
@@ -653,25 +700,38 @@ constructor(
      * always reads the live document before it's cleared (unsaved-changes guard).
      * If the save fails the file stays open and a SaveError is surfaced; edits are never
      * dropped on a failed write (Safeguard 1).
+     *
+     * A keystroke typed while the save was writing keeps the document open and dirty: the close is
+     * [ReplacePolicy.IF_CLEAN]. The write did succeed, so "Saved" is reported (C4) — explicitly,
+     * because a completed close reports `Idle` — and the close prompt comes back for the rest.
      */
     fun saveAndClose() {
         viewModelScope.launch {
             withWriteClaim {
-                val doc = _currentDocument.value ?: return@withWriteClaim
+                val doc = slot.document.value ?: return@withWriteClaim
                 // An unsaved document (M-91) has no in-place target. The View routes Save→Save-As for
                 // it, so reaching here with a null URI would mean closing WITHOUT the save the user
                 // asked for — return instead of closing, and the document stays open with its text.
                 val target = doc.uri ?: return@withWriteClaim
+                // NEW-12: not written, so not closed — the document stays open and dirty.
+                if (refuseNotUtf8(doc)) return@withWriteClaim
+                // Claimed after the early returns (an abandoned claim must not exist) and before the
+                // write suspends, so an open the user starts during the write wins over this close.
+                val claim = slot.claim()
                 _fileLoadState.emit(FileLoadState.Saving)
                 repository.saveFile(target, contentForDisk(doc))
                     .onSuccess {
-                        storage.clearLastFileUri()
-                        _currentDocument.emit(null)
-                        _transient.emit(false)
-                        _mode.emit(ViewMode.READER)
-                        _previewScroll.emit(ScrollAnchor())
-                        _editorScroll.emit(0)
-                        _fileLoadState.emit(FileLoadState.Idle)
+                        slot.markSaved(doc.id, doc.content)
+                        when (slot.publishClose(claim, ReplacePolicy.IF_CLEAN)) {
+                            PublishOutcome.PUBLISHED -> onClosed(claim)
+                            PublishOutcome.REFUSED_DIRTY -> {
+                                _fileLoadState.value = FileLoadState.SaveSuccess
+                                _closeNeedsConfirm.value = true
+                            }
+                            // Something the user started later is on screen now. The write still
+                            // succeeded, so say so (C4).
+                            PublishOutcome.SUPERSEDED -> _fileLoadState.value = FileLoadState.SaveSuccess
+                        }
                     }
                     .onFailure { error ->
                         _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
@@ -690,62 +750,52 @@ constructor(
         viewModelScope.launch { storage.clearRecents() }
     }
 
-    fun updateContent(newContent: String) {
-        viewModelScope.launch {
-            _currentDocument.update { doc ->
-                if (doc == null) return@update null
-                // Compute dirty based on baseline comparison, not a flag.
-                // If newContent matches originalContent, it's not dirty (handles type-then-undo).
-                val isActuallyDirty = newContent != originalContent
-                doc.copy(content = newContent, dirty = isActuallyDirty)
-            }
-        }
+    /** The user typed into document [expected]; ignored if it is no longer the open one. */
+    fun updateContent(expected: DocumentId, newContent: String) {
+        // Dirty is measured against the baseline, not a flag, so type-then-undo is clean again.
+        viewModelScope.launch { slot.updateContent(expected, newContent) }
     }
 
     fun toggleMode() {
         viewModelScope.launch {
-            _mode.update { current ->
-                if (current == ViewMode.READER) ViewMode.EDITOR else ViewMode.READER
-            }
+            slot.mode.update { if (it == ViewMode.READER) ViewMode.EDITOR else ViewMode.READER }
         }
     }
 
     /** Set the view mode directly (used by the segmented Reader/Editor toggle). */
     fun setMode(mode: ViewMode) {
-        viewModelScope.launch { _mode.update { mode } }
+        viewModelScope.launch { slot.mode.value = mode }
     }
 
     fun updatePreviewScroll(anchor: ScrollAnchor) {
         viewModelScope.launch {
-            _previewScroll.emit(anchor)
+            slot.previewScroll.value = anchor
             // Persist scroll anchor per file.
-            val uri = _currentDocument.value?.uri ?: return@launch
+            val uri = slot.document.value?.uri ?: return@launch
             storage.saveScrollPosition(uri, anchor)
         }
     }
 
     fun updateEditorScroll(position: Int) {
-        viewModelScope.launch {
-            _editorScroll.emit(position)
-        }
+        viewModelScope.launch { slot.editorScroll.value = position }
     }
 
     /** Remember the editor caret offset so a mode toggle restores it (not reset to 0). */
     fun updateEditorCursor(offset: Int) {
-        _editorCursor.value = offset
+        slot.editorCursor.value = offset
     }
 
     fun updateSearchQuery(query: String) {
         viewModelScope.launch {
             _searchQuery.emit(query)
             if (query.isNotEmpty()) {
-                val content = _currentDocument.value?.content ?: return@launch
+                val content = slot.document.value?.content ?: return@launch
                 // Search parses + scans the whole document — run it off the main thread so a
                 // large file (or a common term with thousands of hits) can't freeze the UI / ANR.
                 // Plain mode: the visible text IS the literal source, so match over the
                 // same chunk split the plain render uses (adapter positions align).
                 val matches = withContext(Dispatchers.Default) {
-                    if (_renderMode.value == RenderMode.PLAIN) {
+                    if (slot.renderMode.value == RenderMode.PLAIN) {
                         searchUseCase.findPlainSearchMatches(PlainTextBlocks.chunkLiterals(content), query)
                     } else {
                         searchUseCase.findSearchMatches(content, query)
@@ -872,12 +922,13 @@ constructor(
             withWriteClaim {
                 // Guard against a concurrent save (e.g. double-tap) — two simultaneous writes to
                 // the same URI could interleave/truncate each other (Safeguard 1).
-                val doc = _currentDocument.value ?: return@withWriteClaim
+                val doc = slot.document.value ?: return@withWriteClaim
                 // No file on disk yet (M-91): there is nothing to save IN PLACE. The View routes this
                 // case to Save-As before calling here; returning rather than inventing a target is the
                 // safe half of that contract — a wrong guess would write the user's text somewhere they
                 // did not choose (Safeguard 1).
                 val target = doc.uri ?: return@withWriteClaim
+                if (refuseNotUtf8(doc)) return@withWriteClaim
 
                 _fileLoadState.emit(FileLoadState.Saving)
 
@@ -888,13 +939,10 @@ constructor(
                         // Baseline = the content we just persisted, in the editor's LF form (doc.content).
                         // The disk form (contentForDisk) may be CRLF; the editor/model always work in LF, so
                         // the baseline and the dirty comparison MUST use the LF doc.content, not the disk
-                        // form — otherwise dirty would never clear for a CRLF file.
-                        originalContent = doc.content
-                        // Only clear the dirty flag if nothing was typed during the save — otherwise
-                        // those newer edits would be silently marked saved and lost (Safeguard 2).
-                        _currentDocument.update {
-                            if (it != null && it.content == doc.content) it.copy(dirty = false) else it
-                        }
+                        // form — otherwise dirty would never clear for a CRLF file. Dirty clears only
+                        // if nothing was typed during the save (Safeguard 2), and neither moves if
+                        // another document is on screen by now.
+                        slot.markSaved(doc.id, doc.content)
                         _fileLoadState.emit(FileLoadState.SaveSuccess)
                     }
                     .onFailure { error ->
@@ -920,10 +968,18 @@ constructor(
         viewModelScope.launch {
             // Reuse the concurrent-save guard: never start a Save-As while a save is in flight.
             withWriteClaim {
-                val doc = _currentDocument.value ?: return@withWriteClaim
+                val doc = slot.document.value ?: return@withWriteClaim
                 // M-147: the identity of the document whose bytes we are about to write. Compared
                 // before the stamp below, because the slot can change while the write is suspended.
                 val savedId = doc.id
+                // NEW-12: the copy goes to a NEW file. A picker that hands back the original itself
+                // would make this an in-place save in another encoding, so it is refused the same way.
+                if (targetUri == doc.uri && refuseNotUtf8(doc)) return@withWriteClaim
+                // It can also hand the original back under ANOTHER URI (opened from Recent, then
+                // "Overwrite" on the same file in Downloads), which no URI comparison can see. So
+                // the copy only goes to a new, empty file; a target that already has content, or
+                // cannot be read, is refused.
+                if (doc.notUtf8 && !repository.isNewEmptyFile(targetUri)) return@withWriteClaim refusePickNewFile()
                 _fileLoadState.emit(FileLoadState.Saving)
 
                 // Best-effort persist; result ignored so a provider that rejects it can't abort the write.
@@ -934,36 +990,24 @@ constructor(
                         val displayName = repository.displayName(targetUri)
 
                         // ── M-147: ADOPT ONLY ONTO THE DOCUMENT WE ACTUALLY WROTE ───────────────
-                        // The slot can change while the write is suspended — `loadFile` carries no
-                        // save guard, so a warm intent or a Discard can publish a different
-                        // document here. Stamping `targetUri` onto whatever happens to be current
-                        // left B on screen wearing the copy's URI, and B's next save overwrote the
-                        // copy. Compared by opaque DocumentId, NOT by URI: two unsaved documents
-                        // both have `uri == null`, so `null == null` is not an identity check.
+                        // The slot can change while the write is suspended — a warm intent or a
+                        // Discard can publish a different document here. Stamping `targetUri` onto
+                        // whatever happens to be current left B on screen wearing the copy's URI,
+                        // and B's next save overwrote the copy. The slot compares by opaque
+                        // DocumentId, NOT by URI: two unsaved documents both have `uri == null`, so
+                        // `null == null` is not an identity check. It keeps the live content, so
+                        // edits typed during the write survive and keep the document dirty.
                         //
-                        // compareAndSet, not `update {}`: update's block can re-run under
-                        // contention, so a flag set inside it is not reliable. A failed CAS means
-                        // something published between the read and the write — treated as NOT
-                        // adopted, which is the conservative direction.
-                        val current = _currentDocument.value
-                        val adopted = current != null &&
-                            current.id == savedId &&
-                            _currentDocument.compareAndSet(
-                                current,
-                                current.copy(
-                                    uri = targetUri,
-                                    displayName = displayName,
-                                    // Preserve edits typed during the write: keep the live content
-                                    // and only clear dirty if nothing changed (Safeguard 2).
-                                    dirty = current.content != doc.content,
-                                ),
-                            )
-                        if (adopted) {
+                        // The permission lookup is a synchronous binder call; it answers whether the
+                        // adopted file is writable, and clears the transient banner if so.
+                        val adopted = slot.adoptIdentity(
+                            expected = savedId,
                             // Baseline = the LF content we persisted (contentForDisk may be CRLF).
-                            originalContent = doc.content
-                            // The adopted file is persistable+writable → clears the banner.
-                            _transient.emit(!repository.hasPersistedWritePermission(targetUri))
-                        }
+                            writtenContent = doc.content,
+                            uri = targetUri,
+                            displayName = displayName,
+                            transient = !repository.hasPersistedWritePermission(targetUri),
+                        )
 
                         // ALWAYS: the bytes reached disk. A failure report would be false, and
                         // would invite a retry that writes a SECOND stray file.
@@ -976,8 +1020,8 @@ constructor(
                             // rebuilt from the captured content, and `lastFileUri` would make the
                             // next launch open a file the user was not looking at — which is
                             // M-145's shape exactly.
-                            applyDerivedRenderMode(targetUri, displayName)
-                            refreshHeadings(doc.content)
+                            applyDerivedRenderMode(savedId, targetUri, displayName)
+                            refreshHeadings(savedId, doc.content)
                             refreshActiveSearch()
                             storage.saveLastFileUri(targetUri)
                         }
@@ -1035,6 +1079,9 @@ constructor(
      */
     fun rescueStrandedSlot(targetUri: Uri, slotKey: String) {
         viewModelScope.launch {
+            // NEW-12: the picker can hand back an existing file, and one that is not UTF-8 is never
+            // written over. Refused before any write, so the slot is kept.
+            if (!repository.readsAsUtf8(targetUri)) return@launch refusePickNewFile()
             repository.takePersistableUriPermission(targetUri) // best-effort; result intentionally ignored
             repository.saveStrandedSlotToTarget(slotKey, targetUri)
                 .onSuccess { _fileLoadState.emit(FileLoadState.SaveSuccess) }
@@ -1089,25 +1136,33 @@ constructor(
      */
     fun newDocument() {
         viewModelScope.launch {
-            // M-126: creating a document retires a previous open failure's message as surely as
-            // opening one does. Without this the user who fails an open, creates a blank file
-            // instead, and later closes it is greeted by "Couldn't open that file" for the
-            // attempt they abandoned — the same staleness the review caught on the load path,
-            // through the door M-91 added.
-            _loadFailedWithNoDocument.value = false
-            originalContent = ""
-            _currentDocument.emit(
-                Document(uri = null, content = "", dirty = false, displayName = NEW_DOCUMENT_NAME),
+            // Claimed BEFORE anything can suspend, so a startup restore that is still reading its
+            // file claimed earlier and loses the slot, however the two finish (M-109: the restore
+            // used to publish over the new document and discard what the user had typed).
+            val claim = slot.claim()
+            // Everything is known without I/O — no file, no override, an empty TOC — so the whole
+            // document is published in one step, with no late write-back (the late `Success` this
+            // used to emit after a heading pass could overwrite a newer load's `Error`). Retiring
+            // a previous open failure's message is part of every publish (M-126).
+            val kind = DocumentKind.fromDisplayName(NEW_DOCUMENT_NAME)
+            val publication = Publication(
+                document = Document(uri = null, content = "", dirty = false, displayName = NEW_DOCUMENT_NAME),
+                lineEnding = "LF",
+                transient = false,
+                // Always the editor, whatever the M-90 setting: a blank reader shows nothing at all.
+                switchToEditor = true,
+                renderMode = defaultRenderMode(kind),
+                plainToggleAvailable = kind == DocumentKind.PLAIN_TEXT,
+                headings = emptyList(),
+                previewScroll = ScrollAnchor(),
+                resetEditorScroll = true,
             )
-            _transient.emit(false)
-            _mode.emit(ViewMode.EDITOR)
-            _previewScroll.emit(ScrollAnchor())
-            _editorScroll.emit(0)
-            _editorCursor.value = 0
-            _lineEnding.emit("LF")
-            applyDerivedRenderMode(uri = null, displayName = NEW_DOCUMENT_NAME)
-            refreshHeadings("")
-            _fileLoadState.emit(FileLoadState.Success)
+            // IF_CLEAN: Create MD File is offered only on the welcome screen, with nothing open, so
+            // a refusal is unreachable today; if a dirty document were ever open, it is kept.
+            if (slot.publish(claim, publication, ReplacePolicy.IF_CLEAN) == PublishOutcome.PUBLISHED) {
+                loadingClaim = null // a load still running for the restore no longer owns the screen
+                _fileLoadState.value = FileLoadState.Success
+            }
         }
     }
 
@@ -1187,12 +1242,28 @@ constructor(
     }
 
     /**
+     * NEW-12: refuse to write [doc] over its file when that file is not UTF-8, because every save
+     * writes UTF-8 and would change the file's bytes (Safeguards 1 and 2). Publishes
+     * [FileLoadState.SaveRefusedNotUtf8] so the user is told why and offered Save-As; changes nothing
+     * else, so the document stays open and dirty and no close or switch goes ahead. Returns whether
+     * it refused. Called on every path that writes over the document's own file, before any write.
+     */
+    private fun refuseNotUtf8(doc: Document): Boolean {
+        if (!doc.notUtf8) return false
+        _fileLoadState.value = FileLoadState.SaveRefusedNotUtf8
+        return true
+    }
+
+    /** NEW-12a: a copy was refused because the picked file is not a new one it may go to. */
+    private suspend fun refusePickNewFile() = _fileLoadState.emit(FileLoadState.SaveRefusedPickNewFile)
+
+    /**
      * The document's content as it must be written to disk: the editor/model's LF text with the
      * file's original line ending restored (Safeguard 2). Centralised so EVERY save path
      * (saveFile / saveAndClose / saveAndOpenPending) writes byte-identical content — a path that
      * passed raw doc.content would silently convert a CRLF file to LF.
      */
-    private fun contentForDisk(doc: Document): String = applyLineEnding(doc.content, _lineEnding.value)
+    private fun contentForDisk(doc: Document): String = applyLineEnding(doc.content, slot.lineEnding.value)
 
     /**
      * Apply the detected line-ending format before saving.
@@ -1218,7 +1289,7 @@ constructor(
      */
     fun exportPdf(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            val markdownContent = _currentDocument.value?.content
+            val markdownContent = slot.document.value?.content
             if (markdownContent == null) {
                 _exportState.value = ExportState.Error("No file open")
                 return@launch
@@ -1227,7 +1298,7 @@ constructor(
             // A failed export (large/odd content, write error) must surface an error,
             // never crash. The atomic write deletes the partial file on failure.
             runCatching {
-                pdfExporter.exportToUri(markdownContent, previewFontScale.value, uri, _renderMode.value)
+                pdfExporter.exportToUri(markdownContent, previewFontScale.value, uri, slot.renderMode.value)
             }.onSuccess {
                 _exportState.value = ExportState.Success()
             }.onFailure { e ->
@@ -1245,9 +1316,9 @@ constructor(
     }
 
     /**
-     * Consume a one-shot save outcome ([FileLoadState.SaveSuccess] or [FileLoadState.SaveError]) once
-     * the UI has shown its feedback (the "Saved" toast / the error SnackBar), so a later recomposition
-     * or screen remount can't replay it. Only resets those two terminal outcomes → Idle, so a newer
+     * Consume a one-shot save outcome ([FileLoadState.SaveSuccess], [FileLoadState.SaveError] or
+     * [FileLoadState.SaveRefusedNotUtf8]) once the UI has shown its feedback, so a later recomposition
+     * or screen remount can't replay it. Only resets those terminal outcomes → Idle, so a newer
      * Saving/Loading that began meanwhile is never clobbered.
      */
     /**
@@ -1255,7 +1326,7 @@ constructor(
      *
      * Narrow on purpose: it clears **only** [FileLoadState.Error], so it can never swallow a
      * `Loading` that is still in flight or a terminal save state that its own consumer has not
-     * read yet. Same shape as [resetSaveState], which clears only the two save outcomes.
+     * read yet. Same shape as [resetSaveState], which clears only the save outcomes.
      */
     fun resetLoadErrorState() {
         _fileLoadState.update { if (it is FileLoadState.Error) FileLoadState.Idle else it }
@@ -1263,7 +1334,7 @@ constructor(
 
     fun resetSaveState() {
         _fileLoadState.update {
-            if (it is FileLoadState.SaveSuccess || it is FileLoadState.SaveError) FileLoadState.Idle else it
+            if (it is FileLoadState.SaveOutcome) FileLoadState.Idle else it
         }
     }
 
@@ -1310,6 +1381,13 @@ constructor(
  */
 const val NEW_DOCUMENT_NAME = "Untitled.md"
 
+/** Whether [uri] is empty, as a file the picker has just created is. False if it cannot be read. */
+private suspend fun FileRepository.isNewEmptyFile(uri: Uri): Boolean =
+    readFile(uri).getOrNull()?.content?.isEmpty() == true
+
+/** Whether [uri] reads as UTF-8, as an empty new file does. False if it cannot be read. */
+private suspend fun FileRepository.readsAsUtf8(uri: Uri): Boolean = readFile(uri).getOrNull()?.isUtf8 == true
+
 enum class ViewMode {
     READER,
     EDITOR,
@@ -1320,7 +1398,21 @@ sealed class FileLoadState {
     object Loading : FileLoadState()
     object Success : FileLoadState()
     object Saving : FileLoadState()
-    object SaveSuccess : FileLoadState()
+    object SaveSuccess : FileLoadState(), SaveOutcome
     data class Error(val message: String) : FileLoadState()
-    data class SaveError(val message: String) : FileLoadState()
+    data class SaveError(val message: String) :
+        FileLoadState(),
+        SaveOutcome
+
+    /** A save's one-shot outcome, which the UI shows once and then resets with [MarkdownViewModel.resetSaveState]. */
+    sealed interface SaveOutcome
+
+    /** NEW-12: an in-place save was refused because the file is not UTF-8. Nothing was written. */
+    object SaveRefusedNotUtf8 : FileLoadState(), SaveOutcome
+
+    /**
+     * NEW-12: a copy was refused because the picked file is not a new one it may go to (it has
+     * content, is not UTF-8, or cannot be read). Nothing was written.
+     */
+    object SaveRefusedPickNewFile : FileLoadState(), SaveOutcome
 }

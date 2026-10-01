@@ -33,8 +33,9 @@ import ru.noties.jlatexmath.JLatexMathDrawable
  * to the builder; binding a returned node is a read-only render, hence reusing the list is idempotent.
  */
 internal fun parseTopLevelBlocks(markwon: Markwon, content: String): List<org.commonmark.node.Node> {
-    // Same shared footnote pass as the reader, so the PDF cannot diverge from the screen.
-    val document = com.pilcrowmd.domain.markdown.Footnotes.transform(markwon.parse(content))
+    // The reader's own tree (shared passes, and the NEW-11 depth fallback), so the PDF cannot diverge
+    // from the screen.
+    val document = com.pilcrowmd.rendering.ReaderTree.build(markwon, content, plain = false)
     val nodes = buildList {
         var node = document.firstChild
         while (node != null) {
@@ -123,20 +124,22 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
      * and reports its true size. Per-formula `runCatching` keeps a malformed formula from aborting
      * the export — it simply retains its raw-text fallback (Safeguard 3).
      *
-     * The textSize/color mirror the on-screen render: the static body size in px (the JLatexMath
-     * plugin's size is not font-scaled) and [PrintColorScheme] near-black text (Safeguard 4).
+     * The textSize/color mirror the on-screen render: the body size in px at the reading scale
+     * (M-121 — before it, the maths ignored the scale here as it did on screen) and
+     * [PrintColorScheme] near-black text (Safeguard 4).
      */
-    private fun resolveLatexSynchronously(view: View) {
+    private fun resolveLatexSynchronously(view: View, fontScale: Float) {
         when (view) {
             is ViewGroup ->
-                for (i in 0 until view.childCount) resolveLatexSynchronously(view.getChildAt(i))
+                for (i in 0 until view.childCount) resolveLatexSynchronously(view.getChildAt(i), fontScale)
             is TextView -> {
                 val spanned = view.text as? Spanned ?: return
                 val spans = spanned.getSpans(0, spanned.length, JLatexAsyncDrawableSpan::class.java)
                 if (spans.isEmpty()) return
                 val density = context.resources.displayMetrics.density
-                val textSizePx = PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * density
+                val textSizePx = PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * density * fontScale
                 val textColor = PrintColorScheme.primaryText.toArgb()
+                var resized = false
                 for (span in spans) {
                     val asyncDrawable = span.drawable
                     if (asyncDrawable.hasResult()) continue
@@ -147,10 +150,16 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
                             .build()
                         math.setBounds(0, 0, math.intrinsicWidth, math.intrinsicHeight)
                         asyncDrawable.setResult(math)
+                        resized = true
                     }.onFailure { e ->
                         android.util.Log.w("PdfExporter", "Synchronous LaTeX render failed: ${e.message}")
                     }
                 }
+                // M-181: the text was laid out with the placeholders' size, and the export reuses one
+                // view per block type, so a view that already laid out text keeps those line heights
+                // and the formula draws over its neighbours. Setting the text again lays it out with
+                // the formulas' real sizes. (On screen the plugin's own callback does this.)
+                if (resized) view.text = view.text
             }
         }
     }
@@ -395,7 +404,7 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
 
         // Apply print fixups and resolve LaTeX
         applyPrintFixups(holder.itemView, pageContentWidthPx)
-        resolveLatexSynchronously(holder.itemView)
+        resolveLatexSynchronously(holder.itemView, fontScale)
 
         // Measure the holder's view
         val widthMeasureSpec = View.MeasureSpec.makeMeasureSpec(

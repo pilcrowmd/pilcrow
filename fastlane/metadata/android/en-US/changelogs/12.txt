@@ -1,0 +1,7 @@
+Safer saving, callouts and collapsible sections.
+
+- GitHub-style callouts (NOTE, TIP, WARNING…) and collapsible sections.
+- Files in older text formats are never overwritten; Save offers a copy instead.
+- Opening a file never replaces unsaved edits without asking, and text typed during a save is kept.
+- Maths follows your reading size; tall formulas are no longer cut off in PDFs.
+- Fixes for a looping formula, very deeply nested documents and a keystroke landing in the wrong file.

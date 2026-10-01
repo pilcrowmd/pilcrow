@@ -10,6 +10,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
@@ -95,7 +96,7 @@ class MarkdownViewModelLineEndingScalingTest {
             tempFolder.newFile("scaling_test.preferences_pb")
         }
         val repository = object : FileRepository {
-            override suspend fun readFile(uri: Uri) = Result.success("")
+            override suspend fun readFile(uri: Uri) = Result.success(FileText("", isUtf8 = true))
             override suspend fun saveFile(uri: Uri, content: String) = Result.success(Unit)
             override suspend fun recoverPendingSaves() = Result.success(0)
             override suspend fun takePersistableUriPermission(uri: Uri) = Result.success(Unit)

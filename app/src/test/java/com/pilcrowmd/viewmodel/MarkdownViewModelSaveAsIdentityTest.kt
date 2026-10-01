@@ -16,6 +16,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.storage.RecentFile
 import com.pilcrowmd.storage.StorageManager
@@ -124,7 +125,7 @@ class MarkdownViewModelSaveAsIdentityTest {
             private set
 
         override suspend fun readFile(uri: Uri) = Result.success(
-            contents[uri] ?: error("no fixture content for $uri"),
+            FileText(contents[uri] ?: error("no fixture content for $uri"), isUtf8 = true),
         )
 
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> {
@@ -301,7 +302,7 @@ class MarkdownViewModelSaveAsIdentityTest {
         // U1: a brand-new unsaved document with some text.
         vm.newDocument()
         vm.currentDocument.first { it != null }
-        vm.updateContent("first blank document\n")
+        vm.updateContent(vm.currentDocument.value!!.id, "first blank document\n")
         val firstId = vm.currentDocument.value!!.id
         assertNull("fixture: U1 has no URI", vm.currentDocument.value!!.uri)
 
@@ -309,6 +310,12 @@ class MarkdownViewModelSaveAsIdentityTest {
         vm.awaitSaving()
 
         // U2: a DIFFERENT unsaved document wins the slot while the write is suspended.
+        // U1 is first typed back to empty, i.e. clean: Create MD File no longer replaces a document
+        // with unsaved edits (IF_CLEAN, M-109/M-180). The bytes being written were captured when
+        // the Save-As started, so this changes nothing about what reaches disk, and the only thing
+        // that can refuse the adoption is still the DocumentId comparison.
+        vm.updateContent(vm.currentDocument.value!!.id, "")
+        vm.currentDocument.first { it?.dirty == false }
         vm.newDocument()
         vm.currentDocument.first { it != null && it.id != firstId }
         val second = vm.currentDocument.value!!

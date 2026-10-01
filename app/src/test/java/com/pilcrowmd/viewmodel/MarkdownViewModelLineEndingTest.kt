@@ -12,6 +12,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.testing.MainDispatcherSuite
 import io.mockk.mockk
@@ -122,7 +123,7 @@ class MarkdownViewModelLineEndingTest {
     // Helper: create a ViewModel with specified read content
     private fun createViewModelWithContent(content: String): MarkdownViewModel {
         val fakeRepository = object : FileRepository {
-            override suspend fun readFile(uri: Uri) = Result.success(content)
+            override suspend fun readFile(uri: Uri) = Result.success(FileText(content, isUtf8 = true))
             override suspend fun saveFile(uri: Uri, content: String) = kotlin.run {
                 capturedSaves[uri] = content
                 Result.success(Unit)
@@ -159,7 +160,7 @@ class MarkdownViewModelLineEndingTest {
     // Helper: create a ViewModel whose repository always FAILS to save (to exercise the SaveError path).
     private fun createViewModelWithFailingSave(content: String): MarkdownViewModel {
         val fakeRepository = object : FileRepository {
-            override suspend fun readFile(uri: Uri) = Result.success(content)
+            override suspend fun readFile(uri: Uri) = Result.success(FileText(content, isUtf8 = true))
             override suspend fun saveFile(uri: Uri, content: String) =
                 Result.failure<Unit>(java.io.IOException("disk full (test)"))
 
@@ -402,7 +403,7 @@ class MarkdownViewModelLineEndingTest {
         assertEquals("CRLF", vm.lineEnding.value)
 
         // Dirty the doc so an incoming intent defers behind the Save/Discard prompt (sets pendingOpenUri).
-        vm.updateContent("L1\nL2\nL3\n") // editor/model work in LF
+        vm.updateContent(vm.currentDocument.value!!.id, "L1\nL2\nL3\n") // editor/model work in LF
         vm.openFromIntent(Uri.parse("content://test/incoming.md"))
 
         vm.saveAndOpenPending()

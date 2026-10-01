@@ -12,6 +12,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -65,14 +66,14 @@ class MarkdownViewModelStartupRestoreTest {
     ) : FileRepository {
         val restoreReadStarted = CompletableDeferred<Unit>()
 
-        override suspend fun readFile(uri: Uri): Result<String> {
+        override suspend fun readFile(uri: Uri): Result<FileText> {
             if (uri == gated) {
                 restoreReadStarted.complete(Unit)
                 restoreGate.await()
             } else {
                 openGate.await()
             }
-            return Result.success("# ${uri.lastPathSegment}\n")
+            return Result.success(FileText("# ${uri.lastPathSegment}\n", isUtf8 = true))
         }
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> = Result.success(Unit)
         override suspend fun recoverPendingSaves() = Result.success(0)

@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.di.AppContainer
 import com.pilcrowmd.di.DefaultAppContainer
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.storage.StorageManager
@@ -64,9 +65,9 @@ class MainActivityIntentReplayTest {
         val reads = ConcurrentHashMap<Uri, AtomicInteger>()
         fun readsOf(uri: Uri) = reads[uri]?.get() ?: 0
 
-        override suspend fun readFile(uri: Uri): Result<String> {
+        override suspend fun readFile(uri: Uri): Result<FileText> {
             reads.getOrPut(uri) { AtomicInteger() }.incrementAndGet()
-            return Result.success("# ${uri.lastPathSegment}\n")
+            return Result.success(FileText("# ${uri.lastPathSegment}\n", isUtf8 = true))
         }
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> = Result.success(Unit)
         override suspend fun recoverPendingSaves() = Result.success(0)

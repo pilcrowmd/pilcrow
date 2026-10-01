@@ -12,6 +12,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.testing.MainDispatcherSuite
@@ -112,7 +113,7 @@ class MarkdownViewModelStrandedSlotTest {
         val rescuedTargets = linkedMapOf<String, Uri>() // slotKey -> targetUri written
         var takePermCalls = 0
 
-        override suspend fun readFile(uri: Uri) = Result.success(readContent)
+        override suspend fun readFile(uri: Uri) = Result.success(FileText(readContent, isUtf8 = true))
         override suspend fun saveFile(uri: Uri, content: String) = Result.success(Unit)
         override suspend fun recoverPendingSaves() = Result.success(0)
 

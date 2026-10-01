@@ -12,6 +12,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -54,9 +55,9 @@ class MarkdownViewModelLoadErrorResetTest {
         private val readGate: CompletableDeferred<Unit>? = null,
         private val result: Result<String> = Result.failure(IllegalStateException("gone")),
     ) : FileRepository {
-        override suspend fun readFile(uri: Uri): Result<String> {
+        override suspend fun readFile(uri: Uri): Result<FileText> {
             readGate?.await()
-            return result
+            return result.map { FileText(it, isUtf8 = true) }
         }
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> = Result.success(Unit)
         override suspend fun recoverPendingSaves() = Result.success(0)
@@ -71,8 +72,11 @@ class MarkdownViewModelLoadErrorResetTest {
 
     /** Serves queued outcomes in order, so a test can open a document and then fail a load. */
     private class ScriptedRepo(private val outcomes: MutableList<Result<String>>) : FileRepository {
-        override suspend fun readFile(uri: Uri): Result<String> =
-            if (outcomes.isEmpty()) Result.failure(IllegalStateException("gone")) else outcomes.removeAt(0)
+        override suspend fun readFile(uri: Uri): Result<FileText> = if (outcomes.isEmpty()) {
+            Result.failure(IllegalStateException("gone"))
+        } else {
+            outcomes.removeAt(0).map { FileText(it, isUtf8 = true) }
+        }
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> = Result.success(Unit)
         override suspend fun recoverPendingSaves() = Result.success(0)
         override suspend fun takePersistableUriPermission(uri: Uri): Result<Unit> = Result.success(Unit)

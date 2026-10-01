@@ -14,4 +14,9 @@
       scaling them leaves them permanently wrong at rest. See M-04 / M-105.
     -->
     <item name="pinch_excluded" type="id" />
+    <!--
+      The reader's DetailsState (M-161), on its RecyclerView, so a footnote jump — which only has the
+      tapped view — can open the section it lands in, as the search and headings jumps do.
+    -->
+    <item name="details_state" type="id" />
 </resources>

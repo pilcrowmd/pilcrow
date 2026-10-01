@@ -72,9 +72,47 @@ class MarkwonRenderer(private val context: Context) {
     // export. Built lazily, on the first export.
     val printMarkwon: Markwon by lazy { buildPrintMarkwon(context) }
 
-    /** The instance whose code colours match [colorScheme] — the reader's entry point. */
-    fun markwonFor(colorScheme: PilcrowColorScheme): Markwon =
-        if (colorScheme === LightColorScheme) lightMarkwon else markwon
+    // M-121: the export's instance for the last non-default reading size. One is enough: an export
+    // runs at one size, and the next export at that size reuses it.
+    private var scaledPrint: Pair<Float, Markwon>? = null
+
+    /**
+     * The export's instance with its maths sized for [fontScale]. The plugin starts its own render of
+     * each formula when a block is bound, and it can land after the export's synchronous one, so its
+     * size must be the reading size too, or which of the two wins would decide the size in the PDF.
+     */
+    fun printMarkwonFor(fontScale: Float): Markwon {
+        if (fontScale == 1f) return printMarkwon
+        return synchronized(this) {
+            scaledPrint?.takeIf { it.first == fontScale }?.second
+                ?: buildPrintMarkwon(context, mathScale = fontScale).also { scaledPrint = fontScale to it }
+        }
+    }
+
+    /**
+     * M-121: instances for reading sizes other than 100%, a few kept. JLatexMath takes its text size
+     * once, when the plugin is built, so an equation can only follow the reading size from an
+     * instance built for that size. Every other block sizes itself from the adapter's font scale and
+     * is unaffected by which instance renders it. Access-ordered, so the sizes in use stay cached.
+     */
+    private val scaledInstances = object : LinkedHashMap<Pair<Boolean, Float>, Markwon>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<Boolean, Float>, Markwon>) =
+            size > SCALED_INSTANCES_KEPT
+    }
+
+    /**
+     * The instance whose code colours match [colorScheme] and whose maths is sized for [fontScale] —
+     * the reader's entry point. At 100% it is the same instance as before M-121.
+     */
+    fun markwonFor(colorScheme: PilcrowColorScheme, fontScale: Float = 1f): Markwon {
+        val light = colorScheme === LightColorScheme
+        if (fontScale == 1f) return if (light) lightMarkwon else markwon
+        return synchronized(scaledInstances) {
+            scaledInstances.getOrPut(light to fontScale) {
+                buildPilcrowMarkwon(context, if (light) LightColorScheme else DarkColorScheme, mathScale = fontScale)
+            }
+        }
+    }
 
     // The font pre-warm parse (see init) runs on this thread. Retained ONLY so a test can
     // deterministically await it ([awaitFontPreWarm]): Markwon's inline parser is stateful and not
@@ -110,6 +148,9 @@ class MarkwonRenderer(private val context: Context) {
 
     private companion object {
         const val PRE_WARM_JOIN_TIMEOUT_MS = 5_000L
+
+        /** Two sizes per theme: the one in use and the one just left, so a pinch back is instant. */
+        const val SCALED_INSTANCES_KEPT = 4
     }
 }
 
@@ -123,26 +164,32 @@ class MarkwonRenderer(private val context: Context) {
  * The PDF export's instance: Dark's code panel with Print's token colours, and the bundle's own grammar
  * names (no diff/patch alias), so nothing added for the screen reaches the export (M-132).
  */
-internal fun buildPrintMarkwon(context: Context): Markwon = buildPilcrowMarkwon(
+internal fun buildPrintMarkwon(context: Context, mathScale: Float = 1f): Markwon = buildPilcrowMarkwon(
     context,
     DarkColorScheme.copy(codeSyntax = PrintColorScheme.codeSyntax),
     GrammarLocatorDef(),
+    mathScale,
 )
 
 internal fun buildPilcrowMarkwon(
     context: Context,
     colorScheme: PilcrowColorScheme = DarkColorScheme,
     grammarLocator: GrammarLocator = AliasGrammarLocator(),
+    // M-121: the reading size. Only JLatexMath needs it here; every other block is sized by its
+    // adapter entry from the same scale.
+    mathScale: Float = 1f,
 ): Markwon {
     // Prism4j over the kapt-generated grammars, plus the diff/patch aliases unless told otherwise
     val prism4j = Prism4j(grammarLocator)
 
-    // Calculate body font size in pixels for JLatexMath (17sp)
+    // JLatexMath's text size in pixels: the 17sp body size at the reading scale (M-121)
     val baseFontSizePx = with(context.resources.displayMetrics) {
-        (PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * density)
+        (PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * density * mathScale)
     }
 
     val builder = Markwon.builder(context)
+        // NEW-11: FIRST, so its post-processor sees the tree before any recursive one (task lists) does.
+        .usePlugin(NestingLimitPlugin())
         // Core markdown parsing (CommonMark)
         .usePlugin(CorePlugin.create())
         // M-119: CorePlugin's ListItem visitor MUTATES the parsed tree as it renders, advancing
@@ -161,6 +208,8 @@ internal fun buildPilcrowMarkwon(
         // Footnote definitions: `[^label]: body` becomes a container block instead of a stray
         // paragraph (or, for a single-token body, a bogus link reference definition).
         .usePlugin(FootnotePlugin())
+        // M-161: GitHub alerts (`> [!NOTE]`), already turned into CalloutBlocks by ReaderDocument.
+        .usePlugin(CalloutPlugin())
         // GFM: tables, strikethrough, task lists
         .usePlugin(TablePlugin.create(context))
         .usePlugin(StrikethroughPlugin.create())
@@ -182,6 +231,9 @@ internal fun buildPilcrowMarkwon(
         // renders instead of raw-dumping the whole equation (JLaTeXMath has no mhchem).
         // Registered with JLatexMathPlugin — without it there are no math nodes to rewrite.
         builder.usePlugin(CeMacroShimPlugin())
+        // A recursive \newcommand would otherwise expand for ever; this makes it a parse error,
+        // so the formula shows its source like any other that fails (Safeguard 3).
+        MacroExpansionLimit.install()
         builder.usePlugin(
             JLatexMathPlugin.create(baseFontSizePx) { jlatexBuilder ->
                 jlatexBuilder
@@ -218,7 +270,8 @@ internal fun buildPilcrowMarkwon(
         // Must follow SyntaxHighlightPlugin: overrides its single code background with separate
         // inline and fenced-block backgrounds.
         .usePlugin(CodeSurfacePlugin(colorScheme))
-        // Limited HTML (only safe tags: <br>, <sub>, <sup>, <details>)
+        // Limited HTML (<br>, <sub>, <sup> and the like). `<details>` is NOT handled here: this plugin
+        // would only strip its tags. The reader draws it as a collapsible section (M-161, DetailsState).
         .usePlugin(HtmlPlugin.create())
         .build()
 }

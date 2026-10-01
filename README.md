@@ -5,6 +5,9 @@
 **A beautiful, reliable, private Markdown reader for Android.**
 
 [<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80">](https://play.google.com/store/apps/details?id=com.pilcrowmd&referrer=utm_source%3Dgithub%26utm_campaign%3Dreadme_badge)
+[<img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](https://f-droid.org/packages/com.pilcrowmd/)
+
+The APK is also attached to every [GitHub Release](https://github.com/pilcrowmd/pilcrow/releases).
 
 [![CI](https://github.com/pilcrowmd/pilcrow/actions/workflows/ci.yml/badge.svg)](https://github.com/pilcrowmd/pilcrow/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
@@ -14,7 +17,7 @@
 
 **[pilcrowmd.com](https://pilcrowmd.com)** — screenshots, changelog, privacy policy
 
-<img src="docs/screenshots/reader-hero-dark.png" alt="PilcrowMD rendering a Markdown document — headings, prose, and syntax-highlighted code, all rendered natively" width="320">
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/01-reader-dark.png" alt="PilcrowMD rendering a Markdown document — headings, prose, lists, and a blockquote, all rendered natively" width="320">
 
 </div>
 
@@ -63,11 +66,20 @@ than dumped.
 
 <div align="center">
 
-| Syntax-highlighted code & tables | Math & diagrams | Home & recents | Settings |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/code-table-dark.png" width="190" alt="Syntax-highlighted code blocks and a rendered table"> | <img src="docs/screenshots/math-mermaid-dark.png" width="190" alt="Rendered LaTeX math and a diagram"> | <img src="docs/screenshots/home-dark.png" width="190" alt="Home screen with a recent-files list"> | <img src="docs/screenshots/settings-dark.png" width="190" alt="Settings screen"> |
-
-<sub>A warm-cream light theme is also built in — <a href="docs/screenshots/reader-hero-light.png">see the light reader</a>.</sub>
+<table>
+  <tr>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/01-reader-dark.png" width="190" alt="Reader: headings, lists and a blockquote"><br><sub>Reader: headings, lists and a blockquote</sub></td>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-code-blocks-dark.png" width="190" alt="Syntax-highlighted code blocks"><br><sub>Syntax-highlighted code blocks</sub></td>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/03-math-table-chemistry-dark.png" width="190" alt="LaTeX math, chemical equations and a table"><br><sub>LaTeX math, chemical equations and a table</sub></td>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/04a-same-doc-light.png" width="190" alt="The same document in the warm-cream light theme"><br><sub>The same document in the warm-cream light theme</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/05-editor-dark.png" width="190" alt="Source editor with line numbers"><br><sub>Source editor with line numbers</sub></td>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/06-pdf-export.png" width="190" alt="Exporting the document to PDF"><br><sub>Exporting the document to PDF</sub></td>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/07-mermaid-dark.png" width="190" alt="Mermaid diagrams (optional cloud rendering)"><br><sub>Mermaid diagrams (optional cloud rendering)</sub></td>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/08-welcome.png" width="190" alt="Home screen with recent files"><br><sub>Home screen with recent files</sub></td>
+  </tr>
+</table>
 
 </div>
 

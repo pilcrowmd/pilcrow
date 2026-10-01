@@ -272,6 +272,33 @@ class PdfExporterTest {
         }
     }
 
+    /**
+     * M-181: a block formula's line must be as tall as the formula it draws. A `$$` line is a
+     * paragraph, and the export reuses one holder per block type, so the formula is bound into a
+     * view that has already laid out a paragraph of text. The formula got its real size after that
+     * layout, so the block measured a text line and the PDF drew the formula over its neighbours.
+     * A 4-row matrix is far taller than a text line, so only the line's height decides this.
+     */
+    @Test
+    fun testExportedBlockFormulaGetsItsFullHeight() {
+        val d = "$$"
+        val content = "Some text before.\n\n${d}\\begin{pmatrix} a \\\\ b \\\\ c \\\\ d \\end{pmatrix}$d"
+        val pageContentWidthPx =
+            (exporter.ptToPx(PdfExporter.PAGE_CONTENT_WIDTH_PT.toFloat()) / PdfExporter.PRINT_SCALE).toInt()
+        val inflater = android.view.LayoutInflater.from(context)
+        val builder = com.pilcrowmd.export.PdfContentLayoutBuilder(context)
+        val (text, formula) = exporter.getMarkwon().parse(content).let { listOf(it.firstChild!!, it.lastChild!!) }
+        text.unlink()
+        formula.unlink()
+        builder.inflateMeasuredBlock(exporter.getMarkwon(), text, inflater, pageContentWidthPx, 1.0f)
+        val blockView = builder.inflateMeasuredBlock(exporter.getMarkwon(), formula, inflater, pageContentWidthPx, 1.0f)
+        val formulaHeight = collectLatexSpans(blockView).single().drawable.result!!.bounds.height()
+        assertTrue(
+            "the block is ${blockView.measuredHeight} px tall for a $formulaHeight px formula",
+            blockView.measuredHeight >= formulaHeight,
+        )
+    }
+
     @Test
     fun testStreamingBlockRenderResolvesInlineSingleDollarLatexSynchronously() {
         // Inline single-`$…$` math must resolve synchronously in the export too — it
@@ -302,6 +329,30 @@ class PdfExporterTest {
                 span.drawable.hasResult(),
             )
         }
+    }
+
+    /**
+     * M-121: the export sizes its maths at the reading scale, as its prose already is and as the
+     * screen now does. The same formula at 1.5 must resolve ~1.5× as tall as at 1.0.
+     */
+    @Test
+    fun testExportedMathFollowsTheReadingScale() {
+        fun resolvedMathHeight(scale: Float): Int {
+            val pageContentWidthPx =
+                (exporter.ptToPx(PdfExporter.PAGE_CONTENT_WIDTH_PT.toFloat()) / PdfExporter.PRINT_SCALE).toInt()
+            val node = exporter.getMarkwon().parse("Area \$\\frac{a}{b}\$ here.").firstChild!!
+            val block = com.pilcrowmd.export.PdfContentLayoutBuilder(context).inflateMeasuredBlock(
+                exporter.getMarkwon(),
+                node,
+                android.view.LayoutInflater.from(context),
+                pageContentWidthPx,
+                scale,
+            )
+            return collectLatexSpans(block).single().drawable.result.bounds.height()
+        }
+        val base = resolvedMathHeight(1.0f)
+        val large = resolvedMathHeight(1.5f)
+        assertEquals("1.5× reading scale → 1.5× maths ($base → $large px)", 1.5, large / base.toDouble(), 0.08)
     }
 
     @Test

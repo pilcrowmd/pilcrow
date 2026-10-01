@@ -5,12 +5,14 @@ package com.pilcrowmd.viewmodel
 
 import android.content.Context
 import android.net.Uri
+import android.os.Looper
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineDispatcher
@@ -18,10 +20,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -31,6 +29,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -80,7 +79,7 @@ class MarkdownViewModelLoadDispatchTest {
 
     private fun viewModel(content: String, dispatcher: CoroutineDispatcher): MarkdownViewModel {
         val fakeRepository = object : FileRepository {
-            override suspend fun readFile(uri: Uri) = Result.success(content)
+            override suspend fun readFile(uri: Uri) = Result.success(FileText(content, isUtf8 = true))
             override suspend fun saveFile(uri: Uri, content: String) = Result.success(Unit)
             override suspend fun recoverPendingSaves() = Result.success(0)
             override suspend fun takePersistableUriPermission(uri: Uri) = Result.success(Unit)
@@ -105,12 +104,31 @@ class MarkdownViewModelLoadDispatchTest {
         )
     }
 
+    /**
+     * A REAL barrier: block until the load has actually published a document, idling the main
+     * looper while it waits. The load's permission check is a `withContext(Dispatchers.IO)` hop,
+     * and since M-127 it runs BEFORE the document is published, so the load no longer finishes on
+     * the line that starts it. The earlier form of these tests read state right after `loadFile`
+     * (and a `runTest` + `withTimeout` await, whose virtual clock times out at once while the real
+     * IO thread is still working); it passed only because nothing between the call and the
+     * published line ending ever left the calling thread.
+     */
+    private fun MarkdownViewModel.loadAndAwait(uri: Uri) {
+        loadFile(uri)
+        val deadline = System.currentTimeMillis() + AWAIT_TIMEOUT_MS
+        while (currentDocument.value?.uri != uri && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(POLL_MS)
+        }
+        assertEquals("the load never published its document", uri, currentDocument.value?.uri)
+    }
+
     @Test
-    fun `loading a document dispatches its CPU work off the caller's thread`() = runTest {
+    fun `loading a document dispatches its CPU work off the caller's thread`() {
         val tracking = TrackingDispatcher()
         val vm = viewModel("Line\r\nLine\r\n", tracking)
 
-        vm.loadFile(Uri.parse("content://test/dispatch.md"))
+        vm.loadAndAwait(Uri.parse("content://test/dispatch.md"))
 
         assertTrue(
             "loadDocument must hand its CPU block to the injected dispatcher, not run it on Main",
@@ -120,39 +138,31 @@ class MarkdownViewModelLoadDispatchTest {
         assertEquals("CRLF", vm.lineEnding.value)
     }
 
-    /**
-     * A REAL barrier: suspend until the load has actually published a document. The protected
-     * round-trip suite reads state immediately after `loadFile` and passed only because its fake
-     * repository never suspends — see the note in the PR. These re-check the same semantics with a
-     * barrier, so they hold regardless of how many dispatcher hops the load path contains.
-     */
-    private suspend fun MarkdownViewModel.awaitLoaded() {
-        withTimeout(5_000) { currentDocument.filterNotNull().first() }
-    }
-
     @Test
-    fun `CRLF is still detected once the load has actually finished`() = runTest {
+    fun `CRLF is still detected once the load has actually finished`() {
         val vm = viewModel("Line\r\nLine\r\n", TrackingDispatcher())
-        vm.loadFile(Uri.parse("content://test/crlf.md"))
-        vm.awaitLoaded()
+        vm.loadAndAwait(Uri.parse("content://test/crlf.md"))
         assertEquals("CRLF", vm.lineEnding.value)
     }
 
     @Test
-    fun `a mixed file still resolves to its DOMINANT ending, not its first`() = runTest {
+    fun `a mixed file still resolves to its DOMINANT ending, not its first`() {
         // 2 CRLF vs 3 LF -> LF dominates. First-match would wrongly answer CRLF here, which is why
         // the both-counts semantics are load-bearing for Safeguard 2.
         val vm = viewModel("a\r\nb\r\nc\nd\ne\n", TrackingDispatcher())
-        vm.loadFile(Uri.parse("content://test/mixed.md"))
-        vm.awaitLoaded()
+        vm.loadAndAwait(Uri.parse("content://test/mixed.md"))
         assertEquals("LF", vm.lineEnding.value)
     }
 
     @Test
-    fun `a CRLF-dominant mixed file still resolves to CRLF`() = runTest {
+    fun `a CRLF-dominant mixed file still resolves to CRLF`() {
         val vm = viewModel("a\r\nb\r\nc\r\nd\ne\n", TrackingDispatcher())
-        vm.loadFile(Uri.parse("content://test/mixed2.md"))
-        vm.awaitLoaded()
+        vm.loadAndAwait(Uri.parse("content://test/mixed2.md"))
         assertEquals("CRLF", vm.lineEnding.value)
+    }
+
+    private companion object {
+        const val AWAIT_TIMEOUT_MS = 5_000L
+        const val POLL_MS = 5L
     }
 }

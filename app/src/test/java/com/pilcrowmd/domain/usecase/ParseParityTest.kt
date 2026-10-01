@@ -4,6 +4,7 @@
 package com.pilcrowmd.domain.usecase
 
 import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.rendering.buildPilcrowMarkwon
 import com.pilcrowmd.screenshot.MarkdownSampleProvider
 import org.commonmark.node.Node
@@ -50,7 +51,7 @@ class ParseParityTest {
         types.map { if (it == "JLatexMathBlock") "Paragraph" else it }
 
     private fun assertParity(name: String, markdown: String) {
-        val render = topLevelTypes(markwon.parse(markdown))
+        val render = topLevelTypes(ReaderDocument.transform(markwon.parse(markdown)))
         val search = topLevelTypes(parity.parseDocument(markdown)!!)
         assertEquals(
             "top-level BLOCK COUNT must match for \"$name\" — adapter positions depend on it " +

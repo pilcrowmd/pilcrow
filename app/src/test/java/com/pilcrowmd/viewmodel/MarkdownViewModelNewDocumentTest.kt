@@ -12,6 +12,7 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.storage.RecentFile
 import com.pilcrowmd.storage.StorageManager
@@ -121,7 +122,7 @@ class MarkdownViewModelNewDocumentTest {
 
     private class FakeRepo(private val readContent: String = "# existing\n") : FileRepository {
         val capturedSaves = linkedMapOf<Uri, String>()
-        override suspend fun readFile(uri: Uri) = Result.success(readContent)
+        override suspend fun readFile(uri: Uri) = Result.success(FileText(readContent, isUtf8 = true))
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> {
             capturedSaves[uri] = content
             return Result.success(Unit)
@@ -344,7 +345,7 @@ class MarkdownViewModelNewDocumentTest {
         val vm = vmWith(repo)
         vm.newDocument()
         awaitValue(ViewMode.EDITOR, "new document open") { vm.mode.value }
-        vm.updateContent("some writing the user would hate to lose\n")
+        vm.updateContent(vm.currentDocument.value!!.id, "some writing the user would hate to lose\n")
         awaitValue(true, "content registered as dirty") { vm.currentDocument.value?.dirty }
 
         vm.saveFile()
@@ -368,7 +369,7 @@ class MarkdownViewModelNewDocumentTest {
         val vm = vmWith(repo)
         vm.newDocument()
         awaitValue(ViewMode.EDITOR, "new document open") { vm.mode.value }
-        vm.updateContent("# first note\n")
+        vm.updateContent(vm.currentDocument.value!!.id, "# first note\n")
         awaitValue(true, "dirty") { vm.currentDocument.value?.dirty }
 
         vm.saveActiveDocumentAs(targetUri)

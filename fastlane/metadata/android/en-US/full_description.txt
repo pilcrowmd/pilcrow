@@ -24,7 +24,7 @@ READER TOOLS
 - In-document search with highlighted matches and next/previous
 - Auto-generated table of contents from your headings
 - Remembers your scroll position per file
-- Open .md straight from your file manager, share sheet, or email attachment
+- Open .md straight from your file manager or an email attachment
 - Adjustable text size and selectable reading fonts
 
 PERFECT FOR

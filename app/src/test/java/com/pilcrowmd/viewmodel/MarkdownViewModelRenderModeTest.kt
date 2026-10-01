@@ -13,6 +13,7 @@ import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
@@ -67,7 +68,7 @@ class MarkdownViewModelRenderModeTest {
 
     private class FakeRepo(private val readContent: String) : FileRepository {
         val capturedSaves = linkedMapOf<Uri, String>()
-        override suspend fun readFile(uri: Uri) = Result.success(readContent)
+        override suspend fun readFile(uri: Uri) = Result.success(FileText(readContent, isUtf8 = true))
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> {
             capturedSaves[uri] = content
             return Result.success(Unit)

@@ -4,9 +4,10 @@
 package com.pilcrowmd.domain.usecase
 
 import com.pilcrowmd.domain.markdown.FootnoteBlockParserFactory
-import com.pilcrowmd.domain.markdown.Footnotes
 import com.pilcrowmd.domain.markdown.FrontmatterBlockParserFactory
 import com.pilcrowmd.domain.markdown.FrontmatterDetector
+import com.pilcrowmd.domain.markdown.NestingLimit
+import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.domain.model.HeadingNode
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 import org.commonmark.ext.gfm.tables.TablesExtension
@@ -47,6 +48,9 @@ class ParseMarkdownHeadingsUseCase {
             // Same factory the renderer registers (FootnotePlugin) — shared so the top-level block
             // sequences stay 1:1. ParseParityTest fails if one side ever gains it without the other.
             .customBlockParserFactory(FootnoteBlockParserFactory())
+            // NEW-11: a tree too deep to walk comes back empty, so the TOC and search find nothing in
+            // it instead of overflowing the stack — the reader shows that document as plain text.
+            .postProcessor(NestingLimit.postProcessor)
             .build()
     }
 
@@ -59,7 +63,7 @@ class ParseMarkdownHeadingsUseCase {
     internal fun parseDocument(content: String): Document? = try {
         // The SAME post-parse pass the renderer and the PDF export apply, so search walks the exact
         // node tree that gets painted — footnote markers included.
-        (Footnotes.transform(parityParser(content).parse(content)) as? Document)
+        (ReaderDocument.transform(parityParser(content).parse(content)) as? Document)
     } catch (ignored: Exception) {
         null
     }
@@ -70,7 +74,7 @@ class ParseMarkdownHeadingsUseCase {
      */
     fun extractHeadings(content: String): List<HeadingNode> {
         return try {
-            val doc = Footnotes.transform(parityParser(content).parse(content))
+            val doc = ReaderDocument.transform(parityParser(content).parse(content))
 
             val headings = mutableListOf<HeadingNode>()
             var blockIndex = 0

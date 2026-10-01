@@ -227,7 +227,7 @@ class LocalFileRepositoryAtomicSaveTest {
         assertEquals(
             "readFile must serve the durable WAL content, never the truncated target",
             "FULL CRASHED CONTENT",
-            read.getOrNull(),
+            read.getOrNull()?.content,
         )
     }
 
@@ -250,7 +250,7 @@ class LocalFileRepositoryAtomicSaveTest {
         val repo = LocalFileRepository(resolver, walBaseDir)
 
         // 1. Editor loads the file → full content, not the truncated "".
-        val loaded = repo.readFile(uri).getOrThrow()
+        val loaded = repo.readFile(uri).getOrThrow().content
         assertEquals("RECOVERABLE FULL", loaded)
 
         // 2. User edits and saves immediately, before recovery streams.

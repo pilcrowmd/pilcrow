@@ -12,6 +12,8 @@ import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.res.ResourcesCompat
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.markdown.CalloutBlock
+import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -21,6 +23,7 @@ import com.pilcrowmd.ui.theme.PreviewLineHeightMultiplier
 import io.noties.markwon.Markwon
 import io.noties.markwon.recycler.MarkwonAdapter
 import org.commonmark.node.Heading
+import org.commonmark.node.HtmlBlock
 import org.commonmark.node.Node
 import org.commonmark.node.Paragraph
 
@@ -39,7 +42,17 @@ class ProseBlockEntry(
     private val fontSet: FontSet = FontSets.DEFAULT,
     private val searchHighlight: SearchHighlight = SearchHighlight(),
     private val colorScheme: PilcrowColorScheme = DarkColorScheme,
+    /** M-161: which `<details>` sections are open. Null (the PDF) draws every header open, untappable. */
+    private val details: DetailsState? = null,
 ) : MarkwonAdapter.Entry<Node, ProseBlockEntry.Holder>() {
+
+    private val headerStyle by lazy {
+        DetailsHeaderStyle(
+            boldFace = ResourcesCompat.getFont(context, fontSet.readingBold) ?: android.graphics.Typeface.DEFAULT_BOLD,
+            chevronColor = colorScheme.accent.toArgb(),
+            fontScale = fontScale,
+        )
+    }
 
     override fun createHolder(inflater: LayoutInflater, parent: ViewGroup): Holder {
         val tv = inflater.inflate(R.layout.adapter_default_prose, parent, false) as TextView
@@ -70,12 +83,13 @@ class ProseBlockEntry(
             else -> PROSE_VERTICAL_PADDING_DP to PROSE_VERTICAL_PADDING_DP
         }
         val density = context.resources.displayMetrics.density
-        holder.textView.setPadding(
-            holder.textView.paddingLeft,
-            (topPaddingDp * density).toInt(),
-            holder.textView.paddingRight,
-            (bottomPaddingDp * density).toInt(),
-        )
+        val top = (topPaddingDp * density).toInt()
+        val bottom = (bottomPaddingDp * density).toInt()
+        // M-161: a callout draws its box and a `<details>` header takes a tap; a recycled holder must
+        // shed both, so every bind starts from the plain block and adds only what this node needs.
+        val callout = node as? CalloutBlock
+        val detailsHeader = (node as? HtmlBlock)?.let { Details.parseHeader(it.literal) }
+        applyChrome(holder, callout, detailsHeader, top, bottom)
         // Re-apply the size on EVERY bind, for the same reason the padding and colour above are
         // re-applied: a recycled holder must not carry state from its previous life. The live
         // pinch-zoom writes a PX size straight onto the attached TextView, and the end-of-gesture
@@ -96,8 +110,13 @@ class ProseBlockEntry(
             // Footnote markers take `footnoteMarker` from the ACTIVE scheme (Dark/Light/Print). The
             // Markwon visitor that emits them is one shared singleton across all three, so it
             // cannot pick the colour itself — the entry, which knows the scheme, does (Safeguard 4).
-            val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.footnoteMarker.toArgb())
-            markwon.setParsedMarkdown(holder.textView, rendered)
+            if (detailsHeader != null) {
+                bindDetailsHeader(holder, detailsHeader)
+            } else {
+                val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.footnoteMarker.toArgb())
+                if (callout != null) CalloutStyle.decorateTitles(context, rendered, colorScheme, fontScale)
+                markwon.setParsedMarkdown(holder.textView, rendered)
+            }
             // A footnote marker paints at 0.75 of body size — about 20 px, which missed two taps
             // in three during UAT. This widens the HIT AREA only; the glyph is untouched (M-06).
             holder.textView.enableGenerousFootnoteTaps()
@@ -117,7 +136,59 @@ class ProseBlockEntry(
         }
     }
 
-    class Holder(val textView: TextView) : MarkwonAdapter.Holder(textView)
+    /** M-161: the plain block's padding, or a callout's box, or a `<details>` header's inset. */
+    private fun applyChrome(
+        holder: Holder,
+        callout: CalloutBlock?,
+        detailsHeader: com.pilcrowmd.domain.markdown.DetailsHeader?,
+        top: Int,
+        bottom: Int,
+    ) {
+        val density = context.resources.displayMetrics.density
+        holder.textView.background = null
+        holder.textView.clearDetailsToggle()
+        when {
+            callout != null ->
+                CalloutStyle.applyBox(
+                    holder.textView,
+                    CalloutStyle.color(callout.kind, colorScheme),
+                    holder.pageMargin,
+                    top,
+                    bottom,
+                )
+            detailsHeader != null -> {
+                val inner = (DETAILS_HEADER_INNER_DP * density).toInt()
+                val vertical = (DETAILS_HEADER_VERTICAL_DP * density).toInt()
+                holder.textView.setPaddingRelative(
+                    holder.pageMargin + inner,
+                    vertical,
+                    holder.pageMargin + inner,
+                    vertical,
+                )
+            }
+            else -> holder.textView.setPaddingRelative(holder.pageMargin, top, holder.pageMargin, bottom)
+        }
+    }
+
+    /** M-161: the summary row of a `<details>` section. A tap opens or closes the section. */
+    private fun bindDetailsHeader(holder: Holder, header: com.pilcrowmd.domain.markdown.DetailsHeader) {
+        val state = details
+        val expanded = state?.isExpanded(holder.bindingAdapterPosition) ?: true
+        holder.textView.text = detailsHeaderText(context, header, expanded, headerStyle)
+        holder.textView.bindDetailsToggle(expanded, state?.let { { toggleSection(holder, it) } })
+    }
+
+    private fun toggleSection(holder: Holder, state: DetailsState) {
+        val position = holder.bindingAdapterPosition
+        if (position < 0) return
+        val changed = state.toggle(position)
+        if (!changed.isEmpty()) holder.bindingAdapter?.notifyItemRangeChanged(changed.first, changed.count())
+    }
+
+    class Holder(val textView: TextView) : MarkwonAdapter.Holder(textView) {
+        /** The layout's side padding (adapter_default_prose.xml), which a callout's box replaces. */
+        val pageMargin: Int = textView.paddingStart
+    }
 
     internal companion object {
         // Vertical padding for prose blocks. Paragraphs use 6dp → 12dp between two body paragraphs;

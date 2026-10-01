@@ -19,6 +19,9 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.SyncFailedException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 
 /**
  * SAF-based file repository. Handles read/write via ContentResolver.
@@ -59,21 +62,17 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
      * paths converge with no loss regardless of who wins the lock. Read-side only — no write path,
      * journal write-ordering, or save logic is touched.
      */
-    override suspend fun readFile(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun readFile(uri: Uri): Result<FileText> = withContext(Dispatchers.IO) {
         journalMutex.withLock {
             try {
                 journal.recoverableContentFor(uri)?.let { staged ->
-                    return@withLock FileInputStream(staged).use {
-                        Result.success(it.readBytes().toString(Charsets.UTF_8))
-                    }
+                    return@withLock FileInputStream(staged).use { Result.success(decodeUtf8(it.readBytes())) }
                 }
 
                 val pfd = contentResolver.openFileDescriptor(uri, "r")
                     ?: return@withLock Result.failure(Exception("Failed to open file descriptor for reading"))
                 try {
-                    FileInputStream(pfd.fileDescriptor).use { fis ->
-                        Result.success(fis.readBytes().toString(Charsets.UTF_8))
-                    }
+                    FileInputStream(pfd.fileDescriptor).use { fis -> Result.success(decodeUtf8(fis.readBytes())) }
                 } finally {
                     pfd.close()
                 }
@@ -283,6 +282,21 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
                 Result.failure(e)
             }
         }
+    }
+
+    /**
+     * Decode [bytes] as UTF-8 STRICTLY, so an invalid sequence is detected instead of silently
+     * becoming U+FFFD (NEW-12). Valid UTF-8 — a UTF-8 BOM included, which decodes to U+FEFF — encodes
+     * back to exactly the same bytes, so it is safe to save. Anything else is still shown, decoded
+     * leniently as before, but reported as not UTF-8 so the ViewModel refuses to save over it.
+     */
+    private fun decodeUtf8(bytes: ByteArray): FileText = try {
+        val strict = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        FileText(strict.decode(ByteBuffer.wrap(bytes)).toString(), isUtf8 = true)
+    } catch (_: CharacterCodingException) {
+        FileText(bytes.toString(Charsets.UTF_8), isUtf8 = false)
     }
 
     /** Write [bytes] to the SAF target "wt" and fsync, then close. */

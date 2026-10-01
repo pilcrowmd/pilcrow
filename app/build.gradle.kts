@@ -1,4 +1,5 @@
 import java.io.FileInputStream
+import java.time.Duration
 import java.util.Properties
 
 plugins {
@@ -35,8 +36,8 @@ android {
         applicationId = "com.pilcrowmd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 12
+        versionName = "1.0.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -377,6 +378,9 @@ tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
     }
 }
 
+// Mutation testing (PIT). Inert unless `-Pmutation` is passed; see app/mutation.gradle.kts.
+if (providers.gradleProperty("mutation").isPresent) apply(from = "mutation.gradle.kts")
+
 val testMainDispatcherDebug by tasks.registering(Test::class) {
     group = "verification"
     description =
@@ -387,4 +391,16 @@ val testMainDispatcherDebug by tasks.registering(Test::class) {
     testClassesDirs = files({ base.get().testClassesDirs })
     classpath = files({ base.get().classpath })
     useJUnit { includeCategories("com.pilcrowmd.testing.MainDispatcherSuite") }
+}
+
+// A hung unit test must fail the gate, not hold it (or a machine) for ever: Gradle stops the test
+// JVM at the timeout. A formula build that never finishes cannot be interrupted from inside the
+// test, so this is the only thing that ends such a run. The gate's tasks take about 5 minutes on
+// CI (`testDebugUnitTest`, 2026-09-28) and about 2 locally; 20 minutes is four times the CI figure,
+// so a slow runner never trips it. Scoped by name: a long run that has its own limit, such as a
+// nightly fuzz task, is not capped here.
+tasks.withType<Test>().matching {
+    it.name in setOf("testDebugUnitTest", "testReleaseUnitTest", "testMainDispatcherDebug")
+}.configureEach {
+    timeout.set(Duration.ofMinutes(20))
 }

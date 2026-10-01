@@ -158,6 +158,16 @@ fun MainScreen(
     // vanishes on rotate. Matches showSettings/showLicenses + pendingRescueSlotKey below.
     var showCloseConfirm by rememberSaveable { mutableStateOf(false) }
 
+    // The ViewModel refused a close because the document has unsaved edits — typed after the UI
+    // decided it was clean, or during Save-then-close. Answer it with the same close prompt, once.
+    val closeNeedsConfirm = viewModel.closeNeedsConfirm.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(closeNeedsConfirm.value) {
+        if (closeNeedsConfirm.value) {
+            showCloseConfirm = true
+            viewModel.consumeCloseNeedsConfirm()
+        }
+    }
+
     // Double-back-to-exit guard for the home/root screen (Fix: Back must navigate within the app,
     // not terminate it). Armed by the first root Back press; auto-disarms after a short window.
     var exitArmed by remember { mutableStateOf(false) }
@@ -344,6 +354,21 @@ fun MainScreen(
                 statusToastVisible = true
                 viewModel.resetSaveState()
             }
+            // NEW-12: nothing was written, and the reason is the file's encoding, not a failure.
+            // The banner under the toolbar stays up and offers Save a copy.
+            is FileLoadState.SaveRefusedNotUtf8 -> {
+                statusToastText = "Not saved: this file isn't UTF-8"
+                statusToastError = true
+                statusToastVisible = true
+                viewModel.resetSaveState()
+            }
+            // The copy has to go to a new file; the picked one has content or is not UTF-8.
+            is FileLoadState.SaveRefusedPickNewFile -> {
+                statusToastText = "Not saved: pick a new file for the copy"
+                statusToastError = true
+                statusToastVisible = true
+                viewModel.resetSaveState()
+            }
             // M-126: every load failure was silent — this state had no consumer anywhere. The
             // toast reports it wherever the user is (including with a document still open, where
             // the welcome screen is not visible); `loadFailedWithNoDocument` then keeps the
@@ -467,6 +492,14 @@ fun MainScreen(
             saveAsLauncher.launch("Copy of ${baseName ?: "document"}.md")
         }
     }
+    // Documents that cannot be saved in place, so every Save routes to Save-As: a transient doc
+    // (read-only "Open with"), a never-saved one (M-91), and one read from a file that is not UTF-8
+    // (NEW-12 — saving it in place would rewrite the file in another encoding). The ViewModel
+    // refuses each of these too rather than trusting this routing (Safeguard 1).
+    val savesOnlyAsCopy = {
+        val doc = currentDocument.value
+        transient.value || doc?.isUnsaved == true || doc?.notUtf8 == true
+    }
     // Rescue a stranded slot: route the next picker result to rescueStrandedSlot(slotKey).
     val launchRescue = { slot: com.pilcrowmd.repository.StrandedSlot ->
         pendingRescueSlotKey = slot.key
@@ -538,7 +571,7 @@ fun MainScreen(
                         // in-place save. The ViewModel refuses both cases too rather than
                         // trusting this routing — a wrong target is a data-loss bug (Safeguard 1).
                         onSave = {
-                            if (transient.value || currentDocument.value?.isUnsaved == true) {
+                            if (savesOnlyAsCopy()) {
                                 launchSaveAs()
                             } else {
                                 viewModel.saveFile()
@@ -580,7 +613,15 @@ fun MainScreen(
                     // Transient (read-only "Open with") banner: opened from another app, no
                     // persisted write grant → won't stay in Recents and can't save in place. Tapping
                     // it (or Save) routes to "Save a copy". Informational, never auto-pops the picker.
-                    if (transient.value) {
+                    // NEW-12: a file that is not UTF-8 gets the same banner with its own reason, which
+                    // takes precedence — it is the one that says why saving in place would harm the file.
+                    if (currentDocument.value?.notUtf8 == true) {
+                        TransientBanner(
+                            text = "This file isn't UTF-8, so saving would change it.\nTap to Save a copy…",
+                            enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
+                            onClick = { launchSaveAs() },
+                        )
+                    } else if (transient.value) {
                         TransientBanner(
                             enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                             onClick = { launchSaveAs() },
@@ -740,12 +781,16 @@ fun MainScreen(
                                     // key(uri): the editor owns its TextFieldValue locally; re-seed it only
                                     // when a different file is opened, never on every keystroke echo.
                                     key(currentDocument.value!!.uri) {
+                                        // The document this editor was composed for. Its edits carry
+                                        // this id, so an edit still arriving after another document
+                                        // was published is dropped, not written into it.
+                                        val editedDocument = currentDocument.value!!.id
                                         MarkdownEditor(
                                             modifier = Modifier.fillMaxSize(),
                                             content = currentDocument.value!!.content,
                                             onContentChange = { newContent ->
                                                 // Update ViewModel: marks content dirty, flows to UI
-                                                viewModel.updateContent(newContent)
+                                                viewModel.updateContent(editedDocument, newContent)
                                             },
                                             lineNumbersEnabled = lineNumbersEnabled.value,
                                             fontScale = editorFontScale.value,
@@ -789,7 +834,7 @@ fun MainScreen(
                                 // save-then-close. Without the unsaved case here, tapping Save on
                                 // the close prompt for a brand-new document would close it and
                                 // DISCARD the text (Safeguard 1).
-                                if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                if (savesOnlyAsCopy()) {
                                     launchSaveAs()
                                 } else {
                                     viewModel.saveAndClose()
@@ -801,7 +846,7 @@ fun MainScreen(
                         dismissButton = {
                             TextButton(onClick = {
                                 showCloseConfirm = false
-                                viewModel.closeFile()
+                                viewModel.discardAndClose() // the user chose to lose the edits
                             }) {
                                 Text("Discard", color = mdColors().secondaryText)
                             }
@@ -825,7 +870,7 @@ fun MainScreen(
                             // stays up so a second Save (now clean) proceeds to open the pending
                             // file. Otherwise the atomic save-then-open.
                             TextButton(onClick = {
-                                if (transient.value || currentDocument.value?.isUnsaved == true) {
+                                if (savesOnlyAsCopy()) {
                                     launchSaveAs()
                                 } else {
                                     viewModel.saveAndOpenPending()
@@ -916,16 +961,21 @@ fun MainScreen(
  * background with white text so it reads as an actionable prompt; the trailing "…" signals it's
  * tappable. Tapping it (like the Save button and the overflow "Save a copy") launches Save-As; it
  * never auto-pops the picker (deliberate UX decision). Colours come only from the token layer (Safeguard 4).
+ * The same banner, with its own [text], marks a document read from a file that is not UTF-8 (NEW-12).
  */
 @Composable
-private fun TransientBanner(onClick: () -> Unit, enabled: Boolean = true) {
+private fun TransientBanner(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    text: String = "Temporary file opened from another app.\nTap to Save a copy…",
+) {
     val c = mdColors()
     // Dim the accent + text while disabled (a save is in flight) so the temporarily-inert banner
     // reads as deactivated rather than a live tap target.
     val background = if (enabled) c.accent else c.accent.copy(alpha = TRANSIENT_BANNER_DISABLED_ALPHA)
     val textColor = if (enabled) c.onAccent else c.onAccent.copy(alpha = TRANSIENT_BANNER_DISABLED_ALPHA)
     Text(
-        text = "Temporary file opened from another app.\nTap to Save a copy…",
+        text = text,
         color = textColor,
         fontSize = 13.sp,
         modifier = Modifier

@@ -13,10 +13,10 @@ import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,8 +35,10 @@ import org.robolectric.Shadows.shadowOf
 /**
  * **M-115.** The welcome screen disables its actions while [FileLoadState.Loading], so `Loading`
  * must be a state the load ALWAYS leaves. A gate on a state that can stick is a locked screen, so
- * every exit from `loadDocument` is pinned here: success, a `readFile` failure, and a throw from
- * inside the CPU pass — the one path that is neither a `Result` nor on the main thread.
+ * every exit from `loadDocument` is pinned here: success, a `readFile` failure, a throw between
+ * `readFile` and the document emit, a throw between that emit and `Success`, and cancellation.
+ * A throw from INSIDE the CPU pass is not among them: that block is pure string work with no
+ * injectable failure point, so the nearest reachable throw after it stands in (see that test).
  */
 @RunWith(RobolectricTestRunner::class)
 class MarkdownViewModelLoadTerminalStateTest {
@@ -59,9 +61,9 @@ class MarkdownViewModelLoadTerminalStateTest {
         /** Parks the load inside `readFile` so the test can capture its Job while it is still alive. */
         private val readGate: CompletableDeferred<Unit>? = null,
     ) : FileRepository {
-        override suspend fun readFile(uri: Uri): Result<String> {
+        override suspend fun readFile(uri: Uri): Result<FileText> {
             readGate?.await()
-            return result
+            return result.map { FileText(it, isUtf8 = true) }
         }
         override suspend fun saveFile(uri: Uri, content: String): Result<Unit> = Result.success(Unit)
         override suspend fun recoverPendingSaves() = Result.success(0)
@@ -96,7 +98,7 @@ class MarkdownViewModelLoadTerminalStateTest {
     @After
     fun tearDown() = storageScope.cancel()
 
-    private fun vmWith(repo: FileRepository, cpu: CoroutineDispatcher? = null): MarkdownViewModel {
+    private fun vmWith(repo: FileRepository): MarkdownViewModel {
         val parse = ParseMarkdownHeadingsUseCase()
         return MarkdownViewModel(
             repository = repo,
@@ -107,15 +109,34 @@ class MarkdownViewModelLoadTerminalStateTest {
             appInfo = object : AppInfo {
                 override val versionName = "test"
             },
-            cpuDispatcher = cpu ?: Dispatchers.Unconfined,
+            cpuDispatcher = Dispatchers.Unconfined,
         )
     }
 
-    private fun settle() {
-        repeat(60) {
+    /**
+     * Wait until the load has an OUTCOME — `Success` or `Error`. Not "has left `Loading`": `Idle` is
+     * the initial state, so a barrier that accepted it could return before the load had even begun.
+     */
+    private fun awaitOutcome(vm: MarkdownViewModel) = awaitUntil("the load never reached Success or Error") {
+        vm.fileLoadState.value.let { it is FileLoadState.Success || it is FileLoadState.Error }
+    }
+
+    /**
+     * Wait for a load to leave `Loading`. Only a real barrier when the caller has ALREADY asserted
+     * `Loading` before releasing the load, as both cancellation tests do: `Idle` is the initial
+     * state, so without that assertion this would return before the load had even begun.
+     */
+    private fun awaitLoadingEnds(vm: MarkdownViewModel) =
+        awaitUntil("FileLoadState never left Loading") { vm.fileLoadState.value !is FileLoadState.Loading }
+
+    private fun awaitUntil(failure: String, done: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 5_000L
+        while (System.currentTimeMillis() < deadline) {
             shadowOf(Looper.getMainLooper()).idle()
-            Thread.sleep(5L)
+            if (done()) return
+            Thread.sleep(10L)
         }
+        assertTrue(failure, done())
     }
 
     /** Terminal = the load is over. `Loading` is not terminal, and that is the whole point. */
@@ -128,11 +149,16 @@ class MarkdownViewModelLoadTerminalStateTest {
         )
     }
 
+    /** The load ended in THE error thrown on [path] — an error, not success, and carrying its message. */
+    private fun assertTerminalError(vm: MarkdownViewModel, path: String, message: String) {
+        assertEquals("$path must end in its own Error", FileLoadState.Error(message), vm.fileLoadState.value)
+    }
+
     @Test
     fun `a successful load ends in a terminal state`() {
         val vm = vmWith(Repo())
         vm.loadFile(Uri.parse("content://t/a.md"))
-        settle()
+        awaitOutcome(vm)
         assertTerminal(vm, "a successful load")
     }
 
@@ -140,7 +166,7 @@ class MarkdownViewModelLoadTerminalStateTest {
     fun `a readFile failure ends in a terminal state`() {
         val vm = vmWith(Repo(Result.failure(RuntimeException("unreadable"))))
         vm.loadFile(Uri.parse("content://t/a.md"))
-        settle()
+        awaitOutcome(vm)
         assertTerminal(vm, "a readFile failure")
     }
 
@@ -152,8 +178,8 @@ class MarkdownViewModelLoadTerminalStateTest {
         // matters: everything here ran on the raw path to `emit(Success)`.
         val vm = vmWith(Repo(throwOnDisplayName = true))
         vm.loadFile(Uri.parse("content://t/a.md"))
-        settle()
-        assertTerminal(vm, "a throw before the document emit")
+        awaitOutcome(vm)
+        assertTerminalError(vm, "a throw before the document emit", "display name blew up")
     }
 
     @Test
@@ -162,8 +188,8 @@ class MarkdownViewModelLoadTerminalStateTest {
         // here used to leave a document on screen with the load never reported as finished.
         val vm = vmWith(Repo(throwOnPermission = true))
         vm.loadFile(Uri.parse("content://t/a.md"))
-        settle()
-        assertTerminal(vm, "a throw after the document emit")
+        awaitOutcome(vm)
+        assertTerminalError(vm, "a throw after the document emit", "permission lookup blew up")
     }
 
     @Test
@@ -190,7 +216,7 @@ class MarkdownViewModelLoadTerminalStateTest {
         val load = (vm.viewModelScope.coroutineContext[Job]!!.children.toSet() - before).single()
 
         gate.complete(Unit)
-        settle()
+        awaitLoadingEnds(vm)
 
         assertTrue(
             "the CancellationException was swallowed — the load coroutine completed normally " +
@@ -233,7 +259,7 @@ class MarkdownViewModelLoadTerminalStateTest {
 
         load.cancel()
         gate.complete(Unit)
-        settle()
+        awaitLoadingEnds(vm)
 
         assertTrue("the load Job was not cancelled ($load)", load.isCancelled)
         assertEquals(

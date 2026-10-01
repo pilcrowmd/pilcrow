@@ -186,5 +186,55 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
             """.trimIndent(),
             awaitMathRender = true,
         ),
+        // M-161: the five GitHub alert types, and an unknown one that must stay a plain quote.
+        MarkdownSample(
+            name = "callouts",
+            markdown = """
+                > [!NOTE]
+                > Useful information readers should know, even when skimming.
+
+                > [!TIP]
+                > Helpful advice for doing things **better**.
+
+                > [!IMPORTANT]
+                > Key information users need to know.
+
+                > [!WARNING]
+                > Urgent info that needs immediate attention.
+
+                > [!CAUTION]
+                > Advises about risks of certain actions.
+
+                > [!FOO]
+                > An unknown type stays an ordinary quote.
+            """.trimIndent(),
+        ),
+        // M-161: a closed section, one marked `open`, and the one-line form. Closed is the default.
+        MarkdownSample(
+            name = "details",
+            markdown = """
+                Before the sections.
+
+                <details>
+                <summary>Installation on older phones</summary>
+
+                Hidden **body** text.
+
+                - hidden item
+                </details>
+
+                <details open>
+                <summary>Open by default</summary>
+
+                Visible **body** text.
+
+                - visible item
+                </details>
+
+                <details><summary>One-line form</summary>Its body.</details>
+
+                After the sections.
+            """.trimIndent(),
+        ),
     )
 }

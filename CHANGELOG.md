@@ -7,6 +7,52 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-10-01
+
+### Added
+
+- **GitHub-style callouts.** A quote that starts with `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`,
+  `[!WARNING]` or `[!CAUTION]` is shown as a coloured callout with its icon and title, as on GitHub.
+  Any other quote stays a plain quote.
+- **Collapsible sections.** `<details>` with a `<summary>` is shown as a row you tap to open and
+  close. It starts closed unless the tag says `open`. Search, the headings drawer and footnote links
+  open a closed section when they jump into it. Exported PDFs print every section open.
+
+### Fixed
+
+- **Files in older text formats are never overwritten.** Opening a file saved as Windows-1252, Latin-1 or
+  UTF-16 and pressing Save used to write it back as UTF-8, with a replacement character (�) in place
+  of every byte the reader could not decode. Now the file opens with a notice, Save offers a new file
+  (*Save a copy*), and the original is never touched, including when you pick the original again
+  from Recent. The copy still shows � where the original had characters PilcrowMD could not read.
+- **Opening a file can no longer replace a document you are editing without asking.** If a file
+  arrived from another app, or an older open finished late, while you had unsaved changes, it could
+  replace your document. You are now asked to save or discard first, and when two opens overlap,
+  the one you started last wins.
+- **Text typed during a save is no longer lost or marked as saved.** Words typed while a save was
+  still writing could be dropped by *Save and close*, or the document could be marked saved without
+  them. The document now stays open with your new text, and asks you to save or discard it before
+  closing.
+- **A keystroke can no longer land in the wrong file.** A change typed in the instant another file
+  opened could be written into the newly opened file, and a later Save would have saved it there.
+  Such a change is now dropped.
+- **A document cannot be closed while it is being saved.** The save still reports "Saved" when it
+  finishes.
+- **A file that fails to open leaves the open document exactly as it was.** Before, a failure part
+  way through could leave the new file's settings, headings or scroll position applied to the old
+  document.
+- **Maths follows the reading size.** Equations stayed at 100 % when you changed the text size in
+  Settings, while everything around them grew or shrank. They now scale with the rest of the text,
+  on screen and in exported PDFs.
+- **Tall formulas are no longer cut off in exported PDFs.** An integral with limits, a matrix or a
+  sum with limits could be clipped and drawn over the lines around it. The reader on screen was not
+  affected.
+- **A formula that calls itself no longer hangs the app.** A `\newcommand` whose body uses itself
+  kept a background thread busy and used up memory on screen, and made *Export PDF* wait for ever.
+  It now shows its source, like any formula that cannot be drawn.
+- **A document nested very deeply no longer crashes the app.** Quotes or lists nested more than 100
+  levels deep are shown as plain text, in the reader and in exported PDFs. Your file is not changed.
+
 ## [1.0.10] - 2026-09-25
 
 ### Added

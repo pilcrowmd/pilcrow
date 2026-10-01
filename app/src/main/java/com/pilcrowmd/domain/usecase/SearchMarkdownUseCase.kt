@@ -3,6 +3,8 @@
 
 package com.pilcrowmd.domain.usecase
 
+import com.pilcrowmd.domain.markdown.CalloutBlock
+import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.domain.markdown.InlineMathDelimiters
 import com.pilcrowmd.domain.model.SearchMatch
@@ -185,7 +187,12 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
                 is Code -> appendLiteral(node.literal, sb, offsets)
                 is FencedCodeBlock -> appendLiteral(node.literal, sb, offsets)
                 is IndentedCodeBlock -> appendLiteral(node.literal, sb, offsets)
-                is HtmlBlock -> appendLiteral(node.literal, sb, offsets)
+                is HtmlBlock -> appendHtmlBlock(node, sb, offsets)
+                // M-161: a callout paints its title where the `[!KIND]` marker was, then its content.
+                is CalloutBlock -> {
+                    appendAnchored(node.kind.title + "\n", node.marker, sb, offsets)
+                    appendChildren(node, sb, offsets)
+                }
                 is HtmlInline -> appendLiteral(node.literal, sb, offsets)
                 // A resolved footnote marker paints its ORDINAL, so that is what search must see —
                 // appending nothing would under-model the block, and appending the raw `[^label]`
@@ -193,14 +200,58 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
                 is FootnoteReference -> appendFootnoteMarker(node, sb, offsets)
                 is SoftLineBreak -> appendBreak(' ', sb, offsets)
                 is HardLineBreak -> appendBreak('\n', sb, offsets)
-                else -> {
-                    var child = node.firstChild
-                    while (child != null) {
-                        appendVisible(child, sb, offsets)
-                        child = child.next
-                    }
-                }
+                else -> appendChildren(node, sb, offsets)
             }
+        }
+
+        private fun appendChildren(node: Node, sb: StringBuilder, offsets: MutableList<Int>) {
+            var child = node.firstChild
+            while (child != null) {
+                appendVisible(child, sb, offsets)
+                child = child.next
+            }
+        }
+
+        /**
+         * M-161: a `<details>` header paints its summary (and any body text in the same block) instead
+         * of the raw tags, and a lone `</details>` paints nothing. Everything else keeps the literal.
+         */
+        private fun appendHtmlBlock(node: HtmlBlock, sb: StringBuilder, offsets: MutableList<Int>) {
+            val header = Details.parseHeader(node.literal)
+            when {
+                header != null -> {
+                    val painted = if (header.inlineBody.isEmpty()) {
+                        header.summary
+                    } else {
+                        header.summary + "\n" +
+                            header.inlineBody
+                    }
+                    appendAnchored(painted, node.literal, sb, offsets)
+                }
+                // Nothing painted; only the cursor moves past the tag.
+                Details.isCloseBlock(node.literal) -> cursor = locate(node.literal) + node.literal.length
+                else -> appendLiteral(node.literal, sb, offsets)
+            }
+        }
+
+        /**
+         * Append [painted] — text the renderer draws in place of [source] — with every character
+         * anchored on [source]'s raw start, then move the cursor past [source]. The same anchoring
+         * [appendFootnoteMarker] uses: painted characters that have no source position of their own.
+         */
+        private fun appendAnchored(painted: String, source: String, sb: StringBuilder, offsets: MutableList<Int>) {
+            val base = locate(source)
+            inMath = false
+            for (char in painted) {
+                sb.append(char)
+                offsets.add(base)
+            }
+            cursor = base + source.length
+        }
+
+        private fun locate(source: String): Int {
+            val found = content.indexOf(source, cursor)
+            return if (found in cursor..(cursor + LOOKAHEAD)) found else cursor
         }
 
         /**

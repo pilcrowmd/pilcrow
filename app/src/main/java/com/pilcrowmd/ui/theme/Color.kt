@@ -65,7 +65,19 @@ data class PilcrowColorScheme(
 
     // Footnote markers and back-arrows (M-96). Separate from `accent`, which is a fill colour.
     val footnoteMarker: Color,
+
+    // GitHub-style callouts (M-161): bar, icon and title colour per type; the tint is derived.
+    val callouts: CalloutColors,
 )
+
+/**
+ * One colour per callout type (M-161), each at least 4.5:1 on its scheme's page. The box behind a
+ * callout is the same colour at [CALLOUT_TINT_ALPHA], so the five read as one family.
+ */
+data class CalloutColors(val note: Color, val tip: Color, val important: Color, val warning: Color, val caution: Color)
+
+/** Opacity of a callout's background tint, over the page (M-161). */
+const val CALLOUT_TINT_ALPHA = 0.12f
 
 /**
  * Reader syntax-highlighting colours for fenced code, per token role.
@@ -193,6 +205,22 @@ val DarkColorScheme = PilcrowColorScheme(
     scrimOverlay = Color.Black.copy(alpha = 0.32f),
     codeSyntax = OneDarkCodeSyntax,
     footnoteMarker = Color(0xFF8E7CD6), // same as accent: it already reads in Dark
+    callouts = CalloutColors(
+        note = Color(0xFF5C9CE6),
+        tip = Color(0xFF58B368),
+        important = Color(0xFFA98BEB),
+        warning = Color(0xFFD4A248),
+        caution = Color(0xFFE0685E),
+    ),
+)
+
+/** Light's callout colours (M-161); Print reuses them, since both sit on a pale page. */
+val LightCalloutColors = CalloutColors(
+    note = Color(0xFF2A64A0),
+    tip = Color(0xFF3F6B2F),
+    important = Color(0xFF6B4BA8),
+    warning = Color(0xFF8A5A12),
+    caution = Color(0xFFA8352B),
 )
 
 /**
@@ -231,6 +259,7 @@ val LightColorScheme = PilcrowColorScheme(
     scrimOverlay = Color.Black.copy(alpha = 0.32f),
     codeSyntax = LightCodeSyntax,
     footnoteMarker = Color(0xFF5B3FC4), // more saturated than accent, so a small raised digit is findable
+    callouts = LightCalloutColors,
 )
 
 /**
@@ -269,6 +298,7 @@ val PrintColorScheme = PilcrowColorScheme(
     scrimOverlay = Color.Black.copy(alpha = 0.32f), // Not used in PDF, for consistency
     codeSyntax = PrintCodeSyntax, // the PDF's code tokens stay as they were; the export must not change
     footnoteMarker = Color(0xFF5A4A8A), // same as the print accent: the export must not change
+    callouts = LightCalloutColors, // new with M-161: nothing exported before used a callout
 )
 
 /**

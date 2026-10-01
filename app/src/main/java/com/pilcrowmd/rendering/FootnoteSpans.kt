@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.pilcrowmd.R
 
 /**
  * The spans a footnote is made of on screen — the marker in prose and the definition's
@@ -75,6 +76,10 @@ class FootnoteJumpSpan(private val targetBlockIndex: Int) : ClickableSpan() {
 fun View.jumpToBlock(targetBlockIndex: Int) {
     if (targetBlockIndex < 0) return
     val recyclerView = findRecyclerViewAncestor() ?: return
+    // A target inside a closed <details> section opens it first, or the jump lands on nothing (M-161).
+    (recyclerView.getTag(R.id.details_state) as? DetailsState)?.reveal(targetBlockIndex)?.let {
+        recyclerView.adapter?.notifyItemRangeChanged(it.first, it.count())
+    }
     val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
     if (layoutManager != null) {
         layoutManager.scrollToPositionWithOffset(targetBlockIndex, 0)

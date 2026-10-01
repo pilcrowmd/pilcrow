@@ -17,15 +17,25 @@ import android.net.Uri
 data class StrandedSlot(val key: String, val uri: Uri, val displayName: String)
 
 /**
+ * A file's text, and whether its bytes were valid UTF-8 (NEW-12).
+ *
+ * Every save writes UTF-8, so [isUtf8] answers "would saving this text back reproduce the file's
+ * encoding?". When it is false, [content] was decoded leniently for display only — each invalid
+ * sequence became U+FFFD — and writing it over the original would replace the user's bytes
+ * (Safeguards 1 and 2). The repository only reports this; refusing the save is the ViewModel's job.
+ */
+data class FileText(val content: String, val isUtf8: Boolean)
+
+/**
  * Abstraction for file access. v1 implements single-file via ContentResolver.
  * vNext hook: tree-URI (Obsidian-style vault) can be added later without ViewModel changes.
  */
 interface FileRepository {
     /**
-     * Read the content of a file by URI. v1: single document.
-     * vNext: could extend to folder tree or cloud index.
+     * Read the content of a file by URI, decoded as UTF-8, with whether the bytes were valid UTF-8
+     * ([FileText.isUtf8]). v1: single document. vNext: could extend to folder tree or cloud index.
      */
-    suspend fun readFile(uri: Uri): Result<String>
+    suspend fun readFile(uri: Uri): Result<FileText>
 
     /**
      * Save content back to a file at the given URI. Crash-safe (Safeguard 1, no data loss):

@@ -61,6 +61,8 @@ object RecyclerAdapterEntries {
      * @param searchHighlight Search highlight state
      * @param colorScheme Active color scheme (Dark or Light) for rendering colors
      * @param wrapCodeLines When true, long lines in code blocks wrap instead of side-scrolling (M-134)
+     * @param details Which `<details>` sections are open (M-161); every entry is wrapped so a block
+     *   inside a closed section takes no space. Null leaves every block showing (the PDF export).
      * @return MarkwonAdapter ready to be set on a RecyclerView
      */
     fun buildMarkdownAdapter(
@@ -72,32 +74,43 @@ object RecyclerAdapterEntries {
         searchHighlight: SearchHighlight = SearchHighlight(),
         colorScheme: PilcrowColorScheme = DarkColorScheme,
         wrapCodeLines: Boolean = false,
+        details: DetailsState? = null,
     ): MarkwonAdapter {
+        fun <N : org.commonmark.node.Node, H : MarkwonAdapter.Holder> hideable(entry: MarkwonAdapter.Entry<N, H>) =
+            if (details == null) entry else HideableEntry(entry, details)
+
         // Default entry = styled prose (reading font / 17sp / primaryText / 1.35) so headings,
         // paragraphs, lists, blockquotes etc. match the reading design — NOT the unstyled SimpleEntry default.
         // The prose entry also applies search highlights at bind time.
-        val adapter = MarkwonAdapter.builder(ProseBlockEntry(context, fontScale, fontSet, searchHighlight, colorScheme))
+        val adapter = MarkwonAdapter.builder(
+            hideable(ProseBlockEntry(context, fontScale, fontSet, searchHighlight, colorScheme, details)),
+        )
             // Register custom entry for YAML frontmatter
             // Must come before generic FencedCodeBlockEntry so "yaml" blocks route here first
             .include(
                 FencedCodeBlock::class.java,
-                ConditionalCodeBlockEntry(
-                    context,
-                    fontScale,
-                    fontSet,
-                    mermaidCloudEnabled,
-                    colorScheme,
-                    searchHighlight,
-                    wrapCodeLines,
+                hideable(
+                    ConditionalCodeBlockEntry(
+                        context,
+                        fontScale,
+                        fontSet,
+                        mermaidCloudEnabled,
+                        colorScheme,
+                        searchHighlight,
+                        wrapCodeLines,
+                    ),
                 ),
             )
             // Register custom entry for table blocks (renders into HorizontalScrollView)
-            .include(TableBlock::class.java, TableBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight))
+            .include(
+                TableBlock::class.java,
+                hideable(TableBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight)),
+            )
             // Plain-text chunks: only PlainTextBlocks.build emits these (the Markdown
             // parser never does), so this entry is inert for every .md document.
             .include(
                 PlainTextChunk::class.java,
-                PlainTextBlockEntry(context, fontScale, fontSet, searchHighlight, colorScheme),
+                hideable(PlainTextBlockEntry(context, fontScale, fontSet, searchHighlight, colorScheme)),
             )
             // Footnote definitions. Without this entry the block still renders — its
             // children fall through the default prose lane — so a half-wired footnote degrades to
@@ -105,7 +118,7 @@ object RecyclerAdapterEntries {
             // a note, and what draws the back-link.
             .include(
                 com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock::class.java,
-                FootnoteBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight),
+                hideable(FootnoteBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight)),
             )
             // Unregistered node types fall back to the default prose entry (graceful-ignore)
             .build()
