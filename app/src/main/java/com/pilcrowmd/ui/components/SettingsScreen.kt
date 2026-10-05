@@ -16,11 +16,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -48,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -202,7 +206,10 @@ fun SettingsScreen(
         CardGap()
         SettingsCard {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(value = lineNumbersEnabled, role = Role.Switch, onValueChange = onLineNumbersChanged),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -216,7 +223,7 @@ fun SettingsScreen(
                 }
                 Switch(
                     checked = lineNumbersEnabled,
-                    onCheckedChange = onLineNumbersChanged,
+                    onCheckedChange = null,
                     modifier = Modifier.scale(0.8f),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = c.primaryText,
@@ -234,7 +241,10 @@ fun SettingsScreen(
         CardGap()
         SettingsCard {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(value = openInEditMode, role = Role.Switch, onValueChange = onOpenInEditModeChanged),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -248,7 +258,7 @@ fun SettingsScreen(
                 }
                 Switch(
                     checked = openInEditMode,
-                    onCheckedChange = onOpenInEditModeChanged,
+                    onCheckedChange = null,
                     modifier = Modifier.scale(0.8f),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = c.primaryText,
@@ -297,7 +307,10 @@ fun SettingsScreen(
         CardGap()
         SettingsCard {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(value = wrapCodeLines, role = Role.Switch, onValueChange = onWrapCodeLinesChanged),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -311,7 +324,7 @@ fun SettingsScreen(
                 }
                 Switch(
                     checked = wrapCodeLines,
-                    onCheckedChange = onWrapCodeLinesChanged,
+                    onCheckedChange = null,
                     modifier = Modifier.scale(0.8f),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = c.primaryText,
@@ -424,7 +437,9 @@ private fun RowScope.FontPill(set: FontSet, selected: Boolean, onClick: () -> Un
     Box(
         modifier = Modifier
             .weight(1f)
-            .height(34.dp)
+            // A floor, not a fixed height: at large system font scales the label outgrows 34 dp
+            // and a fixed box cut it off at the bottom.
+            .heightIn(min = 34.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(if (selected) c.accent else c.primaryBackground)
             .border(
@@ -432,7 +447,9 @@ private fun RowScope.FontPill(set: FontSet, selected: Boolean, onClick: () -> Un
                 if (selected) c.accent else c.border,
                 RoundedCornerShape(9.dp),
             )
-            .clickable { onClick() },
+            .clickable { onClick() }
+            // Breathing room once the label outgrows the floor; inert at 1.0 (label is centred).
+            .padding(vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -520,7 +537,9 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.End,
-            modifier = Modifier.width(40.dp),
+            // A floor, not a fixed width: at large system font scales "100%" is wider than 40 dp
+            // and wrapped into "10" / "0%". The slider (weight 1f) gives way instead.
+            modifier = Modifier.widthIn(min = 40.dp),
         )
     }
 }
@@ -642,6 +661,7 @@ private fun MermaidToggleCard(checked: Boolean, onCheckedChange: (Boolean) -> Un
             .clip(RoundedCornerShape(12.dp))
             .background(c.secondarySurface)
             .border(1.dp, c.toolbarBorder, RoundedCornerShape(12.dp))
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -664,7 +684,7 @@ private fun MermaidToggleCard(checked: Boolean, onCheckedChange: (Boolean) -> Un
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             modifier = Modifier.scale(0.8f),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = c.primaryText,

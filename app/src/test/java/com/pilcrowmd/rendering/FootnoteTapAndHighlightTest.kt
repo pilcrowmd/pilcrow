@@ -19,6 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowLog
 
 /**
  * M-06's other two halves: the arrival highlight, and the widened tap target.
@@ -159,15 +160,12 @@ class FootnoteTapAndHighlightTest {
         val linkRight = layout.getPrimaryHorizontal(spanned.getSpanEnd(link))
         val linkX = (linkLeft + linkRight) / 2f + textView.totalPaddingLeft
         val linkY = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f + textView.totalPaddingTop
-        // The link firing IS the evidence, and it is caught rather than avoided: a URLSpan reaches
-        // `startActivity`, which throws outside an Activity. That throw means Markwon's movement
-        // method handled the tap — which is exactly what must happen.
-        var linkFired = false
-        try {
-            tap(textView, linkX, linkY)
-        } catch (expected: android.util.AndroidRuntimeException) {
-            linkFired = true
-        }
+        // The link firing IS the evidence: a URLSpan reaches `startActivity`, which throws outside an
+        // Activity. Since M-173 the reader's link resolver catches that throw and logs it, so the
+        // log line means Markwon's movement method handled the tap — which is exactly what must happen.
+        ShadowLog.clear()
+        tap(textView, linkX, linkY)
+        val linkFired = ShadowLog.getLogsForTag("ReaderLinkResolver").isNotEmpty()
 
         assertTrue("the LINK must be what handles the tap", linkFired)
         assertEquals(

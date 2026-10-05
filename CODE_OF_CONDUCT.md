@@ -4,7 +4,7 @@ This project adopts the **[Contributor Covenant, version 2.1](https://www.contri
 as its code of conduct. The full text is maintained at the link above.
 
 In short: we are committed to a welcoming, harassment-free experience for everyone who takes part in
-Pilcrow — in issues, pull requests, discussions, and any other project space.
+Pilcrow – in issues, pull requests, discussions, and any other project space.
 
 ## Reporting
 

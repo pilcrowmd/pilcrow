@@ -164,4 +164,13 @@ class ParseMarkdownHeadingsUseCaseTest {
         assertTrue(headings[1].text.contains("Heading"))
         assertTrue(headings[1].text.contains("link"))
     }
+
+    @Test
+    fun testLinkReferenceDefinitionTakesNoAdapterPosition() {
+        // M-214: Markwon's reducer drops a link reference definition before the adapter numbers its
+        // blocks, so the heading is the adapter's item 0. Counting the definition put it at 1.
+        val headings = useCase.extractHeadings("[r]: https://x.test\n\n# Head\n\nneedle here")
+
+        assertEquals(listOf(HeadingNode(level = 1, text = "Head", adapterPosition = 0)), headings)
+    }
 }

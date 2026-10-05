@@ -7,6 +7,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
+import android.text.Spannable
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.util.Base64
 import android.util.Log
 import android.util.TypedValue
@@ -19,8 +22,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.res.ResourcesCompat
+import coil.dispose
 import coil.load
 import com.pilcrowmd.R
+import com.pilcrowmd.ui.theme.CodeSyntaxColors
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -29,6 +34,8 @@ import com.pilcrowmd.ui.theme.PilcrowTypography
 import com.pilcrowmd.ui.theme.PreviewLineHeightMultiplier
 import io.noties.markwon.Markwon
 import io.noties.markwon.recycler.MarkwonAdapter
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import org.commonmark.node.FencedCodeBlock
 
 /**
@@ -45,8 +52,13 @@ import org.commonmark.node.FencedCodeBlock
  * holder is shared with the YAML and Mermaid lanes and survives an adapter swap, so every bind here
  * sets it, on or off — never only when it is on.
  *
+ * [highlighting] colours the languages Prism4j has no grammar for (M-136, [TextMateCodeHighlighter]).
+ * Null leaves them plain. With a scope, a block not yet in the cache shows plain at once and takes its
+ * colours when the job ends; without one (the PDF) it is tokenised inline.
+ *
  * try/catch in bindHolder degrades gracefully on unexpected content (Safeguard 3).
  */
+@Suppress("LongParameterList") // The reader's settings plus the M-136 highlighter.
 class FencedCodeBlockEntry(
     private val context: Context,
     private val fontScale: Float = 1.0f,
@@ -54,6 +66,7 @@ class FencedCodeBlockEntry(
     private val colorScheme: PilcrowColorScheme = DarkColorScheme,
     private val searchHighlight: SearchHighlight = SearchHighlight(),
     private val wrapLines: Boolean = false,
+    private val highlighting: CodeHighlighting? = null,
 ) : MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder>() {
 
     private fun dp(value: Float): Int = TypedValue.applyDimension(
@@ -76,8 +89,10 @@ class FencedCodeBlockEntry(
     }
 
     override fun bindHolder(markwon: Markwon, holder: Holder, node: FencedCodeBlock) {
+        holder.cancelPendingHighlight()
         // Reset shared-holder state: this holder is recycled across code, yaml, and mermaid
         // blocks, so restore the code views, hide the mermaid image, and hide the caption.
+        holder.cancelPendingMermaid()
         holder.codeScroll.visibility = View.VISIBLE
         holder.copyButton.visibility = View.VISIBLE
         holder.mermaidImage.visibility = View.GONE
@@ -102,6 +117,8 @@ class FencedCodeBlockEntry(
             // block can't be panned by finger (tables scroll because their cells use plain setText
             // with no movement method). Code blocks have no clickable links, so drop it.
             holder.codeView.movementMethod = null
+            // Before the search highlight, which copies the text and so keeps these spans.
+            highlightCode(holder, node)
             holder.codeView.typeface =
                 ResourcesCompat.getFont(context, fontSet.monoRegular)
             holder.codeView.setLineSpacing(0f, PreviewLineHeightMultiplier)
@@ -139,6 +156,40 @@ class FencedCodeBlockEntry(
             Log.e("FencedCodeBlockEntry", "render failed: ${e.message}", e)
             holder.codeView.text = "[code block could not be rendered]"
             holder.codeView.setTextColor(colorScheme.secondaryText.toArgb())
+        }
+    }
+
+    override fun onViewRecycled(holder: Holder) = holder.cancelPendingHighlight()
+
+    /**
+     * M-136: colour a block in one of the TextMate languages. A cached result is applied now; otherwise
+     * the reader tokenises off Main and applies the result only if this holder still shows this block.
+     */
+    private fun highlightCode(holder: Holder, node: FencedCodeBlock) {
+        val highlighting = highlighting ?: return
+        val scopeName = TextMateCodeHighlighter.scopeForFence(node.info) ?: return
+        val code = node.literal ?: return
+        val highlighter = highlighting.highlighter
+        val scope = highlighting.scope
+        val cached = highlighter.cachedRuns(scopeName, code)
+        when {
+            cached != null -> paintRuns(holder.codeView, code, cached, colorScheme.codeSyntax)
+            scope == null -> highlighter.tokenize(scopeName, code)?.let {
+                paintRuns(holder.codeView, code, it, colorScheme.codeSyntax)
+            }
+            else -> {
+                val key = Any()
+                holder.highlightKey = key
+                holder.highlightJob = scope.launch {
+                    val runs = highlighter.tokenizeAsync(scopeName, code) ?: return@launch
+                    // M-222's stale-result class: the holder may show another block (or YAML, or a
+                    // Mermaid image) by now. Every bind clears the key, so only this bind's result lands.
+                    if (holder.highlightKey !== key) return@launch
+                    holder.highlightKey = null
+                    holder.highlightJob = null
+                    paintRuns(holder.codeView, code, runs, colorScheme.codeSyntax)
+                }
+            }
         }
     }
 
@@ -234,6 +285,24 @@ class FencedCodeBlockEntry(
         val copyButton: TextView = requireView(R.id.code_copy)
         val mermaidImage: ImageView = requireView(R.id.mermaid_image)
         val mermaidCaption: TextView = requireView(R.id.mermaid_caption)
+
+        // M-136: the bind whose colours may still land, and its job. Cleared on every bind of any route.
+        internal var highlightKey: Any? = null
+        internal var highlightJob: Job? = null
+
+        fun cancelPendingHighlight() {
+            highlightJob?.cancel()
+            highlightJob = null
+            highlightKey = null
+        }
+
+        /**
+         * Call at the start of every bind that does not start a Mermaid request (a new `load` on
+         * [mermaidImage] replaces the old request by itself). Cancels a Mermaid request still running
+         * for the block this holder showed before: its error path writes that diagram's source into
+         * [codeView], so a late failure would replace the new block's text (M-222).
+         */
+        fun cancelPendingMermaid() = mermaidImage.dispose()
     }
 
     private companion object {
@@ -248,4 +317,35 @@ class FencedCodeBlockEntry(
         const val CARD_MARGIN_DP = 20f // adapter_code_block FrameLayout horizontal margin
         const val IMAGE_PADDING_DP = 12f // mermaid_image horizontal padding
     }
+}
+
+// Markwon 4.6.2's CorePlugin.visitCodeBlock writes a no-break space and a newline before the code.
+private const val MARKWON_CODE_PREFIX = 2
+
+/**
+ * M-136: add the runs' colours to [view]'s text in place, so no new layout is built and the search
+ * highlight stays. The text is Markwon's render of [code] (a short prefix, then the code), so each run
+ * is shifted by that prefix, and a run past the end of the text is dropped (Safeguard 3).
+ */
+private fun paintRuns(view: TextView, code: String, runs: List<CodeRun>, syntax: CodeSyntaxColors) {
+    // Markwon sets the text as a Spannable, and SearchHighlighter keeps it one (measured); anything
+    // else is left plain rather than set again.
+    val target = view.text as? Spannable ?: return
+    val offset = codeOffset(target, code) ?: return
+    runs.forEach { run ->
+        val color = run.role.colorIn(syntax)
+        val start = offset + run.start
+        val end = offset + run.end
+        val inBounds = start in 0 until end && end <= target.length
+        if (color != null && inBounds) {
+            target.setSpan(ForegroundColorSpan(color.toArgb()), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+}
+
+/** Where [code] starts in [text], or null if the text does not hold it (e.g. the failure message). */
+private fun codeOffset(text: CharSequence, code: String): Int? {
+    val body = code.trimEnd('\n')
+    val at = if (text.startsWith(body, MARKWON_CODE_PREFIX)) MARKWON_CODE_PREFIX else text.indexOf(body)
+    return at.takeIf { it >= 0 && body.isNotEmpty() }
 }

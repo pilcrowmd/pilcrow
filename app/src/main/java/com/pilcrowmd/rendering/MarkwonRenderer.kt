@@ -6,12 +6,12 @@ package com.pilcrowmd.rendering
 import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
-import com.pilcrowmd.rendering.GrammarLocatorDef
+import com.pilcrowmd.repository.RelativeImageResolver
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import com.pilcrowmd.ui.theme.PilcrowTypography
-import com.pilcrowmd.ui.theme.PrintColorScheme
+import com.pilcrowmd.ui.theme.PrintCodeColorScheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.CorePlugin
 import io.noties.markwon.ext.latex.JLatexMathPlugin
@@ -52,7 +52,14 @@ import java.util.concurrent.ForkJoinPool
  * FencedCodeBlockEntry. The old CodeBlockCopyPlugin overrode the FencedCodeBlock visitor and
  * dropped the code content (rendered only "[Copy]"), so it was removed.
  */
-class MarkwonRenderer(private val context: Context) {
+class MarkwonRenderer(
+    private val context: Context,
+    // M-93: resolves `images/x.png` against the note's granted folder. Null: relative images never load.
+    private val relativeImages: RelativeImageResolver? = null,
+) {
+
+    /** M-93: the note on screen, which relative image paths are read against. Set by the reader. */
+    val imageBase = ImageBase()
 
     // Lazy singleton: configure once, reuse for all renders.
     // The plugin chain is built by [buildPilcrowMarkwon] so a test can construct an identical,
@@ -63,13 +70,27 @@ class MarkwonRenderer(private val context: Context) {
     // per screen theme, each built once. [markwon] is the Dark one. The screen asks for the instance
     // matching the active scheme through [markwonFor]; nothing is shared or mutated between the two,
     // so a theme toggle only switches which instance the adapter is built with.
-    val markwon: Markwon by lazy { buildPilcrowMarkwon(context, DarkColorScheme) }
-    private val lightMarkwon: Markwon by lazy { buildPilcrowMarkwon(context, LightColorScheme) }
+    val markwon: Markwon by lazy {
+        buildPilcrowMarkwon(context, DarkColorScheme, images = images)
+    }
 
-    // The PDF export's instance (M-132). The export has always drawn code on the Dark code panel, so it
-    // keeps Dark's surface and text, but takes Print's token colours and the bundle's own grammar
-    // names: the token roles and the diff/patch aliases added for the screen must not change the
-    // export. Built lazily, on the first export.
+    /**
+     * M-136: TextMate colours for the languages Prism4j has no grammar for. One per process, shared by
+     * the reader and the PDF, so each grammar loads once and the run cache serves both.
+     */
+    val codeHighlighter: TextMateCodeHighlighter by lazy { TextMateCodeHighlighter(context.assets::open) }
+    private val lightMarkwon: Markwon by lazy {
+        buildPilcrowMarkwon(context, LightColorScheme, images = images)
+    }
+
+    // M-93: one image loader for every screen instance, so its memory cap covers them all. The PDF
+    // export's instances get none and keep the alt text, as before.
+    private val images: ReaderImages by lazy {
+        ReaderImages(MarkdownImageLoader.createImageLoader(context, relativeImages = relativeImages), imageBase)
+    }
+
+    // The PDF export's instance: code in Light's code colours, whatever the app theme (M-178; see
+    // [buildPrintMarkwon]). Built lazily, on the first export.
     val printMarkwon: Markwon by lazy { buildPrintMarkwon(context) }
 
     // M-121: the export's instance for the last non-default reading size. One is enough: an export
@@ -109,7 +130,12 @@ class MarkwonRenderer(private val context: Context) {
         if (fontScale == 1f) return if (light) lightMarkwon else markwon
         return synchronized(scaledInstances) {
             scaledInstances.getOrPut(light to fontScale) {
-                buildPilcrowMarkwon(context, if (light) LightColorScheme else DarkColorScheme, mathScale = fontScale)
+                buildPilcrowMarkwon(
+                    context,
+                    if (light) LightColorScheme else DarkColorScheme,
+                    mathScale = fontScale,
+                    images = images,
+                )
             }
         }
     }
@@ -161,15 +187,27 @@ class MarkwonRenderer(private val context: Context) {
  * through [MarkwonRenderer.markwonFor] (or [MarkwonRenderer.printMarkwon] for the PDF).
  */
 /**
- * The PDF export's instance: Dark's code panel with Print's token colours, and the bundle's own grammar
- * names (no diff/patch alias), so nothing added for the screen reaches the export (M-132).
+ * The PDF export's instance: code in Light's colours on a light panel, with the same grammar names as
+ * the screen, so `diff` and `patch` blocks are coloured too (M-178). It still reads the info string's
+ * first word, so a fence with attributes keeps its colours (M-243). This instance reads only the code
+ * colours of [PrintCodeColorScheme] and its link colour, which is Print's (M-219); every other PDF
+ * colour comes from the export itself.
  */
 internal fun buildPrintMarkwon(context: Context, mathScale: Float = 1f): Markwon = buildPilcrowMarkwon(
     context,
-    DarkColorScheme.copy(codeSyntax = PrintColorScheme.codeSyntax),
-    GrammarLocatorDef(),
+    PrintCodeColorScheme,
+    AliasGrammarLocator(),
     mathScale,
 )
+
+/**
+ * Task-list boxes (M-219): fill and outline from [PilcrowColorScheme.link], tick in the page colour.
+ * A scheme with no link colour keeps the platform theme's, as every scheme had before M-219.
+ */
+private fun taskListPlugin(context: Context, colorScheme: PilcrowColorScheme): TaskListPlugin {
+    val link = colorScheme.link?.toArgb() ?: return TaskListPlugin.create(context)
+    return TaskListPlugin.create(link, link, colorScheme.primaryBackground.toArgb())
+}
 
 internal fun buildPilcrowMarkwon(
     context: Context,
@@ -178,6 +216,8 @@ internal fun buildPilcrowMarkwon(
     // M-121: the reading size. Only JLatexMath needs it here; every other block is sized by its
     // adapter entry from the same scale.
     mathScale: Float = 1f,
+    // M-93: draws markdown images through these. Null leaves them as alt text (the PDF).
+    images: ReaderImages? = null,
 ): Markwon {
     // Prism4j over the kapt-generated grammars, plus the diff/patch aliases unless told otherwise
     val prism4j = Prism4j(grammarLocator)
@@ -192,6 +232,8 @@ internal fun buildPilcrowMarkwon(
         .usePlugin(NestingLimitPlugin())
         // Core markdown parsing (CommonMark)
         .usePlugin(CorePlugin.create())
+        // M-159 / M-173: "#heading" links jump in the reader; no link tap can leave the app wrongly or crash it.
+        .usePlugin(ReaderLinkResolverPlugin())
         // M-119: CorePlugin's ListItem visitor MUTATES the parsed tree as it renders, advancing
         // each ordered list's start number by one per item. The reader re-renders the same Node
         // objects on every bind, so the numbers climbed. This plugin snapshots and restores them.
@@ -213,9 +255,16 @@ internal fun buildPilcrowMarkwon(
         // GFM: tables, strikethrough, task lists
         .usePlugin(TablePlugin.create(context))
         .usePlugin(StrikethroughPlugin.create())
-        .usePlugin(TaskListPlugin.create(context))
+        .usePlugin(taskListPlugin(context, colorScheme))
         // Autolinks
         .usePlugin(LinkifyPlugin.create())
+        // M-93: local images. After CorePlugin, whose image visitor it replaces.
+        .apply {
+            if (images != null) {
+                val loader = MarkdownImageLoader(context, images.loader, colorScheme, mathScale, images.base)
+                usePlugin(MarkdownImagesPlugin(loader))
+            }
+        }
         // Enable the inline parser so JLatexMathPlugin can hook its inline `$$…$$` processor in.
         // Must come before JLatexMathPlugin (order matters). We also register our own single-`$`
         // processor here (the lambda form keeps all default inline processors, incl. the
@@ -231,10 +280,14 @@ internal fun buildPilcrowMarkwon(
         // renders instead of raw-dumping the whole equation (JLaTeXMath has no mhchem).
         // Registered with JLatexMathPlugin — without it there are no math nodes to rewrite.
         builder.usePlugin(CeMacroShimPlugin())
+        // Issue #9: `cases` columns get amsmath's \quad gap instead of the library's negative space.
+        installJLatexMathEnvironments()
         // A recursive \newcommand would otherwise expand for ever; this makes it a parse error,
         // so the formula shows its source like any other that fails (Safeguard 3).
         MacroExpansionLimit.install()
-        builder.usePlugin(
+        // M-260: a formula that fails to parse is shown as plain, wrapping source text instead of
+        // the plugin's one-line placeholder, which runs off the screen.
+        val mathPlugin =
             JLatexMathPlugin.create(baseFontSizePx) { jlatexBuilder ->
                 jlatexBuilder
                     .inlinesEnabled(true) // render `$$…$$` inline within a paragraph
@@ -252,8 +305,8 @@ internal fun buildPilcrowMarkwon(
                 // Color: JLatexMath text must be primaryText, not default (black)
                 // Use JLatexMathTheme or equivalent to set the color token
                 // (theme API will be integrated when the plugin is called)
-            },
-        )
+            }
+        builder.usePlugin(MathSourceFallbackPlugin(mathPlugin))
     } catch (e: Exception) {
         // If ext-latex is missing or incompatible, log and skip it
         Log.e("MarkwonRenderer", "failed to load JLatexMathPlugin: ${e.message}")
@@ -275,3 +328,6 @@ internal fun buildPilcrowMarkwon(
         .usePlugin(HtmlPlugin.create())
         .build()
 }
+
+/** M-93: what the reader's images need — the shared Coil instance, and the note they are relative to. */
+class ReaderImages(val loader: coil.ImageLoader, val base: ImageBase)

@@ -37,11 +37,11 @@ Pilcrow is a local, offline-first reader. Its design removes whole classes of ri
 - **No WebView, no JavaScript.** Markdown is rendered to native Android views. There is no embedded
   browser or JS runtime, which eliminates web-style vulnerabilities (XSS, CSRF, and similar).
 - **Scoped file access.** Files are opened and saved through Android's Storage Access Framework with
-  user-granted, scoped URI permissions — Pilcrow does not request broad device-storage access.
+  user-granted, scoped URI permissions – Pilcrow does not request broad device-storage access.
 - **No accounts, analytics, ads, or telemetry.** The app bundles no analytics or crash-reporting
   SDKs and does not phone home.
 - **Offline reading path.** With default settings, reading and rendering make no network requests.
-  Markdown image references are not fetched over the network — they render as alt text — so opening a
+  Markdown image references are not fetched over the network – they render as alt text – so opening a
   document cannot trigger outbound connections.
 - **Content integrity.** Saves are atomic (a failed save aborts cleanly and never leaves a partial
   or corrupted file), and content is preserved byte-for-byte on round trip (line endings and
@@ -65,7 +65,7 @@ The following generally fall outside the threat model (though you're still welco
   device**.
 - **Social engineering** that tricks a user into opening untrusted files or granting permissions.
 - **Third-party dependency CVEs without a demonstrated, realistic exploit path through Pilcrow.** We
-  still track and update dependencies — please report these so we can assess them.
+  still track and update dependencies – please report these so we can assess them.
 - **Resource exhaustion** from pathologically large files (these are a performance limit, not a
   corruption or code-execution risk).
 
@@ -81,5 +81,5 @@ hold public discussion until a fix is released so users can update first.
 
 ## See also
 
-- [LICENSES.md](LICENSES.md) — third-party dependencies and their licenses.
-- [CONTRIBUTING.md](CONTRIBUTING.md) — development standards and the quality gate.
+- [LICENSES.md](LICENSES.md) – third-party dependencies and their licenses.
+- [CONTRIBUTING.md](CONTRIBUTING.md) – development standards and the quality gate.

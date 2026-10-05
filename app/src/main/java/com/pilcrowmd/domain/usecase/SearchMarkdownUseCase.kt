@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.domain.usecase
 
+import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.CalloutBlock
 import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.markdown.FootnoteReference
@@ -115,9 +116,8 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
         }
 
         fun scan(doc: Node): List<SearchMatch> {
-            var blockIndex = 0
-            var node = doc.firstChild
-            while (node != null) {
+            // Numbered as the adapter numbers its items: a link reference definition has none (M-214).
+            AdapterBlocks.of(doc).forEachIndexed { blockIndex, node ->
                 // occurrenceInBlock is per top-level block. A table renders as one TextView PER CELL, so
                 // its ordinal threads across cells in row-major order — the exact order TableBlockEntry
                 // paints and PreviewScroll walks; every other block is a single chunk.
@@ -127,8 +127,6 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
                 } else {
                     scanChunk(node, blockIndex, Occurrence())
                 }
-                blockIndex++
-                node = node.next
             }
             return matches
         }

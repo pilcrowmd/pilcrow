@@ -520,4 +520,13 @@ class SearchMarkdownUseCaseTest {
         assertEquals(1, useCase.findSearchMatches("foo\$x\$bar", "foo").size)
         assertEquals(1, useCase.findSearchMatches("foo\$x\$bar", "bar").size)
     }
+
+    @Test
+    fun testLinkReferenceDefinitionTakesNoAdapterPosition() {
+        // M-214: the adapter has no item for the definition, so "needle here" is its item 1.
+        val matches = useCase.findSearchMatches("[r]: https://x.test\n\n# Head\n\nneedle here", "needle")
+
+        assertEquals(1, matches.size)
+        assertEquals(1, matches[0].adapterPosition)
+    }
 }

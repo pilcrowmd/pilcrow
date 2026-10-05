@@ -9,7 +9,10 @@ import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FolderAccessRepository
 import com.pilcrowmd.repository.LocalFileRepository
+import com.pilcrowmd.repository.LocalFolderAccessRepository
+import com.pilcrowmd.repository.ProviderDocumentTree
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.storage.StorageManager
 
@@ -44,7 +47,15 @@ class DefaultAppContainer(private val appContext: Context) : AppContainer {
      * Built from applicationContext context for theme/resource resolution, safe for retained ViewModels.
      */
     override val markwonRenderer: MarkwonRenderer by lazy {
-        MarkwonRenderer(appContext)
+        MarkwonRenderer(appContext, relativeImages = folderAccessRepository)
+    }
+
+    /**
+     * M-93: folder grants (Android's persisted tree grants) and the walk that turns `images/x.png`
+     * in a note into a document inside a granted folder.
+     */
+    override val folderAccessRepository: FolderAccessRepository by lazy {
+        LocalFolderAccessRepository(ProviderDocumentTree(appContext.contentResolver))
     }
 
     /**

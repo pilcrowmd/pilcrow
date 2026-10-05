@@ -1,0 +1,54 @@
+INI TextMate grammar
+
+Shipped as app/src/main/assets/textmate/ini/ini.tmLanguage.json, unmodified.
+Taken from microsoft/vscode at commit 21232ac569543d667ff07ccd2410ad880d7022c5,
+file extensions/ini/syntaxes/ini.tmLanguage.json.
+That file was converted by the VS Code project from textmate/ini.tmbundle
+at commit 2af0cbb0704940f967152616f2f1ff0aae6287a6.
+Both licences follow.
+
+==============================================================================
+microsoft/vscode
+==============================================================================
+
+MIT License
+
+Copyright (c) 2015 - present Microsoft Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+==============================================================================
+textmate/ini.tmbundle
+==============================================================================
+
+Copyright (c) textmate-ini.tmbundle project authors
+
+textmate/ini.tmbundle publishes no copyright line. The line above follows the
+form VS Code's third-party notices use for the TextMate bundles. The licence
+below is the bundle's own, from its README.mdown at commit
+2af0cbb0704940f967152616f2f1ff0aae6287a6.
+
+If not otherwise specified (see below), files in this repository fall under the following license:
+
+	Permission to copy, use, modify, sell and distribute this
+	software is granted. This software is provided "as is" without
+	express or implied warranty, and with no claim as to its
+	suitability for any purpose.
+
+An exception is made for files in readable text which contain their own license information, or files where an accompanying file exists (in the same directory) with a “-license” suffix added to the base-name name of the original file, and an extension of txt, html, or similar. For example “tidy” is accompanied by “tidy-license.txt”.

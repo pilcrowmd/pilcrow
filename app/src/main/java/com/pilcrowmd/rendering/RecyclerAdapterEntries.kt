@@ -4,6 +4,7 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import com.pilcrowmd.domain.markdown.isFrontmatter
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -63,8 +64,10 @@ object RecyclerAdapterEntries {
      * @param wrapCodeLines When true, long lines in code blocks wrap instead of side-scrolling (M-134)
      * @param details Which `<details>` sections are open (M-161); every entry is wrapped so a block
      *   inside a closed section takes no space. Null leaves every block showing (the PDF export).
+     * @param codeHighlighting Colours bash/TypeScript/Rust/Ruby blocks (M-136); null leaves them plain
      * @return MarkwonAdapter ready to be set on a RecyclerView
      */
+    @Suppress("LongParameterList") // The reader's settings, forwarded to the entries.
     fun buildMarkdownAdapter(
         context: Context,
         markwon: Markwon,
@@ -75,6 +78,7 @@ object RecyclerAdapterEntries {
         colorScheme: PilcrowColorScheme = DarkColorScheme,
         wrapCodeLines: Boolean = false,
         details: DetailsState? = null,
+        codeHighlighting: CodeHighlighting? = null,
     ): MarkwonAdapter {
         fun <N : org.commonmark.node.Node, H : MarkwonAdapter.Holder> hideable(entry: MarkwonAdapter.Entry<N, H>) =
             if (details == null) entry else HideableEntry(entry, details)
@@ -98,6 +102,7 @@ object RecyclerAdapterEntries {
                         colorScheme,
                         searchHighlight,
                         wrapCodeLines,
+                        codeHighlighting,
                     ),
                 ),
             )
@@ -134,7 +139,8 @@ object RecyclerAdapterEntries {
 
     /**
      * Conditional code block entry that routes FencedCodeBlock nodes based on info string:
-     * - info == "yaml" → FrontmatterBlockEntry (styled YAML block with label)
+     * - front matter ([isFrontmatter]) → FrontmatterBlockEntry (styled YAML block with label);
+     *   a ```yaml fence is NOT front matter and stays a code block (M-198)
      * - else → FencedCodeBlockEntry (normal code block with copy button)
      *
      * This allows both entries to handle FencedCodeBlock without conflicts.
@@ -148,11 +154,20 @@ object RecyclerAdapterEntries {
         private val colorScheme: PilcrowColorScheme = DarkColorScheme,
         private val searchHighlight: SearchHighlight = SearchHighlight(),
         private val wrapCodeLines: Boolean = false,
+        private val codeHighlighting: CodeHighlighting? = null,
     ) : MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder>() {
 
         private val yamlEntry = FrontmatterBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight)
         private val codeEntry =
-            FencedCodeBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight, wrapCodeLines)
+            FencedCodeBlockEntry(
+                context,
+                fontScale,
+                fontSet,
+                colorScheme,
+                searchHighlight,
+                wrapCodeLines,
+                codeHighlighting,
+            )
 
         override fun createHolder(
             inflater: android.view.LayoutInflater,
@@ -168,15 +183,20 @@ object RecyclerAdapterEntries {
             holder: FencedCodeBlockEntry.Holder,
             node: FencedCodeBlock,
         ) {
-            // Route by info string. yaml → styled frontmatter; mermaid (if opted in) → cloud
-            // image; everything else → normal code block. All bind into the same holder.
-            val info = node.info?.trim()?.lowercase()
+            // First, on every route: the front-matter and Mermaid-cloud routes never reach codeEntry.bindHolder,
+            // so without this a holder rebound from code to either could still take the old colours (M-136).
+            holder.cancelPendingHighlight()
+            // Front matter → styled card; mermaid (if opted in) → cloud image; everything else →
+            // normal code block, by the fence's language. All bind into the same holder.
+            val info = fenceLanguage(node.info)
             when {
+                node.isFrontmatter() -> yamlEntry.bindHolder(markwon, holder, node)
                 info == "mermaid" && mermaidCloudEnabled -> codeEntry.bindMermaid(markwon, holder, node)
                 info == "mermaid" -> codeEntry.bindMermaidOff(markwon, holder, node)
-                info == "yaml" -> yamlEntry.bindHolder(markwon, holder, node)
                 else -> codeEntry.bindHolder(markwon, holder, node)
             }
         }
+
+        override fun onViewRecycled(holder: FencedCodeBlockEntry.Holder) = codeEntry.onViewRecycled(holder)
     }
 }

@@ -4,7 +4,6 @@
 package com.pilcrowmd.domain.markdown
 
 import org.commonmark.node.HtmlBlock
-import org.commonmark.node.LinkReferenceDefinition
 import org.commonmark.node.Node
 
 /**
@@ -79,13 +78,11 @@ object Details {
 
     /**
      * The sections in [document]'s top-level blocks, nested ones included, in header order. Indices
-     * are the reader adapter's positions, and Markwon's reducer drops a link reference definition
-     * before numbering them, so a definition takes no index here either.
+     * are the reader adapter's positions, numbered by [AdapterBlocks.of], so a link reference
+     * definition takes no index here either.
      */
     fun sections(document: Node): List<DetailsSection> {
-        val blocks = generateSequence(document.firstChild) { it.next }
-            .filterNot { it is LinkReferenceDefinition }
-            .toList()
+        val blocks = AdapterBlocks.of(document)
         val sections = mutableListOf<DetailsSection>()
         val openHeaders = ArrayDeque<Pair<Int, DetailsHeader>>()
         blocks.forEachIndexed { index, block ->

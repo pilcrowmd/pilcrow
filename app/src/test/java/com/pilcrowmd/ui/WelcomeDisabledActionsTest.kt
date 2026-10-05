@@ -174,6 +174,9 @@ class WelcomeDisabledActionsTest {
      * hide. The contrast test above still pins that the button is dimmed at all.
      */
     @Test
+    // M-196: in portrait the block now sits at one height, below the ¶, so the precondition below
+    // cannot be met there. On the S24+'s landscape viewport the block still sits in the watermark.
+    @Config(qualifiers = "w832dp-h384dp-night-450dpi")
     fun theDisabledOpenButtonHidesTheWatermarkBehindIt() {
         show()
         loading = true

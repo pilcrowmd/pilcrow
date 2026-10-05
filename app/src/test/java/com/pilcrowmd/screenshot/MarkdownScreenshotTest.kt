@@ -18,6 +18,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.MathSourceSpan
 import com.pilcrowmd.ui.components.MarkdownPreview
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
@@ -132,10 +133,13 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
         drainMainLooper()
         if (case.sample.awaitMathRender) awaitLatexResolved()
 
-        composeRule.onRoot().captureRoboImage(
-            filePath = "src/test/screenshots/markdown_${case.sample.name}_${case.scalePct}_${case.themeSuffix}.png",
-            roborazziOptions = roborazziOptions,
-        )
+        val filePath = "src/test/screenshots/markdown_${case.sample.name}_${case.scalePct}_${case.themeSuffix}.png"
+        if (case.sample.cropToMath) {
+            mathViews(composeRule.activity.window.decorView).single()
+                .captureRoboImage(filePath = filePath, roborazziOptions = roborazziOptions)
+        } else {
+            composeRule.onRoot().captureRoboImage(filePath = filePath, roborazziOptions = roborazziOptions)
+        }
     }
 
     /**
@@ -176,17 +180,26 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
     }
 
     /** Walk the view tree and collect every LaTeX async span (same shape as PdfExporterTest's). */
-    private fun collectLatexSpans(view: android.view.View): List<JLatexAsyncDrawableSpan> {
-        val result = mutableListOf<JLatexAsyncDrawableSpan>()
-        when (view) {
-            is android.view.ViewGroup ->
-                for (i in 0 until view.childCount) result += collectLatexSpans(view.getChildAt(i))
-            is android.widget.TextView ->
-                (view.text as? android.text.Spanned)?.let { spanned ->
-                    result += spanned.getSpans(0, spanned.length, JLatexAsyncDrawableSpan::class.java)
-                }
+    private fun collectLatexSpans(view: android.view.View): List<JLatexAsyncDrawableSpan> =
+        mathViews(view).flatMap { textView ->
+            val spanned = textView.text as android.text.Spanned
+            spanned.getSpans(0, spanned.length, JLatexAsyncDrawableSpan::class.java).toList()
         }
-        return result
+
+    /** Every TextView in the tree that holds at least one LaTeX span, or a failed formula's source (M-260). */
+    private fun mathViews(view: android.view.View): List<android.widget.TextView> = when (view) {
+        is android.view.ViewGroup -> (0 until view.childCount).flatMap { mathViews(view.getChildAt(it)) }
+        is android.widget.TextView -> listOfNotNull(
+            view.takeIf { v ->
+                val spanned = v.text as? android.text.Spanned
+                spanned != null &&
+                    (
+                        spanned.getSpans(0, spanned.length, JLatexAsyncDrawableSpan::class.java).isNotEmpty() ||
+                            spanned.getSpans(0, spanned.length, MathSourceSpan::class.java).isNotEmpty()
+                        )
+            },
+        )
+        else -> emptyList()
     }
 
     companion object {

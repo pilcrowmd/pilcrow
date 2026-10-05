@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -240,6 +241,17 @@ constructor(
 
     private val _searchVisible = MutableStateFlow(false)
     val searchVisible: StateFlow<Boolean> = _searchVisible.asStateFlow()
+
+    init {
+        // A search belongs to the document it ran against. When a DIFFERENT document becomes
+        // current (load, new document) or none does (close), close and clear it, exactly as the
+        // user closing the bar would — otherwise the bar kept the old query and "2/2" over a file
+        // that has neither. Keyed on the slot's DocumentId, which every publish door changes and
+        // Save-As adoption keeps, so Save-As still re-runs the search ([refreshActiveSearch]).
+        viewModelScope.launch {
+            slot.document.map { it?.id }.distinctUntilChanged().collect { closeSearch() }
+        }
+    }
 
     // Heading table-of-contents navigation
     val headings: StateFlow<List<HeadingNode>> = slot.headings
@@ -845,15 +857,17 @@ constructor(
 
     fun setSearchVisible(visible: Boolean) {
         viewModelScope.launch {
-            _searchVisible.emit(visible)
-            if (!visible) {
-                // Exiting search clears its state. The preview observes the now-empty
-                // matches and re-binds without highlight spans — no stale highlights linger.
-                _searchQuery.emit("")
-                _searchMatches.emit(emptyList())
-                _currentMatchIndex.emit(0)
-            }
+            if (visible) _searchVisible.emit(true) else closeSearch()
         }
+    }
+
+    private suspend fun closeSearch() {
+        _searchVisible.emit(false)
+        // Exiting search clears its state. The preview observes the now-empty
+        // matches and re-binds without highlight spans — no stale highlights linger.
+        _searchQuery.emit("")
+        _searchMatches.emit(emptyList())
+        _currentMatchIndex.emit(0)
     }
 
     fun setTocVisible(visible: Boolean) {
@@ -1227,10 +1241,11 @@ constructor(
      *
      * `internal` rather than `private` ONLY so `MarkdownViewModelLineEndingScalingTest` can measure the
      * real function instead of a copy of it — a scaling test written against a duplicated loop would
-     * pass forever no matter what production did.
+     * pass forever no matter what production did. It takes a `CharSequence` for the same test, which
+     * passes a wrapper that counts every character read (M-215); callers pass the document `String`.
      */
     @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.PRIVATE)
-    internal fun detectLineEnding(content: String): String {
+    internal fun detectLineEnding(content: CharSequence): String {
         var crlf = 0
         var lf = 0
         for (i in content.indices) {

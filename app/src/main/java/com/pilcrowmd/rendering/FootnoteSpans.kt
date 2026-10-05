@@ -166,7 +166,7 @@ private fun Spanned.footnoteSpanNear(layout: Layout, line: Int, x: Float, slopPx
 }
 
 /** Nearest enclosing RecyclerView, or null when this view is not inside one (e.g. PDF export). */
-private fun View.findRecyclerViewAncestor(): RecyclerView? {
+internal fun View.findRecyclerViewAncestor(): RecyclerView? {
     var candidate: ViewParent? = parent
     while (candidate != null) {
         if (candidate is RecyclerView) return candidate

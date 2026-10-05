@@ -31,7 +31,7 @@ import kotlin.runCatching
 class PdfExporter(private val context: Context, private val markwonRenderer: MarkwonRenderer) {
 
     // Builds the off-screen block-view tree (SRP split: layout-building vs pagination/PDF write).
-    private val layoutBuilder = PdfContentLayoutBuilder(context)
+    private val layoutBuilder = PdfContentLayoutBuilder(context, markwonRenderer.codeHighlighter)
 
     companion object {
         // A4 page dimensions (in points; 1/72 inch per point)

@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pilcrowmd.ui.screen.MainScreen
+import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 
 /** Bounded minimum the branded splash stays up so its lines→¶ morph plays. */
@@ -212,6 +213,8 @@ fun PilcrowApp(
             viewModel = viewModel,
             context = context,
             renderer = container.markwonRenderer,
+            // M-93: the banner and folder picker for a note's pictures.
+            imageFolderViewModel = viewModel(factory = ImageFolderViewModel.provideFactory(container)),
         )
     }
 }

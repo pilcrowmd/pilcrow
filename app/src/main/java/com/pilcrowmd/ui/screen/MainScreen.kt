@@ -51,13 +51,18 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.ui.components.EditorController
+import com.pilcrowmd.ui.components.FileNameText
 import com.pilcrowmd.ui.components.GitHubIntegrationScreen
 import com.pilcrowmd.ui.components.HeadingsDrawer
+import com.pilcrowmd.ui.components.ImageFolderBannerView
 import com.pilcrowmd.ui.components.LicensesScreen
 import com.pilcrowmd.ui.components.MarkdownEditor
 import com.pilcrowmd.ui.components.MarkdownPreview
@@ -71,6 +76,7 @@ import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.mdColors
 import com.pilcrowmd.viewmodel.ExportState
 import com.pilcrowmd.viewmodel.FileLoadState
+import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 import com.pilcrowmd.viewmodel.NEW_DOCUMENT_NAME
 import com.pilcrowmd.viewmodel.ViewMode
@@ -97,6 +103,8 @@ fun MainScreen(
     viewModel: MarkdownViewModel,
     context: Context,
     renderer: MarkwonRenderer,
+    // M-93: the folder banner and picker for a note's pictures. Null: no banner (tests that do not need it).
+    imageFolderViewModel: ImageFolderViewModel? = null,
 ) {
     // Collect state from ViewModel (collectAsStateWithLifecycle returns State<T>)
     val currentDocument = viewModel.currentDocument.collectAsStateWithLifecycle()
@@ -128,6 +136,7 @@ fun MainScreen(
     val previewScroll = viewModel.previewScroll.collectAsStateWithLifecycle()
     val editorScroll = viewModel.editorScroll.collectAsStateWithLifecycle()
     val editorCursor = viewModel.editorCursor.collectAsStateWithLifecycle()
+    val imageFolder = imageFolderViewModel?.state?.collectAsStateWithLifecycle()
     val recentFiles = viewModel.recentFiles.collectAsStateWithLifecycle()
 
     // Search state
@@ -416,6 +425,23 @@ fun MainScreen(
 
     // SAF file picker (launches ACTION_OPEN_DOCUMENT)
     // Accept text/markdown files (.md, .markdown, .txt)
+    // M-93: the reader's note, for its pictures. Only in the reader: an edit in the editor is counted
+    // when the reader shows it again, not on every keystroke.
+    androidx.compose.runtime.LaunchedEffect(currentDocument.value?.uri, currentDocument.value?.content, mode.value) {
+        if (mode.value == ViewMode.READER || currentDocument.value == null) {
+            imageFolderViewModel?.onDocumentShown(currentDocument.value?.uri, currentDocument.value?.content.orEmpty())
+        }
+    }
+    // Back from Android's settings, or from the picker: a grant may have come or gone.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { imageFolderViewModel?.refresh() }
+    val folderPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        imageFolderViewModel?.onFolderPicked(tree)
+    }
+    androidx.compose.runtime.LaunchedEffect(imageFolderViewModel) {
+        // The picker opens at the note itself, which Android shows as the note's own folder.
+        imageFolderViewModel?.pickFolder?.collect { start -> folderPickerLauncher.launch(start) }
+    }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -586,6 +612,13 @@ fun MainScreen(
                             null
                         },
                         onTogglePlainView = { viewModel.toggleRenderMode() },
+                        onShowFolderPictures = if (imageFolder?.value?.canAskForFolder == true &&
+                            mode.value == ViewMode.READER
+                        ) {
+                            { imageFolderViewModel?.requestFolderAccess() }
+                        } else {
+                            null
+                        },
                         onClose = {
                             // Safeguard against silent data loss: prompt if there are unsaved edits.
                             if (currentDocument.value?.dirty == true) {
@@ -625,6 +658,16 @@ fun MainScreen(
                         TransientBanner(
                             enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                             onClick = { launchSaveAs() },
+                        )
+                    }
+
+                    // M-93: why the note's pictures are missing, once per folder. Reader only.
+                    val folderBanner = imageFolder?.value?.banner
+                    if (folderBanner != null && mode.value == ViewMode.READER) {
+                        ImageFolderBannerView(
+                            banner = folderBanner,
+                            onAllow = { imageFolderViewModel?.requestFolderAccess() },
+                            onDismiss = { imageFolderViewModel?.dismissBanner() },
                         )
                     }
 
@@ -773,6 +816,9 @@ fun MainScreen(
                                         jumpPosition = headingJump.value?.position ?: -1,
                                         jumpSeq = headingJump.value?.seq ?: 0,
                                         renderMode = renderMode.value,
+                                        documentUri = currentDocument.value!!.uri,
+                                        imageAccessKey = imageFolder?.value?.accessKey.orEmpty(),
+                                        onImageTap = { imageFolderViewModel?.requestFolderAccess() },
                                     )
                                 }
                                 ViewMode.EDITOR -> {
@@ -893,39 +939,11 @@ fun MainScreen(
                 // Closes itself when the last slot is rescued/discarded (list goes empty). Never
                 // auto-discards — dismiss leaves every slot intact.
                 if (strandedDialogVisible.value && strandedSlots.value.isNotEmpty()) {
-                    AlertDialog(
-                        onDismissRequest = { viewModel.dismissStrandedDialog() },
-                        containerColor = mdColors().secondarySurface,
-                        titleContentColor = mdColors().primaryText,
-                        textContentColor = mdColors().secondaryText,
-                        title = { Text("Recover unsaved files") },
-                        text = {
-                            Column {
-                                Text(
-                                    "These saves couldn't be written to their original location. " +
-                                        "Save a copy of each to keep it, or discard it.",
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                strandedSlots.value.forEach { slot ->
-                                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                                        Text(slot.displayName, color = mdColors().primaryText)
-                                        Row {
-                                            TextButton(onClick = { launchRescue(slot) }) {
-                                                Text("Save a copy", color = mdColors().primaryText)
-                                            }
-                                            TextButton(onClick = { viewModel.discardStrandedSlot(slot.key) }) {
-                                                Text("Discard", color = mdColors().secondaryText)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(onClick = { viewModel.dismissStrandedDialog() }) {
-                                Text("Close", color = mdColors().primaryText)
-                            }
-                        },
+                    StrandedSlotsDialog(
+                        slots = strandedSlots.value,
+                        onRescue = { slot -> launchRescue(slot) },
+                        onDiscard = { slot -> viewModel.discardStrandedSlot(slot.key) },
+                        onDismiss = { viewModel.dismissStrandedDialog() },
                     )
                 }
             }
@@ -1043,4 +1061,52 @@ private class OpenAnyDocument : ActivityResultContract<Unit, Uri?>() {
 private fun applyLegacySystemBarColors(window: android.view.Window, color: Int) {
     window.statusBarColor = color
     window.navigationBarColor = color
+}
+
+/**
+ * The "Recover unsaved files" dialog, extracted from [MainScreen] unchanged so it can be
+ * screenshot-tested (M-221). Each slot's name is one line, shortened in the middle when it does
+ * not fit.
+ */
+@Composable
+internal fun StrandedSlotsDialog(
+    slots: List<StrandedSlot>,
+    onRescue: (StrandedSlot) -> Unit,
+    onDiscard: (StrandedSlot) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = mdColors().secondarySurface,
+        titleContentColor = mdColors().primaryText,
+        textContentColor = mdColors().secondaryText,
+        title = { Text("Recover unsaved files") },
+        text = {
+            Column {
+                Text(
+                    "These saves couldn't be written to their original location. " +
+                        "Save a copy of each to keep it, or discard it.",
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                slots.forEach { slot ->
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        FileNameText(name = slot.displayName, color = mdColors().primaryText)
+                        Row {
+                            TextButton(onClick = { onRescue(slot) }) {
+                                Text("Save a copy", color = mdColors().primaryText)
+                            }
+                            TextButton(onClick = { onDiscard(slot) }) {
+                                Text("Discard", color = mdColors().secondaryText)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = mdColors().primaryText)
+            }
+        },
+    )
 }

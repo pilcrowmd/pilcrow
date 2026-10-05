@@ -5,15 +5,14 @@ package com.pilcrowmd.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
 
 /**
  * M-132 — every code-token colour the Light theme draws must reach 4.5:1 on the Light code-block
- * background, and every role must be set in Dark and Light. Print is the opposite case: its added
- * roles must stay unset, because that is what keeps the exported PDF unchanged.
+ * background, and every role must be set in Dark and Light. The PDF draws its code on the Light code
+ * panel (M-178), so every Print role must reach the same 4.5:1 on that panel.
  *
  * Contrast is the WCAG 2.x ratio computed from the sRGB values, written out here rather than taken
  * from a library, so the test does not share its method with anything it checks.
@@ -64,10 +63,12 @@ class CodeSyntaxContrastTest {
     }
 
     @Test
-    fun printLeavesEveryAddedRoleUnset() {
-        val added = roles(PrintColorScheme.codeSyntax).filterKeys {
-            it !in setOf("keyword", "string", "number", "comment", "error", "function")
+    fun everyPrintTokenColourReachesFourAndAHalfToOneOnTheLightCodeBlock() {
+        val background = LightColorScheme.codeBlockBg
+        for ((role, color) in roles(PrintColorScheme.codeSyntax)) {
+            assertNotNull("Print role '$role' is unset", color)
+            val ratio = contrast(color!!, background)
+            assertTrue("Print '$role' is %.2f:1 on the PDF code panel, below 4.5:1".format(ratio), ratio >= 4.5)
         }
-        for ((role, color) in added) assertNull("Print role '$role' is set, which would change the PDF", color)
     }
 }

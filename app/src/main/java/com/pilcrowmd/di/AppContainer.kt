@@ -8,6 +8,7 @@ import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.FolderAccessRepository
 import com.pilcrowmd.storage.StorageManager
 
 /**
@@ -25,6 +26,9 @@ interface AppContainer {
 
     /** Persistence abstraction. */
     val storageManager: StorageManager
+
+    /** M-93: folder grants and the relative-picture resolver. */
+    val folderAccessRepository: FolderAccessRepository
 
     /** Markdown rendering engine (lazy, one instance per process). */
     val markwonRenderer: MarkwonRenderer

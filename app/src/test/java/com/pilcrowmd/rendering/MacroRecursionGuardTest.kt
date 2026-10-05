@@ -14,7 +14,6 @@ import com.pilcrowmd.export.PdfContentLayoutBuilder
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -26,7 +25,6 @@ import ru.noties.jlatexmath.JLatexMathAndroid
 import ru.noties.jlatexmath.JLatexMathDrawable
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
-import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.TimeUnit
 
 /**
@@ -145,17 +143,17 @@ class MacroRecursionGuardTest {
     }
 
     /**
-     * On screen: the math loader builds on the common pool. It must settle, leave the formula
-     * without a bitmap (so its source is drawn), and leave the text around it intact.
+     * On screen: the formula is parsed while its text is built (M-260), so the recursion is met
+     * there, not on the loader. The render runs on the worker so a regression fails at the deadline
+     * instead of hanging; it must show the source as text, with no image span, and leave the text
+     * around it intact.
      */
     private fun assertOnScreenShowsSource(markdown: String, source: String) {
-        val textView = TextView(context)
-        markwon.setMarkdown(textView, markdown)
-        val spans = latexSpans(textView)
-        assertEquals("one formula expected in: $markdown", 1, spans.size)
-        assertTrue("math loader still busy after $DEADLINE_MS ms", commonPoolGoesIdle())
-        assertFalse("a recursive formula must not get a bitmap", spans.single().drawable.hasResult())
-        assertEquals("Before $source after.", textView.text.toString().trim())
+        val text = onWorker { markwon.render(markwon.parse(markdown)) }
+        assertNotNull("render still running after $DEADLINE_MS ms: $markdown", text)
+        assertEquals("one formula source expected in: $markdown", 1, sourceSpans(text!!).size)
+        assertTrue("a recursive formula must not get an image span", latexSpans(text).isEmpty())
+        assertEquals("Before $source after.", text.toString().trim())
     }
 
     @Test
@@ -180,24 +178,8 @@ class MacroRecursionGuardTest {
             builder.inflateMeasuredBlock(markwon, node, LayoutInflater.from(context), PAGE_WIDTH_PX, 1f)
         }
         assertNotNull("PDF block build still running after $DEADLINE_MS ms", view)
-        val spans = latexSpans(view!!)
-        assertEquals(1, spans.size)
-        assertFalse("a recursive formula must not get a bitmap", spans.single().drawable.hasResult())
+        assertTrue("a recursive formula must not get an image span", latexSpans(view!!).isEmpty())
         assertEquals("Before $source after.", textOf(view).trim())
-    }
-
-    /**
-     * Whether the common pool, where the math loader builds, has gone idle by the deadline. It only
-     * looks: `awaitQuiescence` would make this thread RUN queued loader tasks, so a formula that
-     * never finishes would hang the test itself and the deadline would never apply.
-     */
-    private fun commonPoolGoesIdle(): Boolean {
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(DEADLINE_MS)
-        while (!ForkJoinPool.commonPool().isQuiescent) {
-            if (System.nanoTime() > deadline) return false
-            Thread.sleep(POLL_MS)
-        }
-        return true
     }
 
     private fun latexSpans(view: View): List<JLatexAsyncDrawableSpan> = when (view) {
@@ -208,6 +190,12 @@ class MacroRecursionGuardTest {
         else -> emptyList()
     }
 
+    private fun latexSpans(text: CharSequence): List<JLatexAsyncDrawableSpan> =
+        (text as Spanned).getSpans(0, text.length, JLatexAsyncDrawableSpan::class.java).toList()
+
+    private fun sourceSpans(text: CharSequence): List<MathSourceSpan> =
+        (text as Spanned).getSpans(0, text.length, MathSourceSpan::class.java).toList()
+
     private fun textOf(view: View): String = when (view) {
         is ViewGroup -> (0 until view.childCount).joinToString("") { textOf(view.getChildAt(it)) }
         is TextView -> view.text.toString()
@@ -216,7 +204,6 @@ class MacroRecursionGuardTest {
 
     private companion object {
         const val DEADLINE_MS = 5_000L
-        const val POLL_MS = 20L
         const val TEXT_SIZE_PX = 40f
         const val PAGE_WIDTH_PX = 1_000
         const val HEAVY_USES = 300

@@ -7,11 +7,14 @@ import android.content.Context
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.ui.theme.CodeSyntaxColors
 import com.pilcrowmd.ui.theme.DarkColorScheme
+import com.pilcrowmd.ui.theme.LightCodeSyntax
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import io.noties.markwon.Markwon
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -24,9 +27,8 @@ import org.robolectric.RobolectricTestRunner
  * [ForegroundColorSpan] over it. So the only thing that can decide a probe is the mapping line for
  * that token: remove the line and the character falls back to the default code text colour.
  *
- * The PDF instance is checked the other way round: every colour it draws in these blocks must be the
- * default code text colour. The diff fixture carries a quoted string on a context line, so if the
- * `diff` alias ever reached the PDF instance, that string would be coloured and the check would fail.
+ * The PDF instance takes the Light theme's token colours, whatever the app theme (M-178), so the same
+ * probes run against it with [LightCodeSyntax] as the expected colours.
  */
 @RunWith(RobolectricTestRunner::class)
 class CodeTokenColoursTest {
@@ -49,9 +51,11 @@ class CodeTokenColoursTest {
             ?.foregroundColor
     }
 
-    private fun assertMarkdownTokens(scheme: PilcrowColorScheme) {
-        val text = render(buildPilcrowMarkwon(context, scheme), markdownBlock)
-        val syntax = scheme.codeSyntax
+    private fun assertMarkdownTokens(scheme: PilcrowColorScheme) =
+        assertMarkdownTokens(buildPilcrowMarkwon(context, scheme), scheme.codeSyntax)
+
+    private fun assertMarkdownTokens(markwon: Markwon, syntax: CodeSyntaxColors) {
+        val text = render(markwon, markdownBlock)
         assertEquals("heading", syntax.heading!!.toArgb(), colourAt(text, "Title"))
         assertEquals("bold", syntax.emphasis!!.toArgb(), colourAt(text, "bold"))
         assertEquals("italic", syntax.emphasis!!.toArgb(), colourAt(text, "italic"))
@@ -61,9 +65,11 @@ class CodeTokenColoursTest {
         assertEquals("inline code", syntax.literal!!.toArgb(), colourAt(text, "`code`"))
     }
 
-    private fun assertDiffTokens(scheme: PilcrowColorScheme) {
-        val text = render(buildPilcrowMarkwon(context, scheme), diffBlock)
-        val syntax = scheme.codeSyntax
+    private fun assertDiffTokens(scheme: PilcrowColorScheme) =
+        assertDiffTokens(buildPilcrowMarkwon(context, scheme), scheme.codeSyntax)
+
+    private fun assertDiffTokens(markwon: Markwon, syntax: CodeSyntaxColors) {
+        val text = render(markwon, diffBlock)
         assertEquals("hunk header", syntax.marker!!.toArgb(), colourAt(text, "@@"))
         assertEquals("removed line", syntax.deleted!!.toArgb(), colourAt(text, "-val removed"))
         assertEquals("added line", syntax.inserted!!.toArgb(), colourAt(text, "+val added"))
@@ -82,14 +88,26 @@ class CodeTokenColoursTest {
     fun diffIsHighlightedAsGitInLight() = assertDiffTokens(LightColorScheme)
 
     @Test
-    fun thePdfInstanceDrawsTheseBlocksInTheDefaultCodeTextOnly() {
-        val print = buildPrintMarkwon(context)
-        val plain = DarkColorScheme.editorText.toArgb()
-        for (block in listOf(markdownBlock, diffBlock)) {
-            val text = render(print, block)
-            val colours = text.getSpans(0, text.length, ForegroundColorSpan::class.java)
-                .map { it.foregroundColor }.toSet()
-            assertEquals("PDF colours in ${block.substringBefore('\n')}", emptySet<Int>(), colours - plain)
-        }
+    fun thePdfInstanceColoursMarkdownTokensInLight() = assertMarkdownTokens(buildPrintMarkwon(context), LightCodeSyntax)
+
+    @Test
+    fun thePdfInstanceHighlightsDiffAsGitInLight() = assertDiffTokens(buildPrintMarkwon(context), LightCodeSyntax)
+
+    /** Every colour the PDF's code is drawn in is one of Light's code colours: no other theme's token leaks in. */
+    @Test
+    fun thePdfInstanceDrawsCodeOnlyInLightsColours() {
+        val light = LightCodeSyntax
+        val allowed = (
+            listOf(light.keyword, light.string, light.number, light.comment, light.error, light.function) +
+                listOfNotNull(
+                    light.heading, light.emphasis, light.link, light.marker, light.literal,
+                    light.variable, light.builtin, light.inserted, light.deleted,
+                ) + LightColorScheme.editorText
+            ).map { it.toArgb() }.toSet()
+        val text = render(buildPrintMarkwon(context), "$markdownBlock\n\n$diffBlock")
+        val drawn = text.getSpans(0, text.length, ForegroundColorSpan::class.java).map { it.foregroundColor }.toSet()
+        assertTrue("no coloured code was rendered", drawn.isNotEmpty())
+        val foreign = (drawn - allowed).map { "#%08X".format(it) }
+        assertTrue("PDF code colours outside Light's set: $foreign", foreign.isEmpty())
     }
 }

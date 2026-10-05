@@ -212,7 +212,11 @@ class MarkdownViewModelNewDocumentTest {
     fun settingOnOpensTheDocumentInTheEditor() {
         val vm = vmWith()
         runBlocking { storage.setOpenInEditMode(true) }
-        awaitValue(true, "setting reaches the ViewModel") { vm.openInEditMode.value }
+        // M-259: wait on what the write publishes, the stored setting, read fresh; the load reads it
+        // the same way. Not `vm.openInEditMode`: that StateFlow subscribed at construction, and a
+        // DataStore subscriber that starts while a write is in flight can keep the old value (M-211).
+        // Under load it was still `false` after 5 s in 8 of 200 runs while this read was `true`.
+        assertTrue("the setting is stored", runBlocking { storage.openInEditMode.first() })
 
         vm.loadAndAwait(mdUri)
         awaitValue(ViewMode.EDITOR, "document opens in the editor when the setting is on") { vm.mode.value }
@@ -260,7 +264,8 @@ class MarkdownViewModelNewDocumentTest {
     fun settingOnFlipsToTheEditorBeforeTheDocumentIsPublished() {
         val vm = vmWith()
         runBlocking { storage.setOpenInEditMode(true) }
-        awaitValue(true, "setting reaches the ViewModel") { vm.openInEditMode.value }
+        // M-259: the stored setting, read fresh, as in [settingOnOpensTheDocumentInTheEditor].
+        assertTrue("the setting is stored", runBlocking { storage.openInEditMode.first() })
         assertEquals("precondition: the session starts in the reader", ViewMode.READER, vm.mode.value)
 
         val modeWhenPublished = mutableListOf<ViewMode>()

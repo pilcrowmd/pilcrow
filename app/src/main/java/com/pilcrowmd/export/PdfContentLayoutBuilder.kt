@@ -12,11 +12,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.markdown.isFrontmatter
+import com.pilcrowmd.rendering.CodeHighlighter
+import com.pilcrowmd.rendering.CodeHighlighting
 import com.pilcrowmd.rendering.FencedCodeBlockEntry
 import com.pilcrowmd.rendering.FrontmatterBlockEntry
 import com.pilcrowmd.rendering.SearchHighlight
 import com.pilcrowmd.ui.theme.FontSets
 import com.pilcrowmd.ui.theme.PilcrowTypography
+import com.pilcrowmd.ui.theme.PrintCodeColorScheme
 import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
@@ -85,7 +89,11 @@ internal fun topLevelBlocksForMode(
  * during draw) re-binds only blocks visible on that page. This bounds peak memory to a small constant
  * regardless of document size.
  */
-internal class PdfContentLayoutBuilder(private val context: Context) {
+internal class PdfContentLayoutBuilder(
+    private val context: Context,
+    // M-136: the PDF has no scope, so the four TextMate languages are tokenised inline (export runs on IO).
+    private val codeHighlighter: CodeHighlighter? = null,
+) {
 
     /**
      * Pool of reusable holders keyed by block type. Reusing holders (rebind per node) instead of
@@ -208,7 +216,7 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
                 FontSets.DEFAULT,
                 PrintColorScheme,
             )
-            is org.commonmark.node.FencedCodeBlock -> fencedCodeEntry(context, node, fontScale)
+            is org.commonmark.node.FencedCodeBlock -> fencedCodeEntry(context, node, fontScale, codeHighlighter)
             is com.pilcrowmd.rendering.PlainTextChunk ->
                 // Plain-text chunk: literal verbatim, prose typography, print colors.
                 plainTextEntry(context, fontScale)
@@ -252,11 +260,12 @@ internal class PdfContentLayoutBuilder(private val context: Context) {
                     node,
                 )
             }
-            is org.commonmark.node.FencedCodeBlock -> fencedCodeEntry(context, node, fontScale).bindHolder(
-                markwon,
-                holder as com.pilcrowmd.rendering.FencedCodeBlockEntry.Holder,
-                node,
-            )
+            is org.commonmark.node.FencedCodeBlock ->
+                fencedCodeEntry(context, node, fontScale, codeHighlighter).bindHolder(
+                    markwon,
+                    holder as com.pilcrowmd.rendering.FencedCodeBlockEntry.Holder,
+                    node,
+                )
             is com.pilcrowmd.rendering.PlainTextChunk -> plainTextEntry(context, fontScale).bindHolder(
                 markwon,
                 holder as com.pilcrowmd.rendering.PlainTextBlockEntry.Holder,
@@ -451,12 +460,18 @@ private fun fencedCodeEntry(
     context: Context,
     node: FencedCodeBlock,
     fontScale: Float,
+    codeHighlighter: CodeHighlighter?,
 ): MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder> {
-    val isFrontmatter = node.info?.trim()?.lowercase() == "yaml"
-    return if (isFrontmatter) {
+    return if (node.isFrontmatter()) {
         FrontmatterBlockEntry(context, fontScale, FontSets.DEFAULT, PrintColorScheme)
     } else {
-        FencedCodeBlockEntry(context, fontScale, FontSets.DEFAULT, PrintColorScheme)
+        FencedCodeBlockEntry(
+            context,
+            fontScale,
+            FontSets.DEFAULT,
+            PrintCodeColorScheme,
+            highlighting = codeHighlighter?.let { CodeHighlighting(it, scope = null) },
+        )
     }
 }
 

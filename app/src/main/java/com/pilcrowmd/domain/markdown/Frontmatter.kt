@@ -45,6 +45,21 @@ object FrontmatterDetector {
 }
 
 /**
+ * Fence character stamped on the node [FrontmatterBlockParser] emits. A CommonMark code fence is only
+ * ever `` ` `` or `~`, so a `-` fence can only have come from the `---` front-matter parser.
+ */
+private const val FRONTMATTER_FENCE = '-'
+private const val FRONTMATTER_FENCE_LENGTH = 3
+
+/**
+ * True only for the node built from front matter (`---…---` at document start). A ```` ```yaml ````
+ * fence anywhere in the document carries the same `"yaml"` info string but a `` ` ``/`~` fence, and
+ * stays a code block (M-198). Reads the node itself, not its position, because the PDF export routes
+ * blocks after unlinking them from the document.
+ */
+fun FencedCodeBlock.isFrontmatter(): Boolean = fenceChar == FRONTMATTER_FENCE
+
+/**
  * Leaf block parser that accumulates the lines between the opening and closing `---` fences into
  * a `FencedCodeBlock` with info `"yaml"`. Only ever started when [FrontmatterDetector] has already
  * confirmed a closing fence exists, so it cannot run away to EOF.
@@ -75,6 +90,8 @@ private class FrontmatterBlockParser : AbstractBlockParser() {
     }
 
     override fun closeBlock() {
+        block.fenceChar = FRONTMATTER_FENCE
+        block.fenceLength = FRONTMATTER_FENCE_LENGTH
         block.info = "yaml"
         block.literal = body.toString()
     }

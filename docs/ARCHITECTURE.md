@@ -1,10 +1,10 @@
-# Architecture — Pilcrow
+# Architecture – Pilcrow
 
 Pilcrow is a native Android Markdown reader and editor built with Kotlin and Jetpack Compose. It
-renders Markdown to native views — **no WebView anywhere in the rendering path** — and is organized
+renders Markdown to native views – **no WebView anywhere in the rendering path** – and is organized
 around Clean Architecture, MVVM, and unidirectional data flow (UDF) with strict layer boundaries.
 The central thesis: high-fidelity, reliable, private reading of Markdown is best served by a fully
-native pipeline you can measure, test, and control pixel-for-pixel — not an embedded browser.
+native pipeline you can measure, test, and control pixel-for-pixel – not an embedded browser.
 
 This document is verified against the source under
 [`app/src/main/java/com/pilcrowmd/`](../app/src/main/java/com/pilcrowmd/).
@@ -59,27 +59,27 @@ relentlessly; the four Essential Safeguards (below) are never simplified away.
 
 ## Layers
 
-### UI — Jetpack Compose (passive)
+### UI – Jetpack Compose (passive)
 
-[`ui/`](../app/src/main/java/com/pilcrowmd/ui/) — rendering and interaction only; all state is
+[`ui/`](../app/src/main/java/com/pilcrowmd/ui/) – rendering and interaction only; all state is
 hoisted out.
 
-- [`ui/screen/MainScreen.kt`](../app/src/main/java/com/pilcrowmd/ui/screen/MainScreen.kt) — root
+- [`ui/screen/MainScreen.kt`](../app/src/main/java/com/pilcrowmd/ui/screen/MainScreen.kt) – root
   layout; provides the active color scheme to the tree via a `CompositionLocal` and hosts the
   reader/editor, toolbar, search, headings drawer, and settings.
 - [`ui/components/Preview.kt`](../app/src/main/java/com/pilcrowmd/ui/components/Preview.kt) +
-  [`PreviewScroll.kt`](../app/src/main/java/com/pilcrowmd/ui/components/PreviewScroll.kt) — the
+  [`PreviewScroll.kt`](../app/src/main/java/com/pilcrowmd/ui/components/PreviewScroll.kt) – the
   reader: a `RecyclerView` driven by a Markwon adapter of native block views, with deterministic
   scroll-position preservation.
 - [`ui/components/Editor.kt`](../app/src/main/java/com/pilcrowmd/ui/components/Editor.kt) +
-  [`EditorController.kt`](../app/src/main/java/com/pilcrowmd/ui/components/EditorController.kt) — the
+  [`EditorController.kt`](../app/src/main/java/com/pilcrowmd/ui/components/EditorController.kt) – the
   source editor (Sora) wrapper and its control surface (search navigation, heading jump).
-- [`ui/components/`](../app/src/main/java/com/pilcrowmd/ui/components/) — `Toolbar`, `SearchBar`,
+- [`ui/components/`](../app/src/main/java/com/pilcrowmd/ui/components/) – `Toolbar`, `SearchBar`,
   `HeadingsDrawer` (table of contents), `SettingsScreen`, `LicensesScreen`, `WelcomeScreen`.
 
 The UI reads colors exclusively through the token layer (Safeguard 4); it never hardcodes hex.
 
-### State — `MarkdownViewModel`
+### State – `MarkdownViewModel`
 
 [`viewmodel/MarkdownViewModel.kt`](../app/src/main/java/com/pilcrowmd/viewmodel/MarkdownViewModel.kt)
 is the single state hub. It exposes `StateFlow`s the UI collects and runs all side effects inside
@@ -94,22 +94,22 @@ line numbers, opt-in cloud diagram rendering).
 The ViewModel **never** parses Markdown itself (it calls the use cases), **never** touches the
 filesystem directly (it calls `FileRepository`), and **never** inflates views.
 
-### Domain — pure Kotlin
+### Domain – pure Kotlin
 
 [`domain/`](../app/src/main/java/com/pilcrowmd/domain/) is framework-agnostic and JVM-testable with
 no emulator.
 
 - [`domain/usecase/ParseMarkdownHeadingsUseCase.kt`](../app/src/main/java/com/pilcrowmd/domain/usecase/ParseMarkdownHeadingsUseCase.kt)
-  — parses the document and extracts headings with block positions, sharing the renderer's block
+  – parses the document and extracts headings with block positions, sharing the renderer's block
   model so the table of contents stays in lockstep with what is drawn.
 - [`domain/usecase/SearchMarkdownUseCase.kt`](../app/src/main/java/com/pilcrowmd/domain/usecase/SearchMarkdownUseCase.kt)
-  — computes ordered in-document matches addressed by block offset.
+  – computes ordered in-document matches addressed by block offset.
 - [`domain/markdown/Frontmatter.kt`](../app/src/main/java/com/pilcrowmd/domain/markdown/Frontmatter.kt)
-  — YAML frontmatter detection/parsing that **never rewrites the source** (preserving offsets).
-- [`domain/model/`](../app/src/main/java/com/pilcrowmd/domain/model/) — immutable results
+  – YAML frontmatter detection/parsing that **never rewrites the source** (preserving offsets).
+- [`domain/model/`](../app/src/main/java/com/pilcrowmd/domain/model/) – immutable results
   (`HeadingNode`, `SearchMatch`, `ThemeMode`).
 
-### Data — I/O & persistence behind interfaces
+### Data – I/O & persistence behind interfaces
 
 [`repository/`](../app/src/main/java/com/pilcrowmd/repository/),
 [`storage/`](../app/src/main/java/com/pilcrowmd/storage/),
@@ -117,35 +117,35 @@ no emulator.
 [`export/`](../app/src/main/java/com/pilcrowmd/export/).
 
 - **`FileRepository`** ([interface](../app/src/main/java/com/pilcrowmd/repository/FileRepository.kt),
-  [`LocalFileRepository`](../app/src/main/java/com/pilcrowmd/repository/LocalFileRepository.kt)) —
+  [`LocalFileRepository`](../app/src/main/java/com/pilcrowmd/repository/LocalFileRepository.kt)) –
   reads/writes through the Storage Access Framework (`ContentResolver`), takes persistable URI
   permissions to reopen the last file, and performs the atomic save (Safeguard 1). UTF-8 in and out.
 - **`StorageManager`** ([interface](../app/src/main/java/com/pilcrowmd/storage/StorageManager.kt),
-  [`LocalStorageManager`](../app/src/main/java/com/pilcrowmd/storage/LocalStorageManager.kt)) —
+  [`LocalStorageManager`](../app/src/main/java/com/pilcrowmd/storage/LocalStorageManager.kt)) –
   Jetpack **Preferences DataStore**, held as a process-level singleton so Activity recreation never
   spawns a duplicate store. Persists theme, font scales, the line-numbers flag, the cloud-diagram
   toggle, the recent-files list, and per-file scroll anchors (block index + intra-block offset for
   font-scale-stable restore).
 - **`MarkwonRenderer`** ([MarkwonRenderer.kt](../app/src/main/java/com/pilcrowmd/rendering/MarkwonRenderer.kt))
-  — a single configured Markwon instance reused across the reader, search highlighting, and PDF
+  – a single configured Markwon instance reused across the reader, search highlighting, and PDF
   export. See the rendering pipeline below.
 - **`PdfExporter`** ([PdfExporter.kt](../app/src/main/java/com/pilcrowmd/export/PdfExporter.kt),
   [PdfContentLayoutBuilder.kt](../app/src/main/java/com/pilcrowmd/export/PdfContentLayoutBuilder.kt))
-  — off-screen native rendering to a PDF. See the PDF pipeline below.
+  – off-screen native rendering to a PDF. See the PDF pipeline below.
 
 ---
 
-## Dependency injection — a manual composition root
+## Dependency injection – a manual composition root
 
 Pilcrow uses a single hand-wired composition root rather than an annotation-processing framework.
 
-- [`di/AppContainer.kt`](../app/src/main/java/com/pilcrowmd/di/AppContainer.kt) — the interface
+- [`di/AppContainer.kt`](../app/src/main/java/com/pilcrowmd/di/AppContainer.kt) – the interface
   declaring every dependency: `fileRepository`, `storageManager`, `markwonRenderer`, `pdfExporter`,
   the two use cases, and `appInfo`.
-- [`di/DefaultAppContainer.kt`](../app/src/main/java/com/pilcrowmd/di/DefaultAppContainer.kt) —
+- [`di/DefaultAppContainer.kt`](../app/src/main/java/com/pilcrowmd/di/DefaultAppContainer.kt) –
   builds them as **lazy singletons** from the application context (never an Activity), so they are
   safe to hold across configuration changes and retained ViewModels.
-- [`PilcrowApplication.kt`](../app/src/main/java/com/pilcrowmd/PilcrowApplication.kt) — the
+- [`PilcrowApplication.kt`](../app/src/main/java/com/pilcrowmd/PilcrowApplication.kt) – the
   `Application` subclass that owns the container.
 - ViewModels are created through a factory rather than constructed directly:
 
@@ -154,13 +154,13 @@ val factory = MarkdownViewModel.provideFactory(container)
 val viewModel: MarkdownViewModel = viewModel(factory = factory)
 ```
 
-**Why manual?** One visible composition root, no scattered instantiation, and no Service Locator —
+**Why manual?** One visible composition root, no scattered instantiation, and no Service Locator –
 while avoiding reflection and annotation-processing overhead (and the toolchain friction it brought
 with the native editor dependency). Dependencies are explicit and trivially substitutable in tests.
 
 ---
 
-## Rendering pipeline — Markdown to native views
+## Rendering pipeline – Markdown to native views
 
 ```
 content string
@@ -198,8 +198,8 @@ search matches are styled at bind time by
 
 **The editor** uses [Sora Editor](https://github.com/Rosemoe/sora-editor) (a mature native Kotlin
 code editor) with TextMate Markdown highlighting, an optional line-number gutter, soft wrap, and
-native undo/redo. The reader and editor each preserve their own scroll position — and the editor
-its caret offset — across mode toggles, so returning to a mode restores where you left it. Position
+native undo/redo. The reader and editor each preserve their own scroll position – and the editor
+its caret offset – across mode toggles, so returning to a mode restores where you left it. Position
 is not translated between modes (the reader uses a block-level anchor; the editor a pixel offset).
 
 ---
@@ -208,9 +208,9 @@ is not translated between modes (the reader uses a block-level anchor; the edito
 
 These are guarantees, enforced in code and verified by tests.
 
-### 1. No data loss — crash-safe saves
+### 1. No data loss – crash-safe saves
 
-A save either fully succeeds or fails cleanly; the file is never left truncated or half-written —
+A save either fully succeeds or fails cleanly; the file is never left truncated or half-written –
 even if the process is killed mid-write. A SAF `"wt"` open truncates the target *before* the new
 bytes land, so an in-memory backup is not enough (it evaporates on process death). Instead
 [`LocalFileRepository.saveFile()`](../app/src/main/java/com/pilcrowmd/repository/LocalFileRepository.kt)
@@ -226,7 +226,7 @@ returns a clear error and is surfaced to the user (Safeguard 1 is never swallowe
 `journalMutex` with `saveFile`. Crucially, `readFile()` takes that **same lock**, so a file-load on
 launch can never observe a target while recovery is streaming into it (the recovery↔read startup
 race). Under the lock, if a recoverable slot still exists for the file, `readFile` serves the durable
-WAL content directly rather than the possibly-truncated target — so even an immediate edit-and-save
+WAL content directly rather than the possibly-truncated target – so even an immediate edit-and-save
 on launch keeps the full content, and recovery converges to the identical bytes. The save write path
 is untouched by this coordination.
 
@@ -235,29 +235,29 @@ is untouched by this coordination.
 a process-death mid-write is recovered from the durable WAL on the next launch, a clean open-failure
 leaves the target intact with no stale slot, an interrupted recovery retries successfully, and a read
 on launch serves the durable WAL content (never the truncated target) so an immediate edit-and-save
-never loses data — modelling true interruption, not merely an in-process exception.
+never loses data – modelling true interruption, not merely an in-process exception.
 
-### 2. Round-trip fidelity — content preservation
+### 2. Round-trip fidelity – content preservation
 
 Saving writes back exactly what the user wrote; Markdown is not normalized, reflowed, or
 reformatted. The one documented bound: a file with **mixed** line endings is written back uniformly
 in its dominant style (see below).
 
-- **Line endings** — `MarkdownViewModel` detects the dominant line ending (LF or CRLF) on load and
+- **Line endings** – `MarkdownViewModel` detects the dominant line ending (LF or CRLF) on load and
   re-applies that format on save (`detectLineEnding` / `applyLineEnding`), so a CRLF file stays
   CRLF and an LF file stays LF. A file that mixes both is normalized to the dominant style on save;
   per-line ending preservation is out of scope for v1.
-- **Frontmatter** —
+- **Frontmatter** –
   [`FrontmatterPlugin.processMarkdown()`](../app/src/main/java/com/pilcrowmd/rendering/FrontmatterPlugin.kt)
   returns the input unchanged; detection sets a flag but never edits the text, keeping editor,
   search, and TOC offsets aligned.
-- **Encoding** — reads and writes are always UTF-8, with no BOM rewriting or lossy re-encoding.
+- **Encoding** – reads and writes are always UTF-8, with no BOM rewriting or lossy re-encoding.
 
 **Verified by**
 [`MarkdownViewModelLineEndingTest`](../app/src/test/java/com/pilcrowmd/viewmodel/MarkdownViewModelLineEndingTest.kt)
 (LF, CRLF, mixed-dominant, empty, no-trailing-newline, and blank-line-only round-trips).
 
-### 3. Render never crashes — graceful degradation
+### 3. Render never crashes – graceful degradation
 
 Unsupported or malformed syntax degrades; it never throws or mangles surrounding content.
 
@@ -274,11 +274,11 @@ Unsupported or malformed syntax degrades; it never throws or mangles surrounding
 [`FrontmatterParserTest`](../app/src/test/java/com/pilcrowmd/rendering/FrontmatterParserTest.kt)
 (malformed frontmatter falls back instead of breaking).
 
-### 4. Design-token fidelity — color only from the token layer
+### 4. Design-token fidelity – color only from the token layer
 
 Color comes exclusively from the token system; no hardcoded hex appears in composables or block
 entries. [`ui/theme/Color.kt`](../app/src/main/java/com/pilcrowmd/ui/theme/Color.kt) defines a
-`PilcrowColorScheme` (~21 tokens) with three instances — `DarkColorScheme` (the v1 default),
+`PilcrowColorScheme` (~21 tokens) with three instances – `DarkColorScheme` (the v1 default),
 `LightColorScheme` (a warm-cream palette), and `PrintColorScheme` (white page, dark text, for PDF).
 The active scheme is published through a `CompositionLocal` (`LocalMDColors`) and read with
 `mdColors()` in Compose; block entries receive the scheme as a parameter. Switching theme is a
@@ -298,16 +298,16 @@ render to a native `PdfDocument`, reusing the same Markwon instance and block en
 
 1. Stream the document off-screen in two passes that hold only **O(1) block views at a time** (a
    type-pooled holder is rebound per block), so peak memory stays bounded regardless of document
-   size — a ~5,000-line document is never inflated all at once. The document is parsed once; Pass 1
+   size – a ~5,000-line document is never inflated all at once. The document is parsed once; Pass 1
    measures each block at A4 content width to compute its bounds.
 2. Compute page breaks at block boundaries so blocks are not split across pages where avoidable
    (a single over-tall block is sliced as a last resort).
-3. Draw each A4 page (595×842 pt) — Pass 2 — inflating only the blocks that fall on that page, at a
+3. Draw each A4 page (595×842 pt) – Pass 2 – inflating only the blocks that fall on that page, at a
    print scale that lands body text near 11 pt, with a page-number footer.
 4. Resolve LaTeX synchronously during the measure pass so detached views show formulas, not raw
    source; malformed formulas degrade exactly as on screen.
 5. Clean up on error: on any write/flush/close failure, the partial file is deleted
-   (`DocumentsContract.deleteDocument`, best-effort) before the error is rethrown — so an I/O error
+   (`DocumentsContract.deleteDocument`, best-effort) before the error is rethrown – so an I/O error
    leaves no half-written export. Unlike a Markdown save, the export has no write-ahead log, so a hard
    process-kill mid-write could still leave a partial PDF; that is acceptable because a PDF is a
    regenerable export, not the user's source (Safeguard 1's no-loss guarantee covers the `.md`, which
@@ -317,13 +317,13 @@ render to a native `PdfDocument`, reusing the same Markwon instance and block en
 
 ## Testing & quality strategy
 
-**Unit tests** — beyond the safeguard tests above, the suite also covers:
+**Unit tests** – beyond the safeguard tests above, the suite also covers:
 [`ParseMarkdownHeadingsUseCaseTest`](../app/src/test/java/com/pilcrowmd/domain/usecase/ParseMarkdownHeadingsUseCaseTest.kt),
 [`SearchMarkdownUseCaseTest`](../app/src/test/java/com/pilcrowmd/domain/usecase/SearchMarkdownUseCaseTest.kt),
 [`PdfExporterTest`](../app/src/test/java/com/pilcrowmd/export/PdfExporterTest.kt), and storage/UI
 utility tests (font scale, scroll-anchor persistence, intra-block offsets).
 
-**Visual regression (Roborazzi)** — the core suite renders the Markdown samples
+**Visual regression (Roborazzi)** – the core suite renders the Markdown samples
 (headings, emphasis, lists, task lists, blockquotes, fenced code, tables, rules, links/images,
 inline and block LaTeX, degraded diagram, frontmatter, kitchen-sink) across 3 font scales
 (0.85×, 1.0×, 1.6×) and 2 themes (Dark, Light) under Robolectric native graphics, pinned to a fixed
@@ -334,10 +334,10 @@ device configuration for determinism. Layout or typography regressions fail the 
 ./gradlew recordRoborazziDebug   # re-record after an intentional visual change
 ```
 
-**Style & static analysis** — ktlint (Kotlin conventions) and detekt (complexity, naming,
+**Style & static analysis** – ktlint (Kotlin conventions) and detekt (complexity, naming,
 structure), both baselined and run on every build.
 
-**CI** — [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every push and PR to
+**CI** – [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every push and PR to
 `main`:
 
 ```bash
@@ -348,7 +348,7 @@ structure), both baselined and run on every build.
 > **Why the mandatory `clean` step.** Kotlin is pinned to 2.3.10 to match the metadata version of
 > the Sora editor dependency (`editor-bom:0.24.5`). That toolchain carries a known
 > incremental-compiler quirk that can cache a stale state and emit phantom `Unresolved reference`
-> errors on valid code — a false *negative* (green turned red), never a false pass. So `clean` runs
+> errors on valid code – a false *negative* (green turned red), never a false pass. So `clean` runs
 > first and `--rerun-tasks` defeats Gradle task-output caching; a from-scratch compile is the only
 > result we trust. Treat `clean` as a gate, not an optimization to skip.
 
@@ -405,5 +405,5 @@ com.pilcrowmd/
    [`MarkwonRenderer`](../app/src/main/java/com/pilcrowmd/rendering/MarkwonRenderer.kt) →
    [`RecyclerAdapterEntries`](../app/src/main/java/com/pilcrowmd/rendering/RecyclerAdapterEntries.kt)
    → the individual block entries.
-4. Each safeguard maps to a named test — start there to understand the guarantee, then read the
+4. Each safeguard maps to a named test – start there to understand the guarantee, then read the
    implementation it protects.

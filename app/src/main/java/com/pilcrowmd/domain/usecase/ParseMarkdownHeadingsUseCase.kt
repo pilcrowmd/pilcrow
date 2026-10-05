@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.domain.usecase
 
+import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.FootnoteBlockParserFactory
 import com.pilcrowmd.domain.markdown.FrontmatterBlockParserFactory
 import com.pilcrowmd.domain.markdown.FrontmatterDetector
@@ -28,7 +29,8 @@ import org.commonmark.parser.Parser
  * with the same block-structuring extensions as MarkwonRenderer — GFM tables (a table
  * interrupts a paragraph identically), strikethrough, and the shared frontmatter `BlockParser`
  * (leading `---…---` is one `yaml` block, not a setext heading — which also removes it from the
- * TOC) — so the top-level node sequence maps 1:1 to the adapter's items.
+ * TOC) — so the top-level node sequence maps 1:1 to the adapter's items once numbered by
+ * [AdapterBlocks.of], which drops the link reference definitions the adapter's reducer drops (M-214).
  *
  * commonmark-java 0.13.0 carries no source spans, so a search match's raw-source offset is
  * reconstructed by [SearchMarkdownUseCase] from the document this use case parses (see [parseDocument]).
@@ -76,25 +78,11 @@ class ParseMarkdownHeadingsUseCase {
         return try {
             val doc = ReaderDocument.transform(parityParser(content).parse(content))
 
-            val headings = mutableListOf<HeadingNode>()
-            var blockIndex = 0
-            var node = doc.firstChild
-
-            while (node != null) {
-                if (node is Heading) {
-                    headings.add(
-                        HeadingNode(
-                            level = node.level,
-                            text = extractTextFromNode(node),
-                            adapterPosition = blockIndex,
-                        ),
-                    )
+            AdapterBlocks.of(doc).mapIndexedNotNull { blockIndex, node ->
+                (node as? Heading)?.let {
+                    HeadingNode(level = it.level, text = extractTextFromNode(it), adapterPosition = blockIndex)
                 }
-                blockIndex++
-                node = node.next
             }
-
-            headings
         } catch (ignored: Exception) {
             // Graceful degradation: a parse failure yields no TOC rather than crashing.
             emptyList()

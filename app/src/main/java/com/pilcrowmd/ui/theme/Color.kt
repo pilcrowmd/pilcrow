@@ -66,6 +66,11 @@ data class PilcrowColorScheme(
     // Footnote markers and back-arrows (M-96). Separate from `accent`, which is a fill colour.
     val footnoteMarker: Color,
 
+    // Links, and the fill and outline of task-list boxes, whose tick takes [primaryBackground] (M-219).
+    // `null` keeps the platform theme's colours, as every scheme had before M-219: the PDF export
+    // does, because M-219 does not cover print.
+    val link: Color?,
+
     // GitHub-style callouts (M-161): bar, icon and title colour per type; the tint is derived.
     val callouts: CalloutColors,
 )
@@ -137,19 +142,6 @@ val OneDarkCodeSyntax = CodeSyntaxColors(
 )
 
 /**
- * Print code tokens: the six original One Dark roles and nothing else. The added roles stay null, so
- * the exported PDF colours exactly the tokens it always did (M-132 must not change the export).
- */
-val PrintCodeSyntax = CodeSyntaxColors(
-    keyword = Color(0xFF61AFEF),
-    string = Color(0xFF98C379),
-    number = Color(0xFFD19A66),
-    comment = Color(0xFFABB2BF),
-    error = Color(0xFFE06C75),
-    function = Color(0xFFC678DD),
-)
-
-/**
  * Light-theme code tokens: the editor's `md-light.json` hues, darkened just enough to reach 4.5:1
  * on the light code-block background. Every role is held to that by `CodeSyntaxContrastTest`.
  */
@@ -204,7 +196,8 @@ val DarkColorScheme = PilcrowColorScheme(
     onCreamButton = Color(0xFF2C2C2B),
     scrimOverlay = Color.Black.copy(alpha = 0.32f),
     codeSyntax = OneDarkCodeSyntax,
-    footnoteMarker = Color(0xFF8E7CD6), // same as accent: it already reads in Dark
+    footnoteMarker = Color(0xFF9E8FDE), // M-219: 4.95:1 on the page, 4.61:1 on #313131; hue kept
+    link = Color(0xFF80CBC4), // M-219: the teal Dark links already had on the S24+; 7.49:1 on the page
     callouts = CalloutColors(
         note = Color(0xFF5C9CE6),
         tip = Color(0xFF58B368),
@@ -259,6 +252,7 @@ val LightColorScheme = PilcrowColorScheme(
     scrimOverlay = Color.Black.copy(alpha = 0.32f),
     codeSyntax = LightCodeSyntax,
     footnoteMarker = Color(0xFF5B3FC4), // more saturated than accent, so a small raised digit is findable
+    link = Color(0xFF00796B), // M-219: 4.65:1 on the page (the platform teal was 1.63:1)
     callouts = LightCalloutColors,
 )
 
@@ -280,12 +274,10 @@ val PrintColorScheme = PilcrowColorScheme(
     inlineCodeBg = Color(0xFFF0F0F0), // Light gray for inline code background
     inlineCodeText = Color(0xFF8B4513), // Warm brown for inline code (print-safe, not pink)
     inlineCodeBorder = Color(0xFFD0D0D0), // Light gray border
-    // Code blocks are syntax-highlighted with the fixed One Dark theme (PilcrowTheme is always
-    // DarkColorScheme), whose token colors are only legible on a dark surface — so the print code
-    // container must be dark too. Matches DarkColorScheme exactly so the container and the
-    // markwon code-background span are seamless; on screen the same dark code block shows in every theme.
-    codeBlockBg = Color(0xFF313131), // Dark code block background (matches the One Dark syntax theme)
-    codeBlockBorder = Color(0xFF4A4A4A), // Dark code block border
+    // M-178: PDF code is drawn with PrintCodeColorScheme's light panel, so no PDF block reads this
+    // background any more. The border still draws the PDF's table grid.
+    codeBlockBg = Color(0xFF313131),
+    codeBlockBorder = Color(0xFF4A4A4A), // table borders in the PDF
     toolbarBorder = Color(0xFFE0E0E0), // Light gray toolbar border (hidden in PDF)
     searchHighlight = Color(0xFFFFFFCC), // Pale yellow highlight (not used in PDF)
     searchHighlightFocused = Color(0xFFFFDD00), // Bright yellow (not used in PDF)
@@ -296,9 +288,25 @@ val PrintColorScheme = PilcrowColorScheme(
     creamButton = Color(0xFF2A2A2A), // Dark text on white for buttons
     onCreamButton = Color(0xFFFFFFFF), // White text on dark buttons
     scrimOverlay = Color.Black.copy(alpha = 0.32f), // Not used in PDF, for consistency
-    codeSyntax = PrintCodeSyntax, // the PDF's code tokens stay as they were; the export must not change
+    codeSyntax = LightCodeSyntax, // M-178: the PDF's code takes Light's tokens (see PrintCodeColorScheme)
     footnoteMarker = Color(0xFF5A4A8A), // same as the print accent: the export must not change
+    link = null, // platform colours, as before M-219: the export must not change
     callouts = LightCalloutColors, // new with M-161: nothing exported before used a callout
+)
+
+/**
+ * The PDF's code, fenced blocks and inline code alike (M-178):
+ * Light's code panel, chip and token colours in every PDF, whatever the app theme, so printing does not
+ * waste ink. Light's token colours are measured on that same panel (`CodeSyntaxContrastTest`). Only code
+ * takes these: the yaml card and the table borders in the PDF keep [PrintColorScheme].
+ */
+val PrintCodeColorScheme = PrintColorScheme.copy(
+    editorText = LightColorScheme.editorText,
+    inlineCodeBg = LightColorScheme.inlineCodeBg,
+    inlineCodeText = LightColorScheme.inlineCodeText,
+    inlineCodeBorder = LightColorScheme.inlineCodeBorder,
+    codeBlockBg = LightColorScheme.codeBlockBg,
+    codeBlockBorder = LightColorScheme.codeBlockBorder,
 )
 
 /**

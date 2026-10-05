@@ -15,11 +15,16 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
  * every LaTeX span has resolved, so their goldens deterministically lock the RENDERED math.
  * Every sample containing math MUST set it: an un-awaited math capture is a
  * race, not a stable fallback.
+ *
+ * [cropToMath]: capture only the view holding the formula, not the whole screen. A one-formula
+ * change moves well under the suite's 1% tolerance of a full frame, so a full-screen golden of it
+ * would pass with or without the change it exists to lock (issue #9).
  */
 data class MarkdownSample(
     val name: String,
     val markdown: String,
     val awaitMathRender: Boolean = false,
+    val cropToMath: Boolean = false,
     // PLAIN renders the sample through the verbatim plain-text path (.txt view).
     val renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
 ) {
@@ -91,7 +96,7 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
         ),
         MarkdownSample(
             name = "link_and_image",
-            // No ImagesPlugin in the reader path, so the image degrades to deterministic alt text.
+            // M-93: a remote image is never fetched; it draws the placeholder with its alt text.
             markdown = "A [hyperlink](https://example.com) and an image ![alt text](https://example.com/x.png).",
         ),
         // Math samples lock the RENDERED formulas (awaitMathRender): the screenshot test now
@@ -109,6 +114,39 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
         MarkdownSample(
             name = "latex_block",
             markdown = "Block equation:\n\n\$\$\\int_0^1 x^2 \\, dx = \\frac{1}{3}\$\$",
+            awaitMathRender = true,
+        ),
+        // Issue #9: the reporter's exact formula. JLatexMath defines `cases` with a negative thin
+        // space between the columns, so "t," ran into "0 ≤ t < 1"; the renderer redefines it with
+        // amsmath's \quad (installJLatexMathEnvironments). The text line keeps the formula off the
+        // top edge, where the harness clips a first row (M-181). Cropped: see [cropToMath].
+        MarkdownSample(
+            name = "latex_cases",
+            markdown = "Issue 9:\n\n" +
+                "\$\$x(t) = \\begin{cases} t, & 0 \\le t < 1 \\\\ 0, & \\text{elsewhere} \\end{cases}\$\$",
+            awaitMathRender = true,
+            cropToMath = true,
+        ),
+        // M-260: a formula that fails to parse shows its whole source, wrapped over as many lines as
+        // it needs in the prose style, instead of one line cut off at the right edge. The command is
+        // one JLaTeXMath will never know, so this stays a fallback. Cropped: see [cropToMath].
+        MarkdownSample(
+            name = "latex_fallback",
+            markdown = "Fails to parse:\n\n" +
+                "\$\$f(x) = \\begin{cases} 1, & x > 0 \\\\ 0, & \\pilcrowUnknown{otherwise} \\end{cases}" +
+                " + \\sum_{k=1}^{n} \\frac{a_k}{b_k}\$\$",
+            cropToMath = true,
+        ),
+        // The other `&`-column environments, locked so the `cases` redefinition is seen to leave
+        // them alone.
+        MarkdownSample(
+            name = "latex_columns",
+            markdown = "Columns:\n\n" +
+                "\$\$\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}\$\$\n\n" +
+                "\$\$\\begin{matrix} 1 & 2 \\\\ 3 & 4 \\end{matrix}\$\$\n\n" +
+                "\$\$\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}\$\$\n\n" +
+                "\$\$\\left\\{ \\begin{array}{ll} t, & 0 \\le t < 1 \\\\ " +
+                "0, & \\text{elsewhere} \\end{array} \\right.\$\$",
             awaitMathRender = true,
         ),
         // mhchem chemistry (\ce{…}) is translated to plain LaTeX by CeMacroShimPlugin before

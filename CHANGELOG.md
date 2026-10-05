@@ -7,6 +7,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-10-05
+
+### Added
+
+- **Pictures inside notes.** Pictures stored next to your note show inside it. The first time, the
+  app asks once for access to the note's folder (*Tap to show*). Pictures embedded in the file show
+  too. Pictures from the web are never downloaded: they get a placeholder box. The app keeps no
+  copies of your pictures.
+- **Links inside a document jump to their heading**, including Chinese and other non-Latin
+  headings. A link to a heading that does not exist does nothing, and web links still open the
+  browser. Tapping a link can no longer crash the app.
+- **Code colours for 19 more languages:** bash, TypeScript, Rust, Ruby, PHP, PowerShell, batch,
+  Julia, Dockerfile, GraphQL, HTTP, CSV, regex, TOML, INI, JSONC, Lua, Perl and R.
+- **PDF export prints code on a light panel, in colour**, with readable inline code. Exported PDFs
+  no longer have dark code panels.
+
+### Changed
+
+- **The jump-to-top and jump-to-bottom buttons hide while you read** and appear while you scroll,
+  so they no longer cover text. With TalkBack on they stay visible.
+- **Light theme:** clearer colours for links, task boxes, editor links and footnote markers.
+- **Long file names** in Recent and in the *Recover unsaved files* dialog show their start, "…" and
+  their last 8 characters on one line, so `draft-v2` and `draft-v3` look different.
+- **TalkBack reads each Settings switch as one item, with its on or off state.**
+- **Welcome screen:** the logo and the Open button stay in place.
+
+### Fixed
+
+- **Code blocks no longer show another block's text** after fast scrolling.
+- **The search bar no longer keeps an old result** after you open another file.
+- **Maths:** `cases` blocks get proper column spacing, and a formula that cannot be drawn is shown
+  as its source, wrapped over as many lines as it needs, instead of running off the screen.
+- **A ` ```yaml ` code block is no longer shown as the document-info card.**
+- **The contents list, search and footnote links land on the right block.** They could land one
+  block off.
+
 ## [1.0.11] - 2026-10-01
 
 ### Added
@@ -59,7 +95,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **A setting to wrap long lines in code blocks.** *Settings → Wrap long lines in code blocks.*
   With it on, a long line in a code block wraps inside the block in the reader, instead of
-  scrolling sideways. **Off by default** — side-scrolling stays exactly as it was unless you turn
+  scrolling sideways. **Off by default** – side-scrolling stays exactly as it was unless you turn
   this on. The editor already wraps, and exported PDFs already wrap code, so neither changes.
   Requested by **[HuevosKicker](https://github.com/HuevosKicker)**. It is off by default because
   **[unoukujou](https://github.com/unoukujou)** asked for side-scrolling to stay.
@@ -113,8 +149,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **Saving a copy can no longer attach the new file to the wrong document.** If another document
-  opened while *Save a copy* was still writing — a file arriving from another app, or discarding
-  changes to open a pending one — the new file's name and location were attached to whichever
+  opened while *Save a copy* was still writing – a file arriving from another app, or discarding
+  changes to open a pending one – the new file's name and location were attached to whichever
   document had just appeared, rather than the one whose text had been written. The next save then
   wrote that document over the copy you had just made, destroying it. The copy itself was always
   written correctly; it was the *next* save that did the damage. Saving a copy now attaches the new
@@ -125,7 +161,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running. Each guard now reads a dedicated flag that only a write can hold.
 - **The system Back button no longer closes a file while it is being saved.** The toolbar's close
   button was already disabled during a save; Back was not, so it could close the document mid-write
-  — after which the file you had just closed was added back to your recent files and reopened on the
+  – after which the file you had just closed was added back to your recent files and reopened on the
   next launch. Back now does nothing during a save, exactly as the close button does. Dismissing
   search or the drawer with Back is unaffected.
 
@@ -135,7 +171,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **You can start a new document without finding a file first.** The welcome screen has a second
   button, **Create MD File**, which opens a blank document straight in the editor. Write first,
-  then save it wherever you like — the file is created when you save, not before.
+  then save it wherever you like – the file is created when you save, not before.
 - **A setting to open documents ready to write.** *Settings → Open in edit mode.* With it on, a
   document opens in the editor instead of the reader, so writing no longer costs a tap on every
   file. Off by default, and the reader is still one tap away.
@@ -143,18 +179,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **Pinch-to-zoom in the reader no longer leaves blocks at different sizes.** While your fingers
-  were still on the screen, headings and paragraphs could drift apart — a title could even end up
-  smaller than before you started — and everything then snapped to one size the moment you let go.
+  were still on the screen, headings and paragraphs could drift apart – a title could even end up
+  smaller than before you started – and everything then snapped to one size the moment you let go.
   Text now grows and shrinks together throughout the gesture, so what you see while pinching is
   what you get when you release. Reading size only; your file is never touched.
 - **Right-to-left text in the editor now starts at the right edge.** Arabic and other right-to-left
   lines were laid out from the left, which is the wrong side of the screen to begin reading on. The
-  characters themselves were always in the correct order — only the alignment of the row was wrong.
+  characters themselves were always in the correct order – only the alignment of the row was wrong.
   Left-to-right lines are unchanged, and so are your file's contents. Reported and fixed by
   **[yshalsager](https://github.com/yshalsager)** (Youssif Shaaban Alsager).
 - **A document you start while your last file is still opening is no longer overwritten.** When
   Pilcrow reopened your most recent file at startup, the welcome screen stayed fully usable while
-  that file was still being read. You could tap **Create MD File** and begin writing — and the
+  that file was still being read. You could tap **Create MD File** and begin writing – and the
   moment the old file finished loading it took the screen, silently discarding what you had just
   typed. The screen now tells you a document is opening and waits: **Open**, **Create MD File**,
   **Browse all files** and the recent files become available again as soon as it has finished. Only
@@ -165,11 +201,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **Tapping a footnote now lands on the footnote.** It used to stop about a screen short of the
-  definition, which looked like the jump half-working — and because a footnote definition is always
+  definition, which looked like the jump half-working – and because a footnote definition is always
   the last thing in a document, this happened to every footnote in every document. The definition
   you asked for is now at the top of the screen, and is briefly highlighted so your eye finds it.
 - **Footnote markers are easier to tap.** The raised number is small, and a tap that just missed it
-  did nothing. A near miss now counts. **The number itself is unchanged in size** — only the area
+  did nothing. A near miss now counts. **The number itself is unchanged in size** – only the area
   that responds to your thumb grew.
 - **Your recent files are visible when you open the app.** With a few files in the list, the RECENT
   heading and the list itself sat below the bottom of the screen in portrait, so every launch began
@@ -181,7 +217,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **The app is now called PilcrowMD.** The name under the icon and the wordmark on the welcome
   screen both change. The icon itself, the app's identity on your device and your files are
-  unaffected — this is a name change and nothing else.
+  unaffected – this is a name change and nothing else.
 - **The paragraph mark behind the welcome wordmark sits higher, and is back to its original
   size.** It had been enlarged and moved down, which left it crossing the wordmark in portrait
   and running below the bottom of the screen in landscape.
@@ -194,30 +230,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.0.5] - 2026-08-25
 
-No user-facing changes — the app behaves exactly as 1.0.4.
+No user-facing changes – the app behaves exactly as 1.0.4.
 
 ### Changed
 
 - The complete corresponding source for this release is published.
 - The Gradle distribution is pinned by SHA-256 checksum, so the build verifies the contents of
-  the toolchain it downloads and not only its URL — a prerequisite for reproducible builds.
+  the toolchain it downloads and not only its URL – a prerequisite for reproducible builds.
 - Store listing metadata is now tracked in the repository alongside the source.
 
 ## [1.0.4] - 2026-08-24
 
 ### Added
 
-- **Footnotes** — `[^1]` references and `[^1]: …` definitions now render, with tap-to-jump
+- **Footnotes** – `[^1]` references and `[^1]: …` definitions now render, with tap-to-jump
   and a link back to the reference. Definitions render in place; references renumber 1..n by
   first use.
-- **Plain text files** — `.txt` files open in the reader, with a per-file long-line overflow
+- **Plain text files** – `.txt` files open in the reader, with a per-file long-line overflow
   toggle.
-- **Chemistry formulas** — `\ce{…}` (mhchem) notation renders inside math.
+- **Chemistry formulas** – `\ce{…}` (mhchem) notation renders inside math.
 
 ### Fixed
 
 - **A long-standing freeze when opening large files.** Line-ending detection scanned the
-  document twice with a regex on the main thread, which degraded quadratically — a 1.3 MB file
+  document twice with a regex on the main thread, which degraded quadratically – a 1.3 MB file
   could block the app for tens of seconds and a 3 MB file for minutes. Detection is now a single
   linear pass off the main thread. Present since 1.0.0.
 - **A crash when entering the editor** on some devices, caused by the shared editor view being
@@ -250,17 +286,17 @@ changes.
 
 ### Added
 
-- **Inline math with single dollars** — `$…$` now renders inline LaTeX alongside the existing
+- **Inline math with single dollars** – `$…$` now renders inline LaTeX alongside the existing
   `$$…$$` form (currency-aware, so `$5 and $10` stays plain text).
-- **Save As** — save the open document to a new location, including brand-new documents that don't
+- **Save As** – save the open document to a new location, including brand-new documents that don't
   have a file on disk yet.
-- **Branded launch splash** — a brand-dark splash screen in both light and dark appearances.
-- **Pinch-to-zoom in the reader** — live text reflow anchored at the gesture focal point, kept in
+- **Branded launch splash** – a brand-dark splash screen in both light and dark appearances.
+- **Pinch-to-zoom in the reader** – live text reflow anchored at the gesture focal point, kept in
   sync with the Settings text size.
-- **Clear-Recents confirmation** — clearing the Recents list now asks first.
-- **GitHub-integration teaser** in Settings — a roadmap note with an email interest link. It only
+- **Clear-Recents confirmation** – clearing the Recents list now asks first.
+- **GitHub-integration teaser** in Settings – a roadmap note with an email interest link. It only
   opens your email app; nothing is sent unless you tap send.
-- **Crash-recovery escape hatch** — if recovered unsaved changes can never be committed back to the
+- **Crash-recovery escape hatch** – if recovered unsaved changes can never be committed back to the
   original file, the app now offers a way out instead of blocking the document forever.
 
 ### Fixed
@@ -280,7 +316,7 @@ The first release: the initial v1 feature set.
 
 ### Added
 
-- **Native Markdown reader** — GitHub-Flavored Markdown rendered to native Android views (no
+- **Native Markdown reader** – GitHub-Flavored Markdown rendered to native Android views (no
   WebView): headings, lists, task lists, tables, blockquotes, code blocks with syntax highlighting,
   links, and images-as-alt-text on the offline path.
 - **LaTeX math** rendering (inline and block) and **opt-in cloud Mermaid diagrams** (off by default;
@@ -296,11 +332,11 @@ The first release: the initial v1 feature set.
 
 ### Safeguards
 
-- **Atomic saves** — a failed save aborts cleanly and never leaves a truncated or corrupted file.
-- **Round-trip fidelity** — saving writes back exactly what you wrote; line endings (LF/CRLF) and
+- **Atomic saves** – a failed save aborts cleanly and never leaves a truncated or corrupted file.
+- **Round-trip fidelity** – saving writes back exactly what you wrote; line endings (LF/CRLF) and
   frontmatter are preserved, with one documented bound: a file with mixed line endings is written
   back uniformly in its dominant style.
-- **Crash-resistant rendering** — unsupported or malformed syntax degrades gracefully instead of
+- **Crash-resistant rendering** – unsupported or malformed syntax degrades gracefully instead of
   throwing or mangling surrounding content.
 
 ### Privacy

@@ -45,7 +45,7 @@ import org.json.JSONArray
 /**
  * LicensesScreen: Native Compose modal displaying all third-party dependencies and their licenses.
  *
- * Loads dependency list from bundled JSON (121 runtime deps) + 6 curated entries (5 fonts + vendored grammar).
+ * Loads dependency list from bundled JSON (121 runtime deps) + 25 curated entries (5 fonts + 20 vendored grammars).
  * Tappable rows → detail view with full license text. Token-colored. Graceful degradation on missing assets.
  */
 @Composable
@@ -70,8 +70,17 @@ fun LicensesScreen(modifier: Modifier = Modifier, onClose: () -> Unit) {
 
 /**
  * A single license entry (from JSON or curated).
+ *
+ * [textAsset] names the entry's own notice file in assets (copyright lines + licence text); without
+ * one, the detail view shows the generic text for [license].
  */
-data class License(val name: String, val version: String? = null, val license: String, val description: String? = null)
+data class License(
+    val name: String,
+    val version: String? = null,
+    val license: String,
+    val description: String? = null,
+    val textAsset: String? = null,
+)
 
 /**
  * Licenses list (LazyColumn of all deps + curated entries).
@@ -221,7 +230,7 @@ fun LicenseRowItem(license: License, onSelect: () -> Unit) {
 fun LicenseDetailView(license: License, onBack: () -> Unit) {
     val c = mdColors()
     val context = LocalContext.current
-    val licenseText = loadLicenseText(context, license.license)
+    val licenseText = licenseTextFor(context, license)
 
     Column(
         modifier = Modifier
@@ -322,6 +331,112 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
 }
 
 /**
+ * The reader's TextMate grammars (M-136, M-243, NEW-35). Each shows its own notice file, so the copyright
+ * lines on screen are the ones the app ships, not a copy that can drift.
+ */
+private val READER_GRAMMAR_LICENSES = listOf(
+    // M-136, from VS Code.
+    License(
+        name = "Shell TextMate Grammar (better-shell-syntax)",
+        license = "MIT",
+        textAsset = "licenses/MIT-Shell-Grammar.txt",
+    ),
+    License(
+        name = "TypeScript TextMate Grammar",
+        license = "MIT",
+        textAsset = "licenses/MIT-TypeScript-Grammar.txt",
+    ),
+    License(
+        name = "Rust TextMate Grammar (rust-syntax)",
+        license = "MIT",
+        textAsset = "licenses/MIT-Rust-Grammar.txt",
+    ),
+    License(
+        name = "Ruby TextMate Grammar (ruby-lsp)",
+        license = "MIT",
+        textAsset = "licenses/MIT-Ruby-Grammar.txt",
+    ),
+    // M-243 reader grammars. Dockerfile's shows moby's NOTICE and Apache-2.0 text; TOML's names
+    // MPL-2.0 as well, for the regexes it shares with oovm/vscode-toml.
+    License(
+        name = "PowerShell TextMate Grammar (EditorSyntax)",
+        license = "MIT",
+        textAsset = "licenses/MIT-PowerShell-Grammar.txt",
+    ),
+    License(
+        name = "Batch File TextMate Grammar (language-batchfile)",
+        license = "MIT",
+        textAsset = "licenses/MIT-Batch-Grammar.txt",
+    ),
+    License(
+        name = "Julia TextMate Grammar (atom-language-julia)",
+        license = "MIT",
+        textAsset = "licenses/MIT-Julia-Grammar.txt",
+    ),
+    License(
+        name = "Dockerfile TextMate Grammar (moby)",
+        license = "Apache-2.0 AND MIT",
+        textAsset = "licenses/Apache-Docker-Grammar.txt",
+    ),
+    License(
+        name = "GraphQL TextMate Grammar (graphiql)",
+        license = "MIT",
+        textAsset = "licenses/MIT-GraphQL-Grammar.txt",
+    ),
+    License(
+        name = "HTTP TextMate Grammar (REST Client)",
+        license = "MIT",
+        textAsset = "licenses/MIT-HTTP-Grammar.txt",
+    ),
+    License(
+        name = "CSV and TSV TextMate Grammars (Rainbow CSV)",
+        license = "MIT",
+        textAsset = "licenses/MIT-CSV-Grammar.txt",
+    ),
+    License(
+        name = "Regular Expression TextMate Grammar (MagicPython)",
+        license = "MIT",
+        textAsset = "licenses/MIT-Regex-Grammar.txt",
+    ),
+    License(
+        name = "TOML TextMate Grammar (Taplo)",
+        license = "MIT AND MPL-2.0",
+        textAsset = "licenses/MIT-MPL-TOML-Grammar.txt",
+    ),
+    // NEW-35 reader grammars, each derived from a TextMate bundle: MIT plus the bundle's licence.
+    License(
+        name = "R TextMate Grammar (vscode-R-syntax)",
+        license = "MIT AND TextMate Bundle License",
+        textAsset = "licenses/MIT-TMBundle-R-Grammar.txt",
+    ),
+    License(
+        name = "PHP TextMate Grammar (language-php)",
+        license = "MIT AND TextMate Bundle License",
+        textAsset = "licenses/MIT-TMBundle-PHP-Grammar.txt",
+    ),
+    License(
+        name = "INI TextMate Grammar (ini.tmbundle)",
+        license = "MIT AND TextMate Bundle License",
+        textAsset = "licenses/MIT-TMBundle-INI-Grammar.txt",
+    ),
+    License(
+        name = "Lua TextMate Grammar (lua.tmbundle)",
+        license = "MIT AND TextMate Bundle License",
+        textAsset = "licenses/MIT-TMBundle-Lua-Grammar.txt",
+    ),
+    License(
+        name = "Perl TextMate Grammar (perl.tmbundle)",
+        license = "MIT AND TextMate Bundle License",
+        textAsset = "licenses/MIT-TMBundle-Perl-Grammar.txt",
+    ),
+    License(
+        name = "JSON with Comments TextMate Grammar (vscode-JSON.tmLanguage)",
+        license = "MIT AND TextMate Bundle License",
+        textAsset = "licenses/MIT-TMBundle-JSONC-Grammar.txt",
+    ),
+)
+
+/**
  * Load all dependencies from JSON + curated entries.
  * Gracefully handles missing/malformed JSON (shows curated entries only).
  */
@@ -333,7 +448,7 @@ fun loadDependencies(context: Context): List<License> {
         License(name = "Merriweather", license = "OFL-1.1"),
         License(name = "Atkinson Hyperlegible", license = "OFL-1.1"),
         License(name = "VSCode Markdown TextMate Grammar", license = "MIT"),
-    )
+    ) + READER_GRAMMAR_LICENSES
 
     // Graceful degradation (Safeguard 3): a missing/malformed JSON asset yields the curated
     // entries only — runCatching keeps the broad failure handling without a generic-catch suppression.
@@ -359,6 +474,17 @@ fun loadDependencies(context: Context): List<License> {
 
     // Combine curated + JSON deps, curated first
     return curated + jsonDeps
+}
+
+/**
+ * The text the detail view shows for [license]: its own notice file if it has one, else the generic
+ * text for its licence. A notice file that cannot be read falls back the same way (Safeguard 3).
+ */
+fun licenseTextFor(context: Context, license: License): String {
+    val own = license.textAsset?.let { path ->
+        runCatching { context.assets.open(path).bufferedReader().use { it.readText() } }.getOrNull()
+    }
+    return own ?: loadLicenseText(context, license.license)
 }
 
 /**

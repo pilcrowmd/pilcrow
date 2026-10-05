@@ -15,6 +15,7 @@ import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.LocalStorageManager
+import com.pilcrowmd.storage.StorageManager
 import com.pilcrowmd.testing.MainDispatcherSuite
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -22,6 +23,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -29,9 +32,11 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -42,6 +47,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.IOException
+import java.util.Collections
 
 /**
  * Save, close, switch and load outcomes that the existing ViewModel suites leave unobserved. Each
@@ -122,6 +128,41 @@ class MarkdownViewModelSaveLoadEdgeTest {
         override suspend fun discardSlot(key: String) = Result.success(Unit)
     }
 
+    /** One write to the remembered-file pointer, in the order the ViewModel made it. */
+    private sealed interface PointerWrite {
+        data class Set(val uri: Uri) : PointerWrite
+        data object Clear : PointerWrite
+    }
+
+    /**
+     * The remembered-file pointer in memory, with a log of every write; everything else is the real
+     * manager, by delegation. [clearGate] parks the clear until the test releases it.
+     *
+     * **Why not the real DataStore (M-211).** DataStore 1.1.1 bumps its version before it writes
+     * the file. A `data` subscriber that starts inside that window reads the OLD file, tags it with
+     * the NEW version, and then drops the cache update of that same version, so it keeps the old
+     * value until some later write. `onClosed` launches the clear without awaiting it, and nothing
+     * writes after it, so a wait for `null` that started during the clear waited for ever: 24 of
+     * 200 looped runs timed out there. Here the pointer is a StateFlow, which cannot lose an update.
+     */
+    private class PointerStorage(delegate: StorageManager, private val clearGate: CompletableDeferred<Unit>) :
+        StorageManager by delegate {
+        val pointer = MutableStateFlow<Uri?>(null)
+        val writes: MutableList<PointerWrite> = Collections.synchronizedList(mutableListOf())
+        val clearEntered = CompletableDeferred<Unit>()
+        override val lastFileUri: Flow<Uri?> = pointer
+        override suspend fun saveLastFileUri(uri: Uri) {
+            writes += PointerWrite.Set(uri)
+            pointer.value = uri
+        }
+        override suspend fun clearLastFileUri() {
+            writes += PointerWrite.Clear
+            clearEntered.complete(Unit)
+            clearGate.await()
+            pointer.value = null
+        }
+    }
+
     @Before
     fun setup() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -140,7 +181,7 @@ class MarkdownViewModelSaveLoadEdgeTest {
         Dispatchers.resetMain()
     }
 
-    private fun vm(repo: FileRepository): MarkdownViewModel {
+    private fun vm(repo: FileRepository, storage: StorageManager = this.storage): MarkdownViewModel {
         val parse = ParseMarkdownHeadingsUseCase()
         val vm = MarkdownViewModel(
             repository = repo,
@@ -191,10 +232,12 @@ class MarkdownViewModelSaveLoadEdgeTest {
     @Test
     fun saveAndCloseWritesClosesAndForgetsTheFile() = runTest {
         val repo = FakeRepo(mapOf(uriA to "first\n"))
-        val vm = vm(repo)
+        val clearGate = CompletableDeferred<Unit>()
+        val pointerStorage = PointerStorage(storage, clearGate)
+        val vm = vm(repo, pointerStorage)
         vm.loadFile(uriA)
         vm.awaitOpen(uriA)
-        within { storage.lastFileUri.first { it == uriA } } // fixture: remembered
+        within { pointerStorage.lastFileUri.first { it == uriA } } // fixture: remembered
         vm.updateContent(vm.currentDocument.value!!.id, "first, edited\n")
 
         vm.saveAndClose()
@@ -207,7 +250,20 @@ class MarkdownViewModelSaveLoadEdgeTest {
         assertEquals(listOf(uriA to "first, edited\n"), repo.saves)
         assertNull("the document is closed", vm.currentDocument.value)
         assertFalse("no close prompt: the edits were saved", vm.closeNeedsConfirm.value)
-        within { storage.lastFileUri.first { it == null } } // not reopened on next launch
+
+        // The close launches the clear without awaiting it; wait for it to start, not to finish.
+        val entered = withContext(Dispatchers.Default) {
+            withTimeoutOrNull(TIMEOUT_MS) { pointerStorage.clearEntered.await() }
+        }
+        assertNotNull("save-and-close must clear the remembered file; writes: ${pointerStorage.writes}", entered)
+        assertEquals(
+            "the load remembers the file once, the save writes no pointer, the close clears it",
+            listOf(PointerWrite.Set(uriA), PointerWrite.Clear),
+            pointerStorage.writes.toList(),
+        )
+        assertEquals("the clear is parked, so the file is still remembered", uriA, pointerStorage.pointer.value)
+        clearGate.complete(Unit)
+        within { pointerStorage.lastFileUri.first { it == null } } // not reopened on next launch
     }
 
     @Test

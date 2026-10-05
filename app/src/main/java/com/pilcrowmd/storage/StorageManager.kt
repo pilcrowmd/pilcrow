@@ -175,6 +175,15 @@ interface StorageManager {
      */
     suspend fun setThemeMode(mode: ThemeMode)
 
+    /**
+     * M-93: folders whose "show this note's pictures" banner the user answered with "Not now", by
+     * folder key. The reader does not offer the banner for these again; "Tap to show" still works.
+     */
+    val dismissedImageFolders: Flow<Set<String>>
+
+    /** Remember or forget a "Not now" for [folderKey]. */
+    suspend fun setImageFolderDismissed(folderKey: String, dismissed: Boolean)
+
     // vNext hooks (not implemented in v1):
     // suspend fun syncPreferences(destination: SyncBackend): Result<Unit>
     // suspend fun uploadContent(uri: Uri, content: String): Result<CloudId>

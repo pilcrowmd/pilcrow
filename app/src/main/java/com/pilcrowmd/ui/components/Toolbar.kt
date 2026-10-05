@@ -74,6 +74,8 @@ fun PilcrowToolbar(
     // Non-null only for .txt documents; the label reflects the mode to switch TO.
     plainToggleLabel: String? = null,
     onTogglePlainView: () -> Unit = {},
+    // M-93: present only when a folder grant would show the note's pictures.
+    onShowFolderPictures: (() -> Unit)? = null,
 ) {
     val c = mdColors()
     Column(
@@ -169,6 +171,7 @@ fun PilcrowToolbar(
                     enabled = !isSaving,
                     plainToggleLabel = plainToggleLabel,
                     onTogglePlainView = onTogglePlainView,
+                    onShowFolderPictures = onShowFolderPictures,
                 )
                 // Settings moved off the toolbar to the Welcome screen.
                 // Close (X) — always the rightmost action.
@@ -263,6 +266,7 @@ private fun OverflowMenu(
     enabled: Boolean = true,
     plainToggleLabel: String? = null,
     onTogglePlainView: () -> Unit = {},
+    onShowFolderPictures: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -288,6 +292,15 @@ private fun OverflowMenu(
                     onClick = {
                         expanded = false
                         onTogglePlainView()
+                    },
+                )
+            }
+            if (onShowFolderPictures != null) {
+                DropdownMenuItem(
+                    text = { Text("Show pictures from this folder") },
+                    onClick = {
+                        expanded = false
+                        onShowFolderPictures()
                     },
                 )
             }

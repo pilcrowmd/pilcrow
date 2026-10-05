@@ -1,4 +1,4 @@
-# LICENSES.md — Third-Party License Inventory
+# LICENSES.md – Third-Party License Inventory
 
 **App:** Pilcrow · **Module:** `:app` · **Variant analyzed:** `release` (the shipped APK)  
 **Generated:** 2026-06-12 · **Tooling:** `com.jaredsburrows.license` v0.9.8 (`./gradlew :app:licenseReleaseReport`) + manual inventory of fonts and vendored source.  
@@ -7,7 +7,7 @@
 > **Scope & disclaimer.** This is a *factual inventory classified by declared license*, not a legal opinion. Pilcrow is distributed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**. This document records each bundled dependency's license and confirms it is compatible with distributing the app as a **combined work under GPL-3.0-or-later**. Tiers indicate that compatibility.
 
 **Tier legend (compatibility with a GPL-3.0-or-later combined work):**
-- **PERMISSIVE** (MIT/Apache-2.0/BSD/ISC/OFL/zlib/CC0) → GPL-3.0-compatible; combines freely.
+- **PERMISSIVE** (MIT/Apache-2.0/BSD/ISC/OFL/zlib/CC0/TextMate Bundle License) → GPL-3.0-compatible; combines freely.
 - **WEAK COPYLEFT** (LGPL/MPL-2.0/EPL) → GPL-compatible with per-component conditions (attribution, unmodified use, corresponding source available).
 - **STRONG COPYLEFT** (GPL/AGPL) → same copyleft family as the project license; aligned by construction, since the whole app is GPL.
 - **UNKNOWN** → investigate.
@@ -25,48 +25,48 @@
 | STRONG COPYLEFT | 1 |
 | UNKNOWN / UNDECLARED | 0 |
 
-Plus, from manual inventory (not visible to the Gradle plugin): **5 bundled font families (10 files), all OFL-1.1 → PERMISSIVE**, **1 vendored source file (TextMate grammar, MIT) → PERMISSIVE**, and a **native in-app Open-source Licenses screen** (displays all deps + license texts). See §3–§4a.
+Plus, from manual inventory (not visible to the Gradle plugin): **5 bundled font families (10 files), all OFL-1.1 → PERMISSIVE**, **21 vendored source files (TextMate grammars): 20 → PERMISSIVE (13 MIT, 1 Apache-2.0, 6 MIT AND TextMate Bundle License), 1 → WEAK COPYLEFT (TOML, MIT AND MPL-2.0, see §3)**, and a **native in-app Open-source Licenses screen** (displays all deps + license texts). See §3–§4a.
 
 ### Compatibility notes
 
-Because Pilcrow itself is GPL-3.0-or-later, copyleft dependencies are *aligned with* — not in tension with — the project license. The non-permissive licenses below are each confirmed compatible with the combined work:
+Because Pilcrow itself is GPL-3.0-or-later, copyleft dependencies are *aligned with* – not in tension with – the project license. The non-permissive licenses below are each confirmed compatible with the combined work:
 
-**GPLv2 with Classpath Exception — 1:**
-- ✅ **`ru.noties:jlatexmath-android:0.2.0`** — Declared **GPL-2.0** in its POM, but the upstream source ships under **GPLv2 *with* Classpath Exception**. The Classpath Exception removes the linking restriction, so the library combines freely into Pilcrow's GPL-3.0-or-later work. The exception text is bundled in the app at `licenses/JLaTeXMath-GPLv2-Classpath-Exception.txt` and shown in the in-app Open-source Licenses screen. See §2 and §4a.
+**GPLv2 with Classpath Exception – 1:**
+- ✅ **`ru.noties:jlatexmath-android:0.2.0`** – Declared **GPL-2.0** in its POM, but the upstream source ships under **GPLv2 *with* Classpath Exception**. The Classpath Exception removes the linking restriction, so the library combines freely into Pilcrow's GPL-3.0-or-later work. The exception text is bundled in the app at `licenses/JLaTeXMath-GPLv2-Classpath-Exception.txt` and shown in the in-app Open-source Licenses screen. See §2 and §4a.
 
-**WEAK COPYLEFT (compatible with conditions) — 3:**
-- 🟡 **`io.github.rosemoe:editor:0.24.5`** — **LGPL-2.1** (Sora Editor core). LGPL-2.1 is GPL-compatible and explicitly permits combination into a GPL-licensed work. Because Pilcrow ships as open source under GPL-3.0-or-later with its corresponding source available, LGPL §6's relink provision is satisfied by construction (users have the source and the published dependency coordinate/version, and can rebuild with a substituted editor). Used as an unmodified binary artifact, with LGPL-2.1 attribution and license text retained.
-- 🟡 **`io.github.rosemoe:language-textmate:0.24.5`** — **LGPL-2.1** (same project, same handling as above).
-- 🟡 **`org.eclipse.jdt:org.eclipse.jdt.annotation:2.4.100`** — **EPL-2.0**, transitive compile-time nullness annotations (via Sora). EPL is *file-level* copyleft: obligations attach only to modified EPL files. The artifact is used unmodified with its notice retained — listed for completeness.
+**WEAK COPYLEFT (compatible with conditions) – 3:**
+- 🟡 **`io.github.rosemoe:editor:0.24.5`** – **LGPL-2.1** (Sora Editor core). LGPL-2.1 is GPL-compatible and explicitly permits combination into a GPL-licensed work. Because Pilcrow ships as open source under GPL-3.0-or-later with its corresponding source available, LGPL §6's relink provision is satisfied by construction (users have the source and the published dependency coordinate/version, and can rebuild with a substituted editor). Used as an unmodified binary artifact, with LGPL-2.1 attribution and license text retained.
+- 🟡 **`io.github.rosemoe:language-textmate:0.24.5`** – **LGPL-2.1** (same project, same handling as above).
+- 🟡 **`org.eclipse.jdt:org.eclipse.jdt.annotation:2.4.100`** – **EPL-2.0**, transitive compile-time nullness annotations (via Sora). EPL is *file-level* copyleft: obligations attach only to modified EPL files. The artifact is used unmodified with its notice retained – listed for completeness.
 
-**UNKNOWN / UNDECLARED:** none found — the plugin resolved a declared license for all 121 dependencies.
+**UNKNOWN / UNDECLARED:** none found – the plugin resolved a declared license for all 121 dependencies.
 
 ---
 
-## 2. Flagged items — detail
+## 2. Flagged items – detail
 
-### ✅ `ru.noties:jlatexmath-android:0.2.0` — GPL-2.0 vs GPLv2-with-Classpath-Exception
+### ✅ `ru.noties:jlatexmath-android:0.2.0` – GPL-2.0 vs GPLv2-with-Classpath-Exception
 
-- **How it enters the build:** transitive dependency of `io.noties.markwon:ext-latex:4.6.2` (LaTeX math rendering — native, no WebView).
-- **POM metadata (the shipped 0.2.0 artifact, from the Gradle cache):** `<name>GNU General Public License, version 2</name>` — no exception recorded.
+- **How it enters the build:** transitive dependency of `io.noties.markwon:ext-latex:4.6.2` (LaTeX math rendering – native, no WebView).
+- **POM metadata (the shipped 0.2.0 artifact, from the Gradle cache):** `<name>GNU General Public License, version 2</name>` – no exception recorded.
 - **Upstream reality:** the `noties/jlatexmath-android` `pom.xml` (android branch) and the underlying `opencollab/jlatexmath` declare **"GPLv2 with Classpath Exception"**. The Classpath Exception explicitly allows linking the library into an independent work.
 - **Handling:** The Classpath Exception is documented verbatim in `licenses/JLaTeXMath-GPLv2-Classpath-Exception.txt`, bundled in the APK, and surfaced in the in-app Open-source Licenses screen when the user views the jlatexmath license text. The exception permits linking into Pilcrow's GPL-3.0-or-later combined work; modifications to JLaTeXMath itself remain under its own terms.
 - **Bundled fonts:** the AAR ships math fonts under `assets/org/scilab/forge/jlatexmath/fonts/licences/`: `Knuth_License.txt`, `License_for_dsrom.txt`, `OFL.txt` (and, per upstream docs, some Greek glyphs are GPLv2). These ship inside the APK and carry their own (mostly permissive) terms.
 
-### 🟡 Sora Editor — `io.github.rosemoe:editor` + `:language-textmate` (LGPL-2.1)
+### 🟡 Sora Editor – `io.github.rosemoe:editor` + `:language-textmate` (LGPL-2.1)
 
 - **How it enters the build:** declared directly as the chosen native code-editor engine. Consumed as **unmodified binary Maven artifacts** via `editor-bom:0.24.5`.
-- **GPL compatibility:** LGPL-2.1 is compatible with the GPL and may be combined into a GPL-licensed work. Since Pilcrow is distributed as open source under GPL-3.0-or-later with corresponding source available, the LGPL §6 relink obligation is inherently met — users have the full source plus the exact dependency coordinate/version and can rebuild the app with their own editor build.
+- **GPL compatibility:** LGPL-2.1 is compatible with the GPL and may be combined into a GPL-licensed work. Since Pilcrow is distributed as open source under GPL-3.0-or-later with corresponding source available, the LGPL §6 relink obligation is inherently met – users have the full source plus the exact dependency coordinate/version and can rebuild the app with their own editor build.
 - **Compliance:** used unmodified, kept as a separate `.aar` dependency at a published coordinate/version, with LGPL-2.1 license text + attribution included (and shown in-app).
 
 ### 🟡 `org.eclipse.jdt:org.eclipse.jdt.annotation:2.4.100` (EPL-2.0)
 
 - **How it enters the build:** transitive, compile-time nullness annotations pulled via Sora `language-textmate`.
-- **EPL-2.0** is per-file weak copyleft; obligations attach only to *modified* EPL files. The artifact is unmodified and its notice is retained — listed for completeness.
+- **EPL-2.0** is per-file weak copyleft; obligations attach only to *modified* EPL files. The artifact is unmodified and its notice is retained – listed for completeness.
 
 ---
 
-## 3. Bundled fonts (manual — not seen by the Gradle plugin)
+## 3. Bundled fonts (manual – not seen by the Gradle plugin)
 
 Font binaries live in `app/src/main/res/font/`. The project ships **only OFL-licensed fonts**; the inventory confirms all bundled families are **SIL OFL 1.1 → PERMISSIVE**. `FontSet.kt` groups them into three selectable sets (Classic / Book / Modern).
 
@@ -78,36 +78,57 @@ Font binaries live in `app/src/main/res/font/`. The project ships **only OFL-lic
 | Merriweather | `merriweather_{regular,bold}.ttf` | OFL-1.1 | PERMISSIVE | ✅ `licenses/fonts/OFL-Merriweather.txt` | No evidence |
 | Atkinson Hyperlegible | `atkinson_hyperlegible_{regular,bold}.ttf` | OFL-1.1 | PERMISSIVE | ✅ `licenses/fonts/OFL-AtkinsonHyperlegible.txt` | No evidence |
 
-**OFL-1.1 conditions (all satisfied):** ⚠️ the OFL license text must accompany the distribution — ✅ included in `licenses/fonts/` and surfaced in-app; ⚠️ the fonts' **Reserved Font Names** must not be used for modified glyphs — the fonts are unmodified, and lowercasing a *filename* for Android resource rules is not a font modification and does not trigger the Reserved Font Name clause. The OFL permits bundling fonts inside distributed software.
+**OFL-1.1 conditions (all satisfied):** ⚠️ the OFL license text must accompany the distribution – ✅ included in `licenses/fonts/` and surfaced in-app; ⚠️ the fonts' **Reserved Font Names** must not be used for modified glyphs – the fonts are unmodified, and lowercasing a *filename* for Android resource rules is not a font modification and does not trigger the Reserved Font Name clause. The OFL permits bundling fonts inside distributed software.
 
 **Status:** ✅ All five fonts have OFL-1.1 license texts in `licenses/fonts/` (Source Serif 4, JetBrains Mono, IBM Plex Mono, Merriweather, Atkinson Hyperlegible) and are surfaced in the in-app Open-source Licenses screen (native Compose modal). If any TTF was actually re-hinted/subset, confirm the internal font name was changed to avoid the Reserved Font Name.
 
 ---
 
-## 4. Vendored source (manual — copied into the repo, not via Gradle)
+## 4. Vendored source (manual – copied into the repo, not via Gradle)
 
 | Path | Origin | SPDX | Tier | Notes |
 |------|--------|------|------|-------|
-| `app/src/main/assets/textmate/markdown/markdown.tmLanguage.json` | `microsoft/vscode-markdown-tm-grammar` (commit `0812fc4`, recorded in the file's `version` field) | MIT | PERMISSIVE | TextMate grammar used by the Sora editor for Markdown syntax highlighting. License text: ✅ `licenses/MIT-VSCode-Markdown-Grammar.txt`. |
-| `app/src/main/assets/textmate/md-dark.json` | Own work (`"name": "Pilcrow Dark"`) | n/a (first-party) | — | Editor color theme authored for this project; no third-party obligation. |
+| `app/src/main/assets/textmate/markdown/markdown.tmLanguage.json` | `microsoft/vscode-markdown-tm-grammar` (commit `0812fc4`, recorded in the file's `version` field) | MIT | PERMISSIVE | TextMate grammar used by the Sora editor for Markdown syntax highlighting. One regex changed so joni compiles it: the `strikethrough` rule's closing check moved before the closing run, same condition (NEW-27). License text: ✅ `licenses/MIT-VSCode-Markdown-Grammar.txt`. |
+| `app/src/main/assets/textmate/shellscript/shell-unix-bash.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/shellscript/syntaxes/`; converted from `jeff-hykin/better-shell-syntax` `35020b0` (recorded in the file's `version` field) | MIT | PERMISSIVE | Reader colours for `sh`/`bash`/`shell`/`zsh` fences (M-136). Unmodified. License text: ✅ `app/src/main/assets/licenses/MIT-Shell-Grammar.txt` (VS Code + upstream). |
+| `app/src/main/assets/textmate/typescript/TypeScript.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/typescript-basics/syntaxes/`; converted from `microsoft/TypeScript-TmLanguage` `48f6086` | MIT | PERMISSIVE | Reader colours for `ts`/`typescript` fences (M-136). One regex changed so joni compiles it: two redundant look-behind alternatives dropped from the `using` declaration's `end` (NEW-27). License text: ✅ `app/src/main/assets/licenses/MIT-TypeScript-Grammar.txt`. |
+| `app/src/main/assets/textmate/rust/rust.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/rust/syntaxes/`; converted from `dustypomerleau/rust-syntax` `ca34cf3` | MIT | PERMISSIVE | Reader colours for `rs`/`rust` fences (M-136). Unmodified. License text: ✅ `app/src/main/assets/licenses/MIT-Rust-Grammar.txt`. |
+| `app/src/main/assets/textmate/ruby/ruby.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/ruby/syntaxes/`; converted from `Shopify/ruby-lsp` `e044408` | MIT | PERMISSIVE | Reader colours for `rb`/`ruby` fences (M-136). One regex changed so joni compiles it: the block-parameter `begin`'s `{\s+`/`do\s+` look-behinds spelled out for one to four whitespace characters (NEW-27). License text: ✅ `app/src/main/assets/licenses/MIT-Ruby-Grammar.txt`. |
+| `app/src/main/assets/textmate/powershell/powershell.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/powershell/syntaxes/`; converted from `PowerShell/EditorSyntax` `23eed76`, which carries a third-party notice for Guillermo López-Anglada's Sublime Text PowerShell package | MIT | PERMISSIVE | Reader colours for `powershell`/`ps`/`ps1`/`pwsh`/`posh` fences (M-243). Unmodified. License text: ✅ `app/src/main/assets/licenses/MIT-PowerShell-Grammar.txt` (VS Code, EditorSyntax, and its third-party notice). |
+| `app/src/main/assets/textmate/bat/batchfile.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/bat/syntaxes/`; converted from `mmims/language-batchfile` `6154ae2` | MIT | PERMISSIVE | Reader colours for `bat`/`batch`/`cmd`/`batchfile` fences (M-243). Unmodified. License text: ✅ `app/src/main/assets/licenses/MIT-Batch-Grammar.txt`. |
+| `app/src/main/assets/textmate/julia/julia.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/julia/syntaxes/`; converted from `JuliaEditorSupport/atom-language-julia` `dbaa993`, itself based on `JuliaLang/Julia.tmbundle` | MIT | PERMISSIVE | Reader colours for `julia`/`jl` fences (M-243). Unmodified; one pattern (the `as` keyword's look-behind) does not compile in joni, so `as` stays plain. License text: ✅ `app/src/main/assets/licenses/MIT-Julia-Grammar.txt` (VS Code, atom-language-julia's MIT "Expat", Julia.tmbundle). |
+| `app/src/main/assets/textmate/docker/docker.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/docker/syntaxes/`; from `moby/moby` `c2029cb`, `contrib/syntax/textmate/Docker.tmbundle` | Apache-2.0 (VS Code's wrapper MIT) | PERMISSIVE | Reader colours for `dockerfile`/`docker`/`containerfile` fences (M-243). Unmodified. License text: ✅ `app/src/main/assets/licenses/Apache-Docker-Grammar.txt` (VS Code's MIT, moby's NOTICE in full, moby's Apache-2.0 LICENSE). |
+| `app/src/main/assets/textmate/graphql/graphql.json` | `graphql/graphiql` `e19ba2d`, `packages/vscode-graphql-syntax/grammars/` | MIT | PERMISSIVE | Reader colours for `graphql`/`gql` fences (M-243). Unmodified. License text: ✅ `app/src/main/assets/licenses/MIT-GraphQL-Grammar.txt`. |
+| `app/src/main/assets/textmate/http/http.tmLanguage.json` | `Huachao/vscode-restclient` `0773d56`, `syntaxes/` | MIT | PERMISSIVE | Reader colours for `http`/`rest` fences (M-243). Unmodified; its embedded JSON and XML bodies stay plain (those grammars do not ship). License text: ✅ `app/src/main/assets/licenses/MIT-HTTP-Grammar.txt`. |
+| `app/src/main/assets/textmate/csv/csv.tmLanguage.json`, `…/csv/tsv.tmLanguage.json` | `mechatroner/vscode_rainbow_csv` `82f1b82`, `syntaxes/` | MIT | PERMISSIVE | Reader colours for `csv` and `tsv` fences (M-243). Unmodified; the reader maps its column scopes to its own colour cycle. License text: ✅ `app/src/main/assets/licenses/MIT-CSV-Grammar.txt`. |
+| `app/src/main/assets/textmate/regex/MagicRegExp.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/python/syntaxes/`; converted from `MagicStack/MagicPython` `c9b3409` | MIT | PERMISSIVE | Reader colours for `regex`/`regexp` fences (M-243). Unmodified. License text: ✅ `app/src/main/assets/licenses/MIT-Regex-Grammar.txt`. |
+| `app/src/main/assets/textmate/toml/toml.tmLanguage.json` | `tamasfe/taplo` `08f343b`, `editors/vscode/`; 18 of its 30 distinct regexes also appear in `oovm/vscode-toml` (MPL-2.0, `e9edfdb`) | MIT AND MPL-2.0 | WEAK COPYLEFT (MPL-2.0: file-level; the grammar ships unmodified as source in the APK and in this public repository, with the full MPL-2.0 text in its notice) | Reader colours for `toml` fences (M-243). Unmodified. License text: ✅ `app/src/main/assets/licenses/MIT-MPL-TOML-Grammar.txt` (Taplo's MIT; oovm/vscode-toml's authors and the full MPL-2.0 text). The repository also keeps that MPL-2.0 text as `licenses/MPL-2.0.txt`, which the licence test compares the notice against. |
+| `app/src/main/assets/textmate/r/r.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/r/syntaxes/`; converted from `REditorSupport/vscode-R-syntax` `b199996`, which continues `REditorSupport/vscode-R` `b0781fe` (MIT), converted from `randy3k/R-Extended` (no licence of its own; the same file ships in `randy3k/R-Box` `dfff2aa` under MIT), which draws on `textmate/r.tmbundle` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `r`/`rscript` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-R-Grammar.txt` (VS Code, vscode-R-syntax, vscode-R, R-Box, r.tmbundle). |
+| `app/src/main/assets/textmate/php/php.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/php/syntaxes/`; converted from `KapitanOczywisty/language-php` `d94fd6b`, itself derived from `textmate/php.tmbundle` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `php` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-PHP-Grammar.txt` (VS Code, language-php (with its own TextMate-bundle note), php.tmbundle). |
+| `app/src/main/assets/textmate/ini/ini.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/ini/syntaxes/`; converted from `textmate/ini.tmbundle` `2af0cbb` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `ini`/`cfg`/`dosini` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-INI-Grammar.txt` (VS Code, ini.tmbundle). |
+| `app/src/main/assets/textmate/lua/lua.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/lua/syntaxes/`; converted from `sumneko/lua.tmbundle` `b295d83` (MIT), a continuation of `textmate/lua.tmbundle` `8ae5641` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `lua` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-Lua-Grammar.txt` (VS Code, sumneko/lua.tmbundle, textmate/lua.tmbundle). |
+| `app/src/main/assets/textmate/perl/perl.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/perl/syntaxes/`; converted from `textmate/perl.tmbundle` `a85927a` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `perl`/`pl` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-Perl-Grammar.txt` (VS Code, perl.tmbundle). |
+| `app/src/main/assets/textmate/jsonc/JSONC.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/json/syntaxes/`; converted from `microsoft/vscode-JSON.tmLanguage` `9bd83f1` (MIT), which builds on `textmate/json.tmbundle` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `jsonc` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-JSONC-Grammar.txt` (VS Code, vscode-JSON.tmLanguage, json.tmbundle). |
+| `app/src/main/assets/textmate/md-dark.json` | Own work (`"name": "Pilcrow Dark"`) | n/a (first-party) | – | Editor color theme authored for this project; no third-party obligation. |
 
-No vendored Kotlin/Java source was found — `app/src/main/java/**` is first-party (no copied-in third-party files, no foreign license headers). The Prism syntax grammars are generated at build time by `io.noties:prism4j-bundler` (kapt) and derive from PrismJS (MIT); the shipped runtime artifact is `io.noties:prism4j` (Apache-2.0, in §5).
+No vendored Kotlin/Java source was found – `app/src/main/java/**` is first-party (no copied-in third-party files, no foreign license headers). The Prism syntax grammars are generated at build time by `io.noties:prism4j-bundler` (kapt) and derive from PrismJS (MIT); the shipped runtime artifact is `io.noties:prism4j` (Apache-2.0, in §5).
 
-**Status:** ✅ MIT license text + copyright for the VSCode Markdown grammar is documented in `licenses/MIT-VSCode-Markdown-Grammar.txt` and included in the in-app Open-source Licenses screen.
+**Status:** ✅ MIT license text + copyright for the VSCode Markdown grammar is documented in `licenses/MIT-VSCode-Markdown-Grammar.txt` and included in the in-app Open-source Licenses screen. The four reader grammars (M-136) have their VS Code and upstream texts in `app/src/main/assets/licenses/MIT-{Shell,TypeScript,Rust,Ruby}-Grammar.txt`; each has a curated MIT entry in the in-app screen whose detail view shows that file, copyright lines included (NEW-26). The nine M-243 grammar notices follow the same pattern, one curated entry each (CSV and TSV share one), in `app/src/main/assets/licenses/MIT-{PowerShell,Batch,Julia,GraphQL,HTTP,CSV,Regex}-Grammar.txt`, `Apache-Docker-Grammar.txt` and `MIT-MPL-TOML-Grammar.txt` (NEW-28). The six NEW-35 grammars (R, PHP, INI, Lua, Perl, JSONC), each derived from a TextMate bundle, have one curated `MIT AND TextMate Bundle License` entry each, in `app/src/main/assets/licenses/MIT-TMBundle-{R,PHP,INI,Lua,Perl,JSONC}-Grammar.txt`; the licence test compares their bundle text against `licenses/TextMate-Bundle-License.txt`, which is not shipped.
 
 ---
 
 ## 4a. In-app Open-source Licenses screen
 
-**Purpose:** Native Compose modal accessible from Settings → About → "Open source licenses ›" row. Displays all 121 runtime dependencies from the bundled JSON report, plus 6 curated entries (5 fonts, 1 vendored grammar). Each entry is tappable to view full license text.
+**Purpose:** Native Compose modal accessible from Settings → About → "Open source licenses ›" row. Displays all 121 runtime dependencies from the bundled JSON report, plus 25 curated entries (5 fonts, 20 vendored-grammar notices). Each entry is tappable to view full license text.
 
 **Implementation:**
 - **Screen file:** `app/src/main/java/com/pilcrowmd/ui/components/LicensesScreen.kt` (native Compose, zero WebView)
 - **JSON source:** `app/src/main/assets/open_source_licenses.json` (bundled by license plugin task dependency: `licenseDebugReport → mergeDebugAssets`, `licenseReleaseReport → mergeReleaseAssets`)
-- **Bundled license texts:** `app/src/main/assets/licenses/{OFL-1.1,Apache-2.0,MIT,LGPL-2.1,GPL-2.0-Classpath-Exception}.txt`
+- **Bundled license texts:** `app/src/main/assets/licenses/{OFL-1.1,Apache-2.0,MIT,LGPL-2.1,GPL-2.0-Classpath-Exception}.txt`; the reader grammars' own notices, `MIT-{Shell,TypeScript,Rust,Ruby}-Grammar.txt` (M-136), the nine M-243 notices and the six NEW-35 notices listed in §3
 - **Curated entries (always shown, never skipped):**
   - 5 fonts (all OFL-1.1): Source Serif 4, JetBrains Mono, IBM Plex Mono, Merriweather, Atkinson Hyperlegible
-  - 1 grammar (MIT): VSCode Markdown TextMate Grammar
+  - 5 grammars (MIT): VSCode Markdown TextMate Grammar; the Shell, TypeScript, Rust and Ruby TextMate grammars (M-136)
+  - 9 grammar notices (M-243): PowerShell, Batch File, Julia, GraphQL, HTTP, CSV and TSV, Regular Expression (MIT); Dockerfile (Apache-2.0 AND MIT); TOML (MIT AND MPL-2.0)
+  - 6 grammar notices (NEW-35, MIT AND TextMate Bundle License): R, PHP, INI, Lua, Perl, JSON with Comments
 - **Special notes displayed in detail view:**
   - **jlatexmath:** "Note: This library is licensed under GPLv2 with the Classpath Exception, which permits linking into other applications. See the full license text for details."
   - **Sora Editor:** "Note: Sora Editor is licensed under LGPL-2.1 and used as an unmodified binary dependency. The app's full source code and the exact dependency version are published, so users may rebuild the app with a modified editor if they wish."
@@ -265,7 +286,7 @@ No vendored Kotlin/Java source was found — `app/src/main/java/**` is first-par
 
 ---
 
-## 6. Build-time-only components (NOT distributed — completeness only)
+## 6. Build-time-only components (NOT distributed – completeness only)
 
 These are Gradle plugins, annotation processors, and test/debug dependencies. They are **not packaged into the release APK**, so they impose **no distribution obligation** on the shipped app. Licenses below are from declared metadata / general knowledge (the release report does not cover them by design).
 
@@ -288,7 +309,7 @@ These are Gradle plugins, annotation processors, and test/debug dependencies. Th
 | androidx.test:runner | 1.5.0 | androidTestImplementation | Apache-2.0 | PERMISSIVE |
 | androidx.test:rules | 1.5.0 | androidTestImplementation | Apache-2.0 | PERMISSIVE |
 
-The only non-permissive build-time item is **JUnit 4 (EPL-1.0)** — test scope, never in the APK, so not distribution-relevant.
+The only non-permissive build-time item is **JUnit 4 (EPL-1.0)** – test scope, never in the APK, so not distribution-relevant.
 
 ---
 

@@ -59,9 +59,9 @@ import org.commonmark.parser.block.ParserState
  * [label] instead of a fabricated number, and is never dropped (deleting user-written content is not
  * an option, so this deliberately diverges from GitHub, which omits unreferenced definitions).
  *
- * [blockIndex] and [firstReferenceBlockIndex] are positions in the document's top-level child
- * sequence. That sequence is exactly what `MarkwonAdapter` turns into RecyclerView items and what
- * `ParseMarkdownHeadingsUseCase` counts for TOC/search targets, so a top-level index IS an adapter
+ * [blockIndex] and [firstReferenceBlockIndex] are positions in [AdapterBlocks.of] — the top-level
+ * blocks minus link reference definitions, which is exactly what `MarkwonAdapter` turns into
+ * RecyclerView items and what the TOC and search number (M-214), so such an index IS an adapter
  * position — which is what makes tap-to-jump a plain `scrollToPositionWithOffset` with no new
  * lookup table. [firstReferenceBlockIndex] stays [NO_BLOCK] when nothing references the definition:
  * there is nowhere to go back to, so no back-link is drawn.
@@ -178,14 +178,10 @@ object Footnotes {
         // Walk the top-level blocks by index, not the tree as a whole: every reference has to learn
         // WHICH block it sits in so the definition can link back to it, and that index is only
         // knowable here (a node cannot see its own position, and commonmark carries no source spans).
-        var blockIndex = 0
-        var child = document.firstChild
-        while (child != null) {
-            // Capture `next` first: replacing a Text node relinks siblings under our feet.
-            val next = child.next
-            resolveReferences(child, blockIndex, definitions, ordinals)
-            blockIndex++
-            child = next
+        // The list is taken before the walk; replacing Text nodes relinks only their siblings inside a
+        // block, never a top-level block, so it stays valid.
+        AdapterBlocks.of(document).forEachIndexed { blockIndex, block ->
+            resolveReferences(block, blockIndex, definitions, ordinals)
         }
         definitions.forEach { (label, block) -> block.ordinal = ordinals[label] }
         return document
@@ -198,15 +194,11 @@ object Footnotes {
      */
     private fun collectDefinitions(document: Node): Map<String, FootnoteDefinitionBlock> {
         val found = LinkedHashMap<String, FootnoteDefinitionBlock>()
-        var blockIndex = 0
-        var node = document.firstChild
-        while (node != null) {
+        AdapterBlocks.of(document).forEachIndexed { blockIndex, node ->
             if (node is FootnoteDefinitionBlock) {
                 node.blockIndex = blockIndex
                 found.putIfAbsent(node.label, node)
             }
-            blockIndex++
-            node = node.next
         }
         return found
     }

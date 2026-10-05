@@ -4,9 +4,11 @@
 package com.pilcrowmd.domain.usecase
 
 import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.rendering.buildPilcrowMarkwon
 import com.pilcrowmd.screenshot.MarkdownSampleProvider
+import io.noties.markwon.MarkwonReducer
 import org.commonmark.node.Node
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -31,6 +33,12 @@ import org.robolectric.RobolectricTestRunner
  * ordinary `Paragraph`. Both are exactly ONE top-level block, so indices still line up, and both
  * contribute no searchable text (the math source is excluded from search by `mathRanges`). Any
  * divergence beyond that substitution is a real defect and fails.
+ *
+ * **The raw trees are not the adapter's items (M-214).** Both trees keep a link reference definition
+ * as a top-level node, so comparing them cannot see that the adapter drops it. The second half of
+ * this test compares [AdapterBlocks.of] on the parity tree with the list the adapter's own reducer
+ * (`MarkwonReducer.directChildren()`) builds from the render tree — the numbering every adapter
+ * position is taken from.
  */
 @RunWith(RobolectricTestRunner::class)
 class ParseParityTest {
@@ -82,5 +90,44 @@ class ParseParityTest {
         assertParity("display math inline", "before\n\n\$\$x\$\$\n\nafter")
         assertParity("inline math", "a \$x^2\$ b")
         assertParity("table then para", "| a | b |\n|---|---|\n| 1 | 2 |\n\nafter")
+    }
+
+    private fun assertAdapterParity(name: String, markdown: String) {
+        val adapter = MarkwonReducer.directChildren()
+            .reduce(ReaderDocument.transform(markwon.parse(markdown)))
+            .map { it.javaClass.simpleName }
+        val numbered = AdapterBlocks.of(parity.parseDocument(markdown)!!).map { it.javaClass.simpleName }
+        assertEquals(
+            "AdapterBlocks must number \"$name\" as the adapter does (adapter=$adapter, numbered=$numbered)",
+            normalize(adapter),
+            normalize(numbered),
+        )
+    }
+
+    @Test
+    fun adapterBlocksNumberEveryGoldenSampleAsTheAdapterDoes() {
+        MarkdownSampleProvider().values.forEach { assertAdapterParity(it.name, it.markdown) }
+    }
+
+    @Test
+    fun adapterBlocksSkipLinkReferenceDefinitionsAsTheAdapterDoes() {
+        // Not the empty document: the reducer returns the Document itself as one item when it has no
+        // children, a quirk no index is ever taken from (there is nothing to jump to).
+        assertAdapterParity("definition before a heading", "[r]: https://x.test\n\n# Head\n\nneedle here")
+        assertAdapterParity("definition between blocks", "one\n\n[r]: https://x.test\n\n# Two\n\nthree")
+        assertAdapterParity(
+            "two consecutive definitions",
+            "[a]: https://a.test\n[b]: https://b.test\n\n# Head\n\nbody [a] and [b]",
+        )
+        assertAdapterParity(
+            "definition inside details",
+            "<details>\n<summary>S</summary>\n\n[r]: https://x.test\n\nbody\n</details>\n\nafter",
+        )
+        assertAdapterParity("only definitions", "[a]: https://a.test\n\n[b]: https://b.test\n")
+        assertAdapterParity("definition after the last block", "# Head\n\ntext\n\n[r]: https://x.test\n")
+        assertAdapterParity(
+            "definition before a footnote",
+            "[r]: https://x.test\n\nText[^1] ref.\n\n[^1]: the note\n\nTail.\n",
+        )
     }
 }

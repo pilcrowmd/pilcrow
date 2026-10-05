@@ -7,7 +7,7 @@
 [<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80">](https://play.google.com/store/apps/details?id=com.pilcrowmd&referrer=utm_source%3Dgithub%26utm_campaign%3Dreadme_badge)
 [<img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](https://f-droid.org/packages/com.pilcrowmd/)
 
-The APK is also attached to every [GitHub Release](https://github.com/pilcrowmd/pilcrow/releases).
+**Install:** [Google Play](https://play.google.com/store/apps/details?id=com.pilcrowmd&referrer=utm_source%3Dgithub%26utm_campaign%3Dreadme_text) · [F-Droid](https://f-droid.org/packages/com.pilcrowmd/) · the APK is also attached to every [GitHub Release](https://github.com/pilcrowmd/pilcrow/releases).
 
 [![CI](https://github.com/pilcrowmd/pilcrow/actions/workflows/ci.yml/badge.svg)](https://github.com/pilcrowmd/pilcrow/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
@@ -15,9 +15,9 @@ The APK is also attached to every [GitHub Release](https://github.com/pilcrowmd/
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF.svg?logo=kotlin&logoColor=white)](#tech-stack)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-UI-4285F4.svg?logo=jetpackcompose&logoColor=white)](#tech-stack)
 
-**[pilcrowmd.com](https://pilcrowmd.com)** — screenshots, changelog, privacy policy
+**[pilcrowmd.com](https://pilcrowmd.com)** – screenshots, changelog, privacy policy
 
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/01-reader-dark.png" alt="PilcrowMD rendering a Markdown document — headings, prose, lists, and a blockquote, all rendered natively" width="320">
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/01-reader-dark.png" alt="PilcrowMD rendering a Markdown document – headings, prose, lists, and a blockquote, all rendered natively" width="320">
 
 </div>
 
@@ -25,10 +25,10 @@ The APK is also attached to every [GitHub Release](https://github.com/pilcrowmd/
 
 ## What & why
 
-The web is full of Markdown — LLM answers, READMEs, notes, technical docs — and most Android apps
+The web is full of Markdown – LLM answers, READMEs, notes, technical docs – and most Android apps
 render it in a WebView wrapped in ads and trackers. PilcrowMD takes the opposite approach.
 
-PilcrowMD renders Markdown **natively** — no WebView, no JavaScript runtime, no network calls to read
+PilcrowMD renders Markdown **natively** – no WebView, no JavaScript runtime, no network calls to read
 your files. The result is fast, typographically careful rendering of full GitHub-Flavored Markdown
 (tables, code, math, task lists, frontmatter) with a reading experience that looks designed rather
 than dumped.
@@ -40,27 +40,27 @@ than dumped.
   its dominant style), and a renderer that degrades gracefully instead of crashing on syntax it
   doesn't support.
 - **Private.** Files are read through Android's Storage Access Framework and stay on your device.
-  No accounts, no analytics, no ads, no network in the reading path. Free software under the GPL.
+  No accounts, no ads, no analytics, no telemetry, no crash reporting, no network in the reading path. Free software under the GPL.
 
 ## Features
 
-- **Full GitHub-Flavored Markdown** — headings, emphasis, lists, task lists, blockquotes, tables,
-  fenced code, thematic breaks, links and images.
+- **Full GitHub-Flavored Markdown** – headings, emphasis, lists, task lists, blockquotes, tables,
+  fenced code, thematic breaks, links, and pictures stored with the note (web pictures are not downloaded).
 - **Native syntax highlighting** for fenced code blocks, with a one-tap copy button.
-- **LaTeX math** — inline (`$…$` or `$$…$$`) and block `$$…$$`, rendered as crisp native bitmaps
+- **LaTeX math** – inline (`$…$` or `$$…$$`) and block `$$…$$`, rendered as crisp native bitmaps
   (no WebView). Single-`$` parsing is currency-aware, so `$5 and $10` stays plain text.
-- **Reader + source editor** — toggle between a polished reader and a real code editor with
+- **Reader + source editor** – toggle between a polished reader and a real code editor with
   Markdown highlighting, a line-number gutter, and soft wrap.
 - **In-document search** with match highlighting and next/previous navigation.
 - **Table of contents** drawer generated from your headings, with tap-to-jump.
 - **YAML frontmatter** rendered as a tidy metadata card.
-- **Export to PDF** — paginated, print-styled, matching what you see on screen.
-- **Two themes** — a default dark theme and a warm-cream light theme.
-- **Per-file memory** — reopens your last file at the position you left it; keeps a recents list.
-- **Adjustable type** — independent font scaling for reader and editor.
-- **Graceful by design** — diagrams and unsupported syntax degrade to readable code blocks rather
+- **Export to PDF** – paginated and print-styled, on white pages.
+- **Two themes** – a default dark theme and a warm-cream light theme.
+- **Per-file memory** – reopens your last file at the position you left it; keeps a recents list.
+- **Adjustable type** – independent font scaling for reader and editor.
+- **Graceful by design** – diagrams and unsupported syntax degrade to readable code blocks rather
   than breaking the page (Mermaid can optionally render via the cloud, off by default).
-- **Offline & ad-free** — minimum Android 8.0, no required network permission for reading.
+- **Offline & ad-free** – minimum Android 8.0, no required network permission for reading.
 
 ## Screenshots
 
@@ -88,15 +88,15 @@ than dumped.
 PilcrowMD is a single-activity Jetpack Compose app following **Clean Architecture + MVVM** with
 unidirectional data flow and strict layer boundaries:
 
-- **UI (Compose)** is passive and state-driven — no business logic, colors only from design tokens.
+- **UI (Compose)** is passive and state-driven – no business logic, colors only from design tokens.
 - **State (`MarkdownViewModel`)** exposes UI state as `StateFlow` and orchestrates everything; it
   never does I/O or parsing directly.
-- **Domain** holds pure-Kotlin parsing and search use cases — testable with no emulator.
+- **Domain** holds pure-Kotlin parsing and search use cases – testable with no emulator.
 - **Data** hides file I/O and persistence behind interfaces (`FileRepository` over the Storage
   Access Framework; `StorageManager` over Jetpack DataStore).
 
 Dependencies are wired through a single hand-written composition root (a manual `AppContainer`), and
-Markdown is rendered to native views with [Markwon](https://github.com/noties/Markwon) — **never a
+Markdown is rendered to native views with [Markwon](https://github.com/noties/Markwon) – **never a
 WebView**. The four Essential Safeguards (no data loss, round-trip fidelity, crash-free rendering,
 design-token fidelity) are enforced in code and protected by tests.
 
@@ -105,7 +105,7 @@ design-token fidelity) are enforced in code and protected by tests.
 ## Build & run
 
 **Requirements:** JDK 21, Android SDK with API 36, and `minSdk` 26 (Android 8.0) for the target
-device. The Gradle wrapper pins the build tooling — no global Gradle install needed.
+device. The Gradle wrapper pins the build tooling – no global Gradle install needed.
 
 ```bash
 git clone https://github.com/pilcrowmd/pilcrow.git
@@ -123,7 +123,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`.
 > **Build from `clean` for any result you intend to trust.** PilcrowMD pins Kotlin to 2.3.10 to match
 > the metadata version of its editor dependency (Sora `editor-bom:0.24.5`). That toolchain carries a
 > known incremental-compiler quirk: it can cache a stale state and report phantom `Unresolved
-> reference` errors on code that compiles cleanly from scratch — a false *negative* (green turned
+> reference` errors on code that compiles cleanly from scratch – a false *negative* (green turned
 > red), never a false pass. A from-scratch build is therefore the source of truth, and CI runs
 > `clean` first so it never trusts a poisoned cache.
 
@@ -140,15 +140,15 @@ full gate from a clean build:
 - **Unit tests** cover the critical paths, including the
   Essential Safeguards: crash-safe save with process-death recovery from a durable write-ahead log
   (`LocalFileRepositoryAtomicSaveTest`), LF/CRLF round-trip fidelity
-  (`MarkdownViewModelLineEndingTest`), and large-file crash resistance
-  (`MarkwonRendererLargeFileTest`, ~5,000 lines).
-- **Visual-regression goldens** via [Roborazzi](https://github.com/takahirom/roborazzi) — every
+  (`MarkdownViewModelLineEndingTest`), and a ~5,000-line document renders without crashing
+  (`MarkwonRendererLargeFileTest`).
+- **Visual-regression goldens** via [Roborazzi](https://github.com/takahirom/roborazzi) – every
   Markdown sample × 3 font scales × 2 themes, plus the Welcome, search, and GitHub-teaser screens,
   rendered under Robolectric and pinned to a fixed device config. Any layout or typography drift
   fails the build.
-- **Static analysis & style** — [ktlint](https://github.com/JLLeitschuh/ktlint-gradle) and
+- **Static analysis & style** – [ktlint](https://github.com/JLLeitschuh/ktlint-gradle) and
   [detekt](https://github.com/detekt/detekt), both baselined and run in the gate.
-- **License diligence** — all third-party dependencies and bundled fonts are tracked in
+- **License diligence** – all third-party dependencies and bundled fonts are tracked in
   [LICENSES.md](LICENSES.md) and surfaced in-app, and verified compatible with GPL-3.0-or-later as a
   combined work.
 
@@ -171,7 +171,7 @@ full gate from a clean build:
 
 ## Roadmap
 
-PilcrowMD v1 is intentionally focused — read and edit Markdown beautifully and safely, offline.
+PilcrowMD v1 is intentionally focused – read and edit Markdown beautifully and safely, offline.
 Directions under consideration for future releases:
 
 - Document collections / multi-file libraries.
@@ -183,7 +183,7 @@ Nothing here is a commitment; the v1 safeguards and native-only constraint alway
 
 ## Contributing
 
-Bug reports, feature ideas, reproductions and design feedback are very welcome — please open an
+Bug reports, feature ideas, reproductions and design feedback are very welcome – please open an
 issue. Outside code contributions are not accepted, at least for now;
 **[CONTRIBUTING.md](CONTRIBUTING.md)** is the canonical statement of what is wanted and how a change
 you care about can still reach the app. Please also read our
@@ -207,11 +207,11 @@ assets, which are documented in [LICENSES.md](LICENSES.md) and surfaced in-app u
 
 PilcrowMD stands on excellent open-source work:
 
-- [Markwon](https://github.com/noties/Markwon) and [Prism4j](https://github.com/noties/Prism4j) —
+- [Markwon](https://github.com/noties/Markwon) and [Prism4j](https://github.com/noties/Prism4j) –
   native Markdown rendering and syntax highlighting.
-- [Sora Editor](https://github.com/Rosemoe/sora-editor) — the native code editor.
-- [JLatexMath](https://github.com/opencollab/jlatexmath) — math typesetting.
-- [Roborazzi](https://github.com/takahirom/roborazzi) — screenshot testing.
+- [Sora Editor](https://github.com/Rosemoe/sora-editor) – the native code editor.
+- [JLatexMath](https://github.com/opencollab/jlatexmath) – math typesetting.
+- [Roborazzi](https://github.com/takahirom/roborazzi) – screenshot testing.
 - [Source Serif 4](https://github.com/adobe-fonts/source-serif) and
-  [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) — the typefaces, under the SIL Open
+  [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) – the typefaces, under the SIL Open
   Font License.

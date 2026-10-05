@@ -16,7 +16,10 @@ import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
  */
 fun searchableMatchOffsets(text: CharSequence, query: String): List<Int> {
     val excluded = if (text is Spanned) {
-        text.getSpans(0, text.length, JLatexAsyncDrawableSpan::class.java)
+        // A formula that failed to parse is plain source text under a MathSourceSpan (M-260); the
+        // search use case still treats it as maths, so it is skipped here too.
+        listOf(JLatexAsyncDrawableSpan::class.java, MathSourceSpan::class.java)
+            .flatMap { type -> text.getSpans(0, text.length, type).toList() }
             .map { text.getSpanStart(it) until text.getSpanEnd(it) }
     } else {
         emptyList()

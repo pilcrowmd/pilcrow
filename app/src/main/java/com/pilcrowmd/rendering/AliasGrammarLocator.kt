@@ -12,14 +12,24 @@ import io.noties.prism4j.Prism4j
  * here, wrapped around it, rather than in generated code.
  *
  * `diff` and `patch` go to the bundled `git` grammar. A unified diff is what `git diff` prints, and
- * that grammar already tokenises its `inserted`, `deleted` and `coord` (`@@ … @@`) lines.
+ * that grammar already tokenises its `inserted`, `deleted` and `coord` (`@@ … @@`) lines. `jsonc` is
+ * not here: it has its own TextMate grammar (NEW-35).
+ *
+ * Markwon passes the whole info string, so it is read through [fenceLanguage] first: a fence with
+ * attributes (```` ```python title="x" ````) is looked up as `python` (M-243). The PDF uses the same
+ * aliases as the screen (M-178, NEW-22).
  */
-class AliasGrammarLocator(private val delegate: GrammarLocator = GrammarLocatorDef()) : GrammarLocator {
+class AliasGrammarLocator(
+    private val delegate: GrammarLocator = GrammarLocatorDef(),
+    private val aliases: Map<String, String> = ALIASES,
+) : GrammarLocator {
 
-    override fun grammar(prism4j: Prism4j, language: String): Prism4j.Grammar? =
-        delegate.grammar(prism4j, ALIASES[language] ?: language)
+    override fun grammar(prism4j: Prism4j, language: String): Prism4j.Grammar? {
+        val name = fenceLanguage(language)
+        return delegate.grammar(prism4j, aliases[name] ?: name)
+    }
 
-    override fun languages(): Set<String> = delegate.languages() + ALIASES.keys
+    override fun languages(): Set<String> = delegate.languages() + aliases.keys
 
     private companion object {
         val ALIASES = mapOf("diff" to "git", "patch" to "git")

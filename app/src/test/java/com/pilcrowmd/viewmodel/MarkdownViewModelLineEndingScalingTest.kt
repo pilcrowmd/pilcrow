@@ -36,7 +36,7 @@ import org.robolectric.RobolectricTestRunner
  * came from `Regex.findAll(...).count()` on ANDROID, where each match re-enters ICU's
  * `MatcherNative.setInput` and re-copies the whole document, making the true cost
  * BYTES x MATCHES. This test runs on the JVM, where `java.util.regex` is O(n) and does no per-match
- * copy — so the exact code that froze the app for 294 s on a device would PASS here in milliseconds.
+ * copy — so the exact code that froze the app for 294 s on a device would PASS here.
  * That is not a flaw to be fixed by tuning thresholds; it is a property of the runtime.
  *
  * **This was VERIFIED, not assumed: both tests below were run against the exact regex implementation
@@ -50,35 +50,26 @@ import org.robolectric.RobolectricTestRunner
  *    one a byte-only sweep would have missed entirely (device UAT: two fixtures of identical size,
  *    14,152 vs 75,934 lines, behaved completely differently);
  *  - the BYTE axis at constant line density.
- * A reimplementation that allocated per match, built a match list, or took a substring per line
- * would fail here even on the JVM. Ratios are asserted rather than absolute times, so the test is
- * insensitive to how fast the machine running it happens to be.
+ * A reimplementation that rescanned the text per match, or took a substring or copy per line, would
+ * fail here.
  *
- * ## Measured margin (why these limits, and why these input sizes)
+ * ## Counted, not timed (M-215)
  *
- * Ratios are robust to machine speed but not to GC/JIT noise, and a guard that flakes gets disabled
- * by whoever is trying to merge late at night — after which it protects nothing while still appearing
- * in the file list. So the margin was measured rather than assumed, over repeated local runs of the
- * shipped linear implementation:
- *  - LINE axis: 0.82-0.97 against a limit of 4.0 (linear predicts ~1.0) — over 4x headroom.
- *  - BYTE axis: 3.36-4.25 against a limit of 8.0 (linear predicts 4.0, quadratic 16.0) — the mean
- *    sits on the prediction and the limit is ~2x it.
+ * The cost is the number of characters `detectLineEnding` reads, counted by [CountingText]: every
+ * `get`, plus the full length of any `subSequence` or `toString` copy. The count depends only on the
+ * input, so the ratios below are the same on every machine and every run. The earlier version timed
+ * the calls with `System.nanoTime` and asserted the same ratios; it failed once on CI (#257, first
+ * run on `4dc6549`) and passed on rerun, because a shared runner's GC and JIT noise reached the
+ * limit. The limits are unchanged; only the measurement is.
  *
- * The LINE-axis upper bound is 0.97 and not the 0.96 first recorded because it was RE-MEASURED on
- * the rebased branch — five runs gave 0.941/0.948/0.948/0.949/0.970 (mean 0.951), and the top
- * sample sat just outside the original span. The number was widened to the observation rather than
- * the observation waved through as noise: a recorded margin that the shipped code already exceeds
- * is worse than no record, because the next person reads it as the range to panic outside of. The
- * same five runs put the BYTE axis at 3.40-4.17 (mean 3.93), inside its recorded span, so that
- * line is unchanged. Neither LIMIT moved — the worst case is still 4.1x under the line-axis limit
- * and 1.9x under the byte-axis one.
- *
- * The byte-axis inputs were RAISED (8k/32k lines to 24k/96k) and trials raised to five specifically
- * to tighten that spread — it was 3.32-4.79 at the smaller sizes, and the worst case sat too close to
- * the ceiling for a slower CI runner. **The thresholds were NOT loosened to fit; the signal was raised
- * above the noise.** If this ever starts flaking, do the same again — raise the inputs, or move the
- * assertion to the instrumented lane. Do not tune the limits until it goes green, which would leave a
- * number that means nothing.
+ * The shipped loop reads each character once and, at each `\n` after the first character, the one
+ * before it. That gives these exact ratios for the fixtures below:
+ *  - LINE axis: 1.069 (10x the line endings at the same byte size) against a limit of 4.0;
+ *  - BYTE axis: 4.000 (4x the bytes at the same line density) against a limit of 8.0, where linear
+ *    predicts 4.0 and quadratic 16.0.
+ * Any implementation that stays linear, with any constant number of passes, gives the same ratios.
+ * The fixtures are 10x smaller than the timed version's, because a count needs no signal above noise;
+ * the smaller size also keeps a superlinear regression from making the test hang.
  */
 @RunWith(RobolectricTestRunner::class)
 class MarkdownViewModelLineEndingScalingTest {
@@ -129,30 +120,49 @@ class MarkdownViewModelLineEndingScalingTest {
         return buildString(lines * bytesPerLine) { repeat(lines) { append(body).append("\r\n") } }
     }
 
-    /** Best-of-three total nanos for [REPS] calls — min, because noise only ever adds time. */
-    private fun cost(text: String): Long {
-        repeat(2) { viewModel.detectLineEnding(text) } // warm the JIT before measuring
-        var best = Long.MAX_VALUE
-        repeat(TRIALS) {
-            val t0 = System.nanoTime()
-            repeat(REPS) { viewModel.detectLineEnding(text) }
-            best = minOf(best, System.nanoTime() - t0)
+    /**
+     * Text that counts the characters read from it: one per [get], and the full length of any copy
+     * taken through [subSequence] or [toString], so a per-line copy is not free.
+     */
+    private class CountingText(private val text: String) : CharSequence {
+        var reads = 0L
+            private set
+
+        override val length: Int get() = text.length
+
+        override fun get(index: Int): Char {
+            reads++
+            return text[index]
         }
-        return best
+
+        override fun subSequence(startIndex: Int, endIndex: Int): CharSequence {
+            reads += endIndex - startIndex
+            return text.subSequence(startIndex, endIndex)
+        }
+
+        override fun toString(): String {
+            reads += text.length
+            return text
+        }
+    }
+
+    /** Characters read by one call on [text], checking the answer on the way. */
+    private fun cost(text: String): Long {
+        val counted = CountingText(text)
+        assertEquals("CRLF", viewModel.detectLineEnding(counted))
+        return counted.reads
     }
 
     @Test
     fun `cost does not blow up when LINE COUNT grows at a constant byte size`() {
-        // ~2 MB either way; only the number of line endings differs, by 10x.
-        val fewLines = document(lines = 16_000, bytesPerLine = 130)
-        val manyLines = document(lines = 160_000, bytesPerLine = 13)
+        // ~208 KB either way; only the number of line endings differs, by 10x.
+        val fewLines = document(lines = 1_600, bytesPerLine = 130)
+        val manyLines = document(lines = 16_000, bytesPerLine = 13)
         assertEquals(
             "fixtures must be BYTE-IDENTICAL in size or this axis measures nothing",
             fewLines.length,
             manyLines.length,
         )
-        assertEquals("CRLF", viewModel.detectLineEnding(fewLines))
-        assertEquals("CRLF", viewModel.detectLineEnding(manyLines))
 
         val ratio = cost(manyLines).toDouble() / cost(fewLines)
         assertTrue(
@@ -165,10 +175,8 @@ class MarkdownViewModelLineEndingScalingTest {
 
     @Test
     fun `cost grows about linearly when BYTE SIZE grows at a constant line density`() {
-        val small = document(lines = 24_000, bytesPerLine = 64)
-        val large = document(lines = 96_000, bytesPerLine = 64) // 4x the bytes, same density
-        assertEquals("CRLF", viewModel.detectLineEnding(small))
-        assertEquals("CRLF", viewModel.detectLineEnding(large))
+        val small = document(lines = 2_400, bytesPerLine = 64)
+        val large = document(lines = 9_600, bytesPerLine = 64) // 4x the bytes, same density
 
         val ratio = cost(large).toDouble() / cost(small)
         assertTrue(
@@ -179,12 +187,7 @@ class MarkdownViewModelLineEndingScalingTest {
     }
 
     private companion object {
-        const val REPS = 20
-
-        /** Best-of-N: noise only ever ADDS time, so the minimum is the least-contaminated sample. */
-        const val TRIALS = 5
-
-        /** Linear-in-bytes predicts ~1x here; 4x leaves room for allocation noise well below 10x. */
+        /** Linear-in-bytes predicts ~1x here; 4x leaves room for a linear loop that reads more per line ending. */
         const val LINE_AXIS_LIMIT = 4.0
 
         /** Linear predicts 4x, quadratic 16x. */

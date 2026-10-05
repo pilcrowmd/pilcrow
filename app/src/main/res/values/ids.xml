@@ -19,4 +19,14 @@
       tapped view — can open the section it lands in, as the search and headings jumps do.
     -->
     <item name="details_state" type="id" />
+    <!--
+      M-159: the reader's AnchorTargets (heading anchor to block position), on its RecyclerView, so a
+      `[text](#heading)` tap — which only has the tapped view — can find the heading it names.
+    -->
+    <item name="anchor_targets" type="id" />
+    <!--
+      M-93: what a tap on a relative-image placeholder does ("Tap to show"), on the reader's
+      RecyclerView, so the span in a block's text reaches the screen without a global callback.
+    -->
+    <item name="image_tap_handler" type="id" />
 </resources>

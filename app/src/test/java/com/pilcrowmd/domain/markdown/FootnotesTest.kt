@@ -237,4 +237,15 @@ class FootnotesTest {
         assertEquals("before  after", visibleText(paragraph))
         assertEquals(1, references(doc).size)
     }
+
+    @Test
+    fun linkReferenceDefinitionTakesNoBlockIndex() {
+        // M-214: the adapter has no item for `[r]: …`, so it shows the text at 0, the note at 1 and
+        // `Tail.` at 2. Counting the definition sent the marker to `Tail.` and the back-link to the note.
+        val doc = transformed("[r]: https://x.test\n\nText[^1] ref.\n\n[^1]: the note\n\nTail.\n")
+
+        assertEquals("marker jumps to the note", 1, references(doc).single().definitionBlockIndex)
+        assertEquals("note knows its own position", 1, definitions(doc).single().blockIndex)
+        assertEquals("back-link goes to the text", 0, definitions(doc).single().firstReferenceBlockIndex)
+    }
 }

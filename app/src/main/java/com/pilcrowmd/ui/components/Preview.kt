@@ -3,12 +3,17 @@
 
 package com.pilcrowmd.ui.components
 
+import android.net.Uri
 import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityManager
 import android.widget.TextView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -25,12 +30,19 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.doOnNextLayout
@@ -38,8 +50,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.Details
+import com.pilcrowmd.domain.markdown.HeadingAnchors
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.SearchMatch
+import com.pilcrowmd.rendering.AnchorTargets
+import com.pilcrowmd.rendering.CodeHighlighting
 import com.pilcrowmd.rendering.DetailsDecoration
 import com.pilcrowmd.rendering.DetailsState
 import com.pilcrowmd.rendering.MarkwonRenderer
@@ -50,12 +65,14 @@ import com.pilcrowmd.rendering.applyReaderJumpBehaviour
 import com.pilcrowmd.rendering.clearReaderHighlight
 import com.pilcrowmd.rendering.documentOverflowsViewport
 import com.pilcrowmd.rendering.scrollToDocumentEnd
+import com.pilcrowmd.rendering.setImageTapHandler
 import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
 import com.pilcrowmd.ui.theme.mdColors
 import io.noties.markwon.Markwon
 import io.noties.markwon.recycler.MarkwonAdapter
+import kotlinx.coroutines.delay
 
 /**
  * Block-level Markdown preview.
@@ -98,7 +115,14 @@ fun MarkdownPreview(
     // PLAIN renders the content verbatim via PlainTextBlocks (no Markdown parsing);
     // MARKDOWN is today's path, byte-for-byte unchanged.
     renderMode: RenderMode = RenderMode.MARKDOWN,
+    // M-93: the note on screen, which `images/x.png` is read against; null leaves relative images
+    // as placeholders. [imageAccessKey] changes when the granted folders do, which re-renders the
+    // pictures; [onImageTap] is a tap on a relative-image placeholder ("Tap to show").
+    documentUri: Uri? = null,
+    imageAccessKey: String = "",
+    onImageTap: () -> Unit = {},
 ) {
+    val currentOnImageTap = rememberUpdatedState(onImageTap)
     // Captured once per composition-entry, so re-entering Reader mode (or rotating) restores the
     // saved offset without fighting live scroll updates.
     val initialScroll = remember { scrollPosition }
@@ -114,6 +138,8 @@ fun MarkdownPreview(
     }
     // M-161: which <details> sections are open. One per screen; the adapters built here read it.
     val detailsState = remember { DetailsState() }
+    // M-159: which heading anchor is which block; the link resolver reads it off the RecyclerView's tag.
+    val anchorTargets = remember { AnchorTargets() }
     val lastSearchKey = remember { mutableStateOf<String?>(null) }
     val lastJumpSeq = remember { mutableStateOf(0) }
     // Tracks the font/scale/mermaid config the current adapter was built with, so the adapter
@@ -121,10 +147,18 @@ fun MarkdownPreview(
     // arrive from DataStore slightly after the auto-reopened file renders).
     val lastConfig = remember { mutableStateOf<String?>(null) }
 
+    // M-136: code-colouring jobs run in this scope, so they are cancelled when the Preview leaves composition.
+    val codeHighlightScope = rememberCoroutineScope()
+    val codeHighlighting = remember(renderer, codeHighlightScope) {
+        CodeHighlighting(renderer.codeHighlighter, codeHighlightScope)
+    }
+
     // Handle to the RecyclerView so the jump-to-top/bottom controls can scroll it.
     val recyclerView = remember { mutableStateOf<RecyclerView?>(null) }
     // Only show the jump controls when the content overflows the viewport (not on short docs).
     val canScroll = remember { mutableStateOf(false) }
+    // M-195: the jump controls show only while the list is being scrolled (see [JumpControls]).
+    val scrolling = remember { mutableStateOf(false) }
 
     // The scale the adapter is built at. The live pinch reflows the visible TextViews directly (no
     // rebuild mid-gesture); this is bumped ONCE on gesture end to trigger the single crisp rebuild,
@@ -152,6 +186,8 @@ fun MarkdownPreview(
                     // of the viewport instead of being clamped to the bottom.
                     applyReaderJumpBehaviour(this, c.searchHighlightFocused.toArgb())
                     setTag(R.id.details_state, detailsState)
+                    setTag(R.id.anchor_targets, anchorTargets)
+                    setImageTapHandler { currentOnImageTap.value() }
                     addItemDecoration(DetailsDecoration(context, detailsState, c))
                     adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         context,
@@ -163,11 +199,16 @@ fun MarkdownPreview(
                         c,
                         wrapCodeLines,
                         detailsState,
+                        codeHighlighting,
                     )
                     addOnScrollListener(object : RecyclerView.OnScrollListener() {
                         override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                             onScrollChanged(rv.currentScrollAnchor())
                             canScroll.value = documentOverflowsViewport(rv)
+                        }
+
+                        override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                            scrolling.value = newState != RecyclerView.SCROLL_STATE_IDLE
                         }
                     })
 
@@ -269,6 +310,8 @@ fun MarkdownPreview(
                 }
             },
             update = { rv ->
+                // M-93: set before any render below, so a relative image binds against this note.
+                renderer.imageBase.noteUri = documentUri
                 // Sync the persisted scale INTO the live render scale ONLY when the param itself
                 // changes (Settings slider, or the round-trip after a pinch persists). During a pinch
                 // the param is constant, so this never overwrites the gesture-driven liveFontScale.
@@ -287,7 +330,7 @@ fun MarkdownPreview(
                 // renderMode is part of the key: the .txt plain⇄markdown toggle re-renders
                 // through the flicker-free rebuild path like a font-scale change.
                 val configKey = "${liveFontScale.value}|${fontSet.id}|$mermaidCloudEnabled|$wrapCodeLines|" +
-                    "${c.primaryBackground}|$renderMode"
+                    "${c.primaryBackground}|$renderMode|$imageAccessKey"
                 if (configKey != lastConfig.value) {
                     // Keep the user's place across the rebuild: the live anchor mid-reading (e.g. the
                     // commit at the end of a pinch lands where the live reflow left the viewport), or the
@@ -310,6 +353,7 @@ fun MarkdownPreview(
                         c,
                         wrapCodeLines,
                         detailsState,
+                        codeHighlighting,
                     )
                     // Populate before attaching → no empty frame.
                     newAdapter.setContentForMode(
@@ -317,6 +361,7 @@ fun MarkdownPreview(
                         content,
                         renderMode,
                         detailsState,
+                        anchorTargets,
                     )
                     rv.detailsDecoration()?.scheme = c
                     lastContent.value = content // content is now rendered; the (1) re-render is skipped this pass
@@ -340,6 +385,7 @@ fun MarkdownPreview(
                         content,
                         renderMode,
                         detailsState,
+                        anchorTargets,
                     )
                     val lm = rv.layoutManager as? LinearLayoutManager
                     rv.post { lm?.scrollToPositionWithOffset(initialScroll.index, initialScroll.offset) }
@@ -401,6 +447,7 @@ fun MarkdownPreview(
         JumpControls(
             recyclerView = recyclerView.value,
             visible = canScroll.value,
+            scrolling = scrolling.value,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
@@ -493,15 +540,55 @@ internal fun clearPinchTextScaleBases(root: View) {
     clear(root)
 }
 
+/** How long the jump controls stay after the list stops scrolling, before they fade out (M-195). */
+internal const val JUMP_CONTROLS_LINGER_MS = 1_500L
+
 /**
  * Stacked up/down buttons that jump the preview to the very top / bottom. Subtle and
  * token-colored (Safeguard 4); preview-only (this composable is only used by [MarkdownPreview]).
  * Owns the scroll actions so [MarkdownPreview] stays simple.
+ *
+ * **M-195: hidden until the user scrolls.** They are drawn over the text, so at rest they would
+ * cover whatever is under the corner. They fade in while the list is [scrolling] (a drag or a
+ * fling, the reader's own scroll state) and fade out [JUMP_CONTROLS_LINGER_MS] after it stops. The
+ * jumps themselves do not change the scroll state, so a tap does not restart the timer.
+ *
+ * With touch exploration on (TalkBack) they stay shown whenever the document scrolls, as before
+ * M-195: the covered text is not being read by eye, and a control that vanishes 1.5 s after a
+ * scroll is one a TalkBack user cannot find.
  */
 @Composable
-private fun JumpControls(recyclerView: RecyclerView?, visible: Boolean, modifier: Modifier = Modifier) {
-    if (!visible) return // hidden on short docs that don't scroll
-    Column(modifier = modifier) {
+private fun JumpControls(
+    recyclerView: RecyclerView?,
+    visible: Boolean,
+    scrolling: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var lingering by remember { mutableStateOf(false) }
+    LaunchedEffect(scrolling) {
+        if (scrolling) {
+            lingering = true
+        } else if (lingering) {
+            // Only once they are showing: a reader that is never scrolled schedules nothing.
+            delay(JUMP_CONTROLS_LINGER_MS)
+            lingering = false
+        }
+    }
+    val touchExploration = rememberTouchExplorationEnabled()
+    // `visible` still gates both paths: hidden on short docs that don't scroll.
+    AnimatedVisibility(
+        visible = visible && (lingering || touchExploration),
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier,
+    ) {
+        JumpButtons(recyclerView)
+    }
+}
+
+@Composable
+private fun JumpButtons(recyclerView: RecyclerView?) {
+    Column {
         JumpButton(icon = Icons.Filled.KeyboardArrowUp, description = "Scroll to top") {
             (recyclerView?.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
         }
@@ -514,6 +601,19 @@ private fun JumpControls(recyclerView: RecyclerView?, visible: Boolean, modifier
             recyclerView?.let { scrollToDocumentEnd(it) }
         }
     }
+}
+
+/** Whether touch exploration (TalkBack) is on, kept current while the reader is shown. */
+@Composable
+private fun rememberTouchExplorationEnabled(): Boolean {
+    val manager = LocalContext.current.getSystemService(AccessibilityManager::class.java)
+    var enabled by remember { mutableStateOf(manager?.isTouchExplorationEnabled == true) }
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { enabled = it }
+        manager?.addTouchExplorationStateChangeListener(listener)
+        onDispose { manager?.removeTouchExplorationStateChangeListener(listener) }
+    }
+    return enabled
 }
 
 @Composable
@@ -545,11 +645,13 @@ private fun MarkwonAdapter.setContentForMode(
     content: String,
     renderMode: RenderMode,
     details: DetailsState,
+    anchors: AnchorTargets,
 ) {
     // The shared post-parse passes run before the adapter splits the document into items — and the
     // <details> sections are read off the same tree the adapter paints (M-161); a chunk tree has none.
     val document = ReaderTree.build(markwon, content, plain = renderMode == RenderMode.PLAIN)
     details.load(content, Details.sections(document))
+    anchors.byAnchor = HeadingAnchors.targets(document)
     setParsedMarkdown(markwon, document)
 }
 

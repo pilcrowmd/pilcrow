@@ -118,6 +118,7 @@ class LocalStorageManager(
     private val mermaidCloudEnabledKey = booleanPreferencesKey("mermaid_cloud_enabled")
     private val wrapCodeLinesKey = booleanPreferencesKey("wrap_code_lines")
     private val themeModeKey = stringPreferencesKey("theme_mode")
+    private val dismissedImageFoldersKey = stringSetPreferencesKey("dismissed_image_folders")
 
     private val maxRecents = 8
 
@@ -291,6 +292,17 @@ class LocalStorageManager(
 
     override suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.edit { prefs -> prefs[themeModeKey] = mode.name }
+    }
+
+    override val dismissedImageFolders: Flow<Set<String>> = dataStore.data.map { prefs ->
+        prefs[dismissedImageFoldersKey].orEmpty()
+    }.distinctUntilChanged()
+
+    override suspend fun setImageFolderDismissed(folderKey: String, dismissed: Boolean) {
+        dataStore.edit { prefs ->
+            val current = prefs[dismissedImageFoldersKey].orEmpty()
+            prefs[dismissedImageFoldersKey] = if (dismissed) current + folderKey else current - folderKey
+        }
     }
 
     private fun encodeRecents(list: List<RecentFile>): String =

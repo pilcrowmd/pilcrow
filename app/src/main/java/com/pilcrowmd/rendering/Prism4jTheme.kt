@@ -60,7 +60,7 @@ class PilcrowTheme(private val colorScheme: PilcrowColorScheme = DarkColorScheme
     private companion object {
         /**
          * Token type → role. Tokens added for M-132/M-133 map ONLY to the added, nullable roles, never to
-         * one of the original six, so a scheme that leaves those roles null (Print) colours exactly the
+         * one of the original six, so a scheme that leaves those roles null colours exactly the
          * tokens it did before.
          */
         val TOKEN_ROLES: Map<String, (CodeSyntaxColors) -> Color?> = buildMap {

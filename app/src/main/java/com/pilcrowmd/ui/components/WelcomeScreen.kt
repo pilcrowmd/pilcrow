@@ -62,13 +62,13 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -108,22 +108,41 @@ private const val WORDMARK_WIDTH_BUDGET = 0.92f
 private val WORDMARK_SIZE = 58.dp
 
 /**
+ * M-196: the recents rows the lead gap is sized for, whatever the real count. Six puts the block
+ * where it sat with six recents before M-196; rows past the screen scroll into view.
+ */
+private const val RESERVED_RECENT_ROWS = 6
+
+/** Stand-in rows for [RESERVED_RECENT_ROWS]: measured for their height only, never shown. */
+private val RESERVED_RECENTS =
+    List(RESERVED_RECENT_ROWS) { RecentFileUi(Uri.EMPTY, "reserved.md", 0L, available = true) }
+
+/**
  * Welcome / start screen (shown when no file is open). Visual design per the
  * reference mockup: faint ¶ pilcrow serif watermark (upper third), purple-accent
  * serif wordmark, sparkle divider, subtitle, cream "Open MD File" button, recents
  * list, footer. All colors from the token layer.
  */
 /**
- * Places [content] under a leading gap of [maxGap] where the viewport has room for it, and shrinks
- * that gap by exactly as much as it must where the viewport does not — so the last thing in
- * [content] is never pushed past the bottom of the screen.
+ * Places [content] under a leading gap of at most [gapRange]'s end where the viewport has room for it, and shrinks
+ * that gap by exactly as much as it must where the viewport does not, then places [below] directly
+ * under [content].
+ *
+ * **M-196: the gap yields to [content] plus [reserve], never to [below].** [reserve] is measured and
+ * never placed or drawn, and has no semantics. So [content] has one position however tall [below]
+ * grows or shrinks, and [below] runs past the bottom of the screen into the scroll when it is taller
+ * than what [reserve] set aside.
+ *
+ * **[gapRange]'s start is a floor under that** (the settings gear's bottom edge, so the wordmark never starts
+ * above it where large text leaves no room), and it gives way where the viewport cannot fit
+ * [content] below it: [content] staying on screen wins over clearing the gear.
  *
  * There is deliberately NO "short viewport" threshold here. A tuned screen constant is what put the
  * Open button off the bottom in landscape in the first place, and any constant picked today is wrong
  * on a phone nobody here has measured. The gap is whatever [viewportHeight] has left once [content]
- * has been measured, clamped to [maxGap]: tall screens clamp and look exactly as before, short ones
- * give back only the difference, and foldables, tablets and split-screen are covered without anyone
- * having tested them because nothing is keyed to a particular screen.
+ * and [reserve] have been measured, clamped to [gapRange]: tall screens clamp, short ones give back only
+ * the difference, and foldables, tablets and split-screen are covered without anyone having tested
+ * them because nothing is keyed to a particular screen.
  *
  * [viewportHeight] must be passed in: this sits inside a vertical scroll, where the incoming max
  * height is infinite, so the layout cannot discover the visible height for itself.
@@ -131,16 +150,26 @@ private val WORDMARK_SIZE = 58.dp
 @Composable
 private fun YieldingTopGap(
     viewportHeight: Dp,
-    maxGap: Dp,
-    modifier: Modifier = Modifier,
+    gapRange: ClosedRange<Dp>,
+    reserve: @Composable () -> Unit,
+    below: @Composable () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Layout(content = content, modifier = modifier) { measurables, constraints ->
-        val placeable = measurables.single().measure(constraints)
-        val gap = (viewportHeight.roundToPx() - placeable.height)
-            .coerceIn(0, maxGap.roundToPx())
-        layout(placeable.width, gap + placeable.height) {
+    val unplacedReserve: @Composable () -> Unit = { Box(Modifier.clearAndSetSemantics {}) { reserve() } }
+    Layout(contents = listOf(content, below, unplacedReserve)) { (contentM, belowM, reserveM), constraints ->
+        val placeable = contentM.single().measure(constraints)
+        val belowPlaceable = belowM.single().measure(constraints)
+        val reserved = reserveM.single().measure(constraints).height
+        val room = viewportHeight.roundToPx() - placeable.height
+        val gap = maxOf(room - reserved, gapRange.start.roundToPx())
+            .coerceAtMost(room)
+            .coerceIn(0, gapRange.endInclusive.roundToPx())
+        layout(
+            maxOf(placeable.width, belowPlaceable.width),
+            gap + placeable.height + belowPlaceable.height,
+        ) {
             placeable.placeRelative(0, gap)
+            belowPlaceable.placeRelative(0, gap + placeable.height)
         }
     }
 }
@@ -244,6 +273,10 @@ fun WelcomeScreen(
     // arithmetic this rule exists to replace.
     var boxTopInRoot by remember { mutableFloatStateOf(Float.NaN) }
     var gearBottomInRoot by remember { mutableFloatStateOf(Float.NaN) }
+
+    // M-196: the bottom edge of the gear BUTTON (its 40dp circle, not the glyph inside it). The
+    // welcome block's wordmark never starts above it, whatever the font scale.
+    var gearButtonBottomInRoot by remember { mutableFloatStateOf(Float.NaN) }
     val wordmarkFontSize = with(LocalDensity.current) { WORDMARK_SIZE.toSp() }
     Box(
         modifier = modifier
@@ -294,6 +327,10 @@ fun WelcomeScreen(
         val gearBottom = with(LocalDensity.current) {
             (gearBottomInRoot - boxTopInRoot).takeIf { it.isFinite() }?.toDp()
         }
+        // 0 until the gear has been measured, one frame after the first layout.
+        val gearButtonBottom = with(LocalDensity.current) {
+            (gearButtonBottomInRoot - boxTopInRoot).takeIf { it.isFinite() }?.toDp() ?: 0.dp
+        }
         if (gearBottom != null) {
             PilcrowInkMark(
                 fontSize = 280.dp,
@@ -326,16 +363,16 @@ fun WelcomeScreen(
                             .padding(horizontal = 32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        // WHAT THE GAP MEASURES IS THE WHOLE POINT OF M-67. The recents list is
-                        // INSIDE this content, not a sibling below it, so `YieldingTopGap` measures
-                        // hero + recents together and the gap yields to both. As a sibling it was
-                        // invisible to the measurement: the gap filled the viewport with the hero
-                        // alone and pushed RECENT below the fold on every portrait launch.
-                        // The two states of M-67's rule fall out of that with no branch on
-                        // emptiness — an empty list contributes ZERO height, so the gap is
-                        // arithmetically identical and a first-run user sees exactly what they saw
-                        // before (which the four `welcome_*` goldens hold to). A populated list
-                        // makes the content taller, so the gap shrinks and the block moves up.
+                        // M-196: THE BLOCK HAS ONE POSITION. The gap is sized as if the recents
+                        // list held RESERVED_RECENT_ROWS rows, whatever it really holds, 0 included,
+                        // so the block (wordmark to "Browse all files") never moves as the list grows
+                        // or empties, and a tap aimed at Open lands on Open. It is where the block sat
+                        // with that many recents before M-196, except that the wordmark never starts
+                        // above the gear's bottom edge (large text, landscape). Rows past the screen continue below
+                        // the fold and the page scrolls; nothing is hidden. The list and the transient
+                        // loading/error lines sit BELOW the block and are not measured into the gap,
+                        // so they cannot move it either. (Supersedes M-67's first-run position, which
+                        // gave the empty screen the full gap.)
                         //
                         // The lead gap is 206dp WHERE THERE IS ROOM, and yields where there is not, so
                         // the Open button is never pushed off the bottom. What is reserved runs
@@ -346,7 +383,57 @@ fun WelcomeScreen(
                         // original 186dp because the wordmark font dropped 72dp -> 58dp to fit the
                         // longer "PilcrowMD": the text block is shorter, and the 20dp puts the
                         // divider, tagline and CTA back on their original rows.
-                        YieldingTopGap(viewportHeight = viewportHeight, maxGap = 206.dp) {
+                        YieldingTopGap(
+                            viewportHeight = viewportHeight,
+                            gapRange = gearButtonBottom..206.dp,
+                            reserve = { RecentsSection(RESERVED_RECENTS) },
+                            below = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    // M-115: the restore is running and the actions above are inert —
+                                    // say so, rather than leaving taps silently doing nothing. Token
+                                    // colour only (Safeguard 4); rendered only while loading, so the
+                                    // resting layout and every golden are untouched.
+                                    if (isLoading) {
+                                        Spacer(Modifier.height(16.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                                color = c.secondaryText,
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                            Text(
+                                                text = "Opening your last document…",
+                                                color = c.secondaryText,
+                                                fontSize = 13.sp,
+                                            )
+                                        }
+                                    }
+                                    // M-126: a failed open says so, and keeps saying so. Colour from
+                                    // the token layer only (Safeguard 4); rendered only when a load has
+                                    // actually failed, so the resting layout and every golden are
+                                    // untouched.
+                                    if (loadErrorMessage != null) {
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            text = loadErrorMessage,
+                                            color = c.error,
+                                            fontSize = 13.sp,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                    RecentsSection(recentFiles, onOpenRecent, onRemoveRecent, isLoading) {
+                                        showClearConfirm = true
+                                    }
+                                }
+                            },
+                        ) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -516,71 +603,6 @@ fun WelcomeScreen(
                                         .clickable(enabled = !isLoading) { onOpenAnyFile() }
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                 )
-                                // M-115: the restore is running and the actions above are inert —
-                                // say so, rather than leaving taps silently doing nothing. Token
-                                // colour only (Safeguard 4); rendered only while loading, so the
-                                // resting layout and every golden are untouched.
-                                if (isLoading) {
-                                    Spacer(Modifier.height(16.dp))
-                                    Row(
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp,
-                                            color = c.secondaryText,
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        Text(
-                                            text = "Opening your last document…",
-                                            color = c.secondaryText,
-                                            fontSize = 13.sp,
-                                        )
-                                    }
-                                }
-                                // M-126: a failed open says so, and keeps saying so. Colour from
-                                // the token layer only (Safeguard 4); rendered only when a load has
-                                // actually failed, so the resting layout and every golden are
-                                // untouched.
-                                if (loadErrorMessage != null) {
-                                    Spacer(Modifier.height(16.dp))
-                                    Text(
-                                        text = loadErrorMessage,
-                                        color = c.error,
-                                        fontSize = 13.sp,
-                                        textAlign = TextAlign.Center,
-                                    )
-                                }
-                                // Recents list
-                                if (recentFiles.isNotEmpty()) {
-                                    Spacer(Modifier.height(28.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            "RECENT",
-                                            color = c.secondaryText,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                        Text(
-                                            "Clear",
-                                            color = c.accent,
-                                            fontSize = 13.sp,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .clickable { showClearConfirm = true }
-                                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                                        )
-                                    }
-                                    Spacer(Modifier.height(6.dp))
-                                    recentFiles.forEach { r ->
-                                        RecentRow(r, onOpenRecent, onRemoveRecent, isLoading)
-                                    }
-                                }
                             }
                         }
 
@@ -644,6 +666,11 @@ fun WelcomeScreen(
                     .size(22.dp)
                     .onGloballyPositioned {
                         gearBottomInRoot = it.positionInRoot().y + it.size.height
+                        // The icon's parent layout is the IconButton's circle, so this is the
+                        // button's visible bottom edge, read rather than derived from its sizes.
+                        it.parentLayoutCoordinates?.let { button ->
+                            gearButtonBottomInRoot = button.positionInRoot().y + button.size.height
+                        }
                     },
             )
         }
@@ -677,8 +704,49 @@ fun WelcomeScreen(
     }
 }
 
+/** The RECENT header, its Clear action and one [RecentRow] per file; nothing when [recentFiles] is empty. */
 @Composable
-private fun RecentRow(
+private fun RecentsSection(
+    recentFiles: List<RecentFileUi>,
+    onOpenRecent: (Uri) -> Unit = {},
+    onRemoveRecent: (Uri) -> Unit = {},
+    isLoading: Boolean = false,
+    onClear: () -> Unit = {},
+) {
+    if (recentFiles.isEmpty()) return
+    val c = mdColors()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(28.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "RECENT",
+                color = c.secondaryText,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Clear",
+                color = c.accent,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onClear() }
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        recentFiles.forEach { r ->
+            RecentRow(r, onOpenRecent, onRemoveRecent, isLoading)
+        }
+    }
+}
+
+@Composable
+internal fun RecentRow(
     r: RecentFileUi,
     onOpenRecent: (Uri) -> Unit,
     onRemoveRecent: (Uri) -> Unit,
@@ -713,13 +781,8 @@ private fun RecentRow(
         Spacer(Modifier.width(12.dp))
         // The remove button to the right stays undimmed: it still works during a load.
         Column(modifier = Modifier.weight(1f).dimmedWhen(isLoading)) {
-            Text(
-                text = r.displayName,
-                color = nameColor,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // M-221: a name that does not fit keeps its last 8 characters, shortened in the middle.
+            FileNameText(name = r.displayName, color = nameColor, fontSize = 15.sp)
             Text(
                 text = relativeTime(r.lastOpened) + if (!r.available) " · unavailable" else "",
                 color = c.secondaryText.copy(alpha = 0.6f),

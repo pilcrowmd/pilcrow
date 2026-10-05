@@ -1,0 +1,6 @@
+- Pictures stored next to your note now show inside it. Allow access once per folder.
+- Links inside a document jump to the right heading, including Chinese and other non-Latin ones.
+- Code colours for 19 more languages, including bash, TypeScript, Rust, PHP and PowerShell.
+- PDF export: code prints on a light panel, in colour.
+- Jump buttons hide while you read, so they no longer cover text.
+- Fixes: long file names in Recent, wrong code text when scrolling fast, old search results.

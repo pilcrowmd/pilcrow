@@ -40,7 +40,7 @@
     {
       "scope": ["markup.underline.link", "string.other.link", "markup.link.underline.markdown"],
       "settings": {
-        "foreground": "#4E7A3A",
+        "foreground": "#436B31",
         "fontStyle": "underline"
       }
     },
