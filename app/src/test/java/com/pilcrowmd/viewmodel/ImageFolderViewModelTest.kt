@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,13 +58,20 @@ class ImageFolderViewModelTest {
     private class FakeFolders : FolderAccessRepository {
         val byNote = ConcurrentHashMap<Uri, NoteFolder>()
         val grants = CopyOnWriteArrayList<Uri>()
+        val released = CopyOnWriteArrayList<Uri>()
         var onGrant: (Uri) -> Unit = {}
 
         override suspend fun grantedFolders(): List<Uri> = grants.toList()
-        override suspend fun grantFolder(treeUri: Uri): Result<Unit> {
+
+        // A real dispatcher hop, as in production: a pick's outcome arrives after onFolderPicked returns.
+        override suspend fun grantFolder(treeUri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
             grants += treeUri
             onGrant(treeUri)
-            return Result.success(Unit)
+            Result.success(Unit)
+        }
+        override suspend fun releaseFolder(treeUri: Uri) {
+            released += treeUri
+            grants -= treeUri
         }
         override suspend fun folderFor(noteUri: Uri): NoteFolder = byNote[noteUri] ?: NoteFolder.Unknown
         override suspend fun resolve(noteUri: Uri, relativePath: String): ImageLookup = ImageLookup.Unavailable
@@ -75,6 +83,8 @@ class ImageFolderViewModelTest {
     private val noteInDownload = Uri.parse("content://docs/document/primary%3ADownload%2Fd.md")
     private val notesTree = Uri.parse("content://docs/tree/primary%3ANotes")
     private val unrelatedTree = Uri.parse("content://docs/tree/primary%3AMusic")
+    private val noteRecent = Uri.parse("content://media/document/document%3A5")
+    private val noteShared = Uri.parse("content://com.example.files/root/e.md")
     private val twoPictures = "# Trip\n\n![Hut](images/hut.jpg)\n\n![Map](images/map.png)\n"
 
     @Before
@@ -92,6 +102,8 @@ class ImageFolderViewModelTest {
         folders.byNote[noteB] = NoteFolder.NeedsGrant(NOTES, noteB)
         folders.byNote[noteOther] = NoteFolder.NeedsGrant(TRIPS, noteOther)
         folders.byNote[noteInDownload] = NoteFolder.Blocked(DOWNLOAD)
+        folders.byNote[noteRecent] = NoteFolder.Unlocated("trip.md", pickerStart = noteRecent)
+        folders.byNote[noteShared] = NoteFolder.Unlocated("e.md", pickerStart = null)
     }
 
     @After
@@ -228,10 +240,98 @@ class ImageFolderViewModelTest {
         awaitValue(ImageFolderBanner.AskForFolder(2), "banner after the grant went") { vm.state.value.banner }
     }
 
+    @Test
+    fun `a note from Recent asks to pick its folder, and the picker starts where the repository says`() {
+        val vm = vm()
+        val picks = collectPicks(vm)
+        vm.onDocumentShown(noteRecent, twoPictures)
+
+        awaitValue(ImageFolderBanner.PickNoteFolder(2, "trip.md"), "banner") { vm.state.value.banner }
+        assertTrue(vm.state.value.canAskForFolder)
+        vm.requestFolderAccess()
+        awaitValue(listOf<Uri?>(noteRecent), "picker start at the note") { picks.toList() }
+
+        // Another app's share: no document to start at, so Android's default.
+        vm.onDocumentShown(noteShared, twoPictures)
+        awaitValue(ImageFolderBanner.PickNoteFolder(2, "e.md"), "shared banner") { vm.state.value.banner }
+        vm.requestFolderAccess()
+        awaitValue(listOf(noteRecent, null), "picker at Android's default") { picks.toList() }
+    }
+
+    @Test
+    fun `picking a new folder that does not hold the note says so and gives the grant back`() {
+        val vm = vm()
+        vm.onDocumentShown(noteRecent, twoPictures)
+        awaitValue(ImageFolderBanner.PickNoteFolder(2, "trip.md"), "banner") { vm.state.value.banner }
+
+        vm.onFolderPicked(notesTree)
+
+        awaitValue(ImageFolderBanner.WrongFolder("trip.md"), "wrong folder") { vm.state.value.banner }
+        assertEquals(listOf(notesTree), folders.released.toList())
+        assertTrue(vm.state.value.canAskForFolder)
+    }
+
+    @Test
+    fun `picking a folder already granted that does not hold the note keeps that grant`() {
+        val vm = vm()
+        vm.onDocumentShown(noteRecent, twoPictures)
+        awaitValue(ImageFolderBanner.PickNoteFolder(2, "trip.md"), "banner") { vm.state.value.banner }
+
+        vm.onFolderPicked(unrelatedTree)
+
+        awaitValue(ImageFolderBanner.WrongFolder("trip.md"), "wrong folder") { vm.state.value.banner }
+        assertTrue("released ${folders.released}", folders.released.isEmpty())
+    }
+
+    @Test
+    fun `picking the folder that holds the note shows its pictures and keeps the grant`() {
+        val vm = vm()
+        vm.onDocumentShown(noteRecent, twoPictures)
+        awaitValue(ImageFolderBanner.PickNoteFolder(2, "trip.md"), "banner") { vm.state.value.banner }
+
+        folders.onGrant = { tree -> folders.byNote[noteRecent] = NoteFolder.Covered(tree) }
+        vm.onFolderPicked(notesTree)
+
+        awaitValue(null, "banner after the right pick") { vm.state.value.banner }
+        vm.awaitLookedAt(listOf(unrelatedTree, notesTree))
+        assertTrue("released ${folders.released}", folders.released.isEmpty())
+    }
+
+    @Test
+    fun `Not now on a note from Recent is remembered for that note`() {
+        val vm = vm()
+        vm.onDocumentShown(noteRecent, twoPictures)
+        awaitValue(ImageFolderBanner.PickNoteFolder(2, "trip.md"), "banner") { vm.state.value.banner }
+
+        vm.dismissBanner()
+
+        awaitValue(setOf("note:$noteRecent"), "stored for the note") { dismissedNow() }
+        awaitValue(null, "banner after Not now") { vm.state.value.banner }
+        assertTrue("Tap to show still offered", vm.state.value.canAskForFolder)
+    }
+
+    @Test
+    fun `a wrong pick after Not now still says so, and Not now hides it again`() {
+        val vm = vm()
+        vm.onDocumentShown(noteRecent, twoPictures)
+        awaitValue(ImageFolderBanner.PickNoteFolder(2, "trip.md"), "banner") { vm.state.value.banner }
+        vm.dismissBanner()
+        awaitValue(setOf("note:$noteRecent"), "stored for the note") { dismissedNow() }
+        awaitValue(null, "banner after Not now") { vm.state.value.banner }
+
+        // "Tap to show" → the user picks a folder that does not hold the note.
+        vm.onFolderPicked(notesTree)
+
+        awaitValue(ImageFolderBanner.WrongFolder("trip.md"), "wrong folder after Not now") { vm.state.value.banner }
+
+        vm.dismissBanner()
+        awaitValue(null, "wrong folder after Not now on it") { vm.state.value.banner }
+    }
+
     private fun dismissedNow(): Set<String> = runBlocking { storage.dismissedImageFolders.first() }
 
-    private fun collectPicks(vm: ImageFolderViewModel): MutableList<Uri> {
-        val picks = CopyOnWriteArrayList<Uri>()
+    private fun collectPicks(vm: ImageFolderViewModel): MutableList<Uri?> {
+        val picks = CopyOnWriteArrayList<Uri?>()
         storageScope.launch(Dispatchers.Unconfined) { vm.pickFolder.collect { picks += it } }
         return picks
     }

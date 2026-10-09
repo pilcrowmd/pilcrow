@@ -4,21 +4,23 @@
 package com.pilcrowmd.rendering
 
 import android.text.Spanned
-import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
+import io.noties.markwon.image.AsyncDrawableSpan
 
 /**
- * Start offsets of every case-insensitive [query] match in [text] that is NOT inside a LaTeX math
- * span. Markwon paints inline/display math as a `JLatexAsyncDrawableSpan` over the formula's latex
- * *source* placeholder text — so a naive scan would "match" inside a formula, where the highlight is
- * hidden under the image and the focus/scroll ordinals would diverge from the search use case (which
- * excludes math). Skipping latex-span regions here keeps the highlighter and scroll consistent with
- * search: math content is never a match (inline math renders as an image, not text).
+ * Start offsets of every case-insensitive [query] match in [text] that is NOT under a drawn image.
+ * Markwon paints inline/display math as a `JLatexAsyncDrawableSpan` over the formula's latex
+ * *source* placeholder text, and a picture as an `AsyncDrawableSpan` over its alt text (M-332); the
+ * first is a subclass of the second, so one span type covers both. A naive scan would "match" under
+ * the image, where the highlight is hidden and the focus/scroll ordinals would diverge from the
+ * search use case, which counts neither. Skipping those regions keeps the highlighter and scroll
+ * consistent with search.
  */
 fun searchableMatchOffsets(text: CharSequence, query: String): List<Int> {
     val excluded = if (text is Spanned) {
         // A formula that failed to parse is plain source text under a MathSourceSpan (M-260); the
-        // search use case still treats it as maths, so it is skipped here too.
-        listOf(JLatexAsyncDrawableSpan::class.java, MathSourceSpan::class.java)
+        // search use case still treats it as maths, so it is skipped here too. An image's alt text
+        // shown in a table cell (M-250) is not counted by the search use case either.
+        listOf(AsyncDrawableSpan::class.java, MathSourceSpan::class.java, ImageAltTextSpan::class.java)
             .flatMap { type -> text.getSpans(0, text.length, type).toList() }
             .map { text.getSpanStart(it) until text.getSpanEnd(it) }
     } else {

@@ -1,0 +1,325 @@
+<?xml version="1.0"?>
+<Font name="jlm_pilcrowtext_greek.ttf" id="jlm_pilcrowtext_greek" space="0.333" xHeight="0.430" quad="1" unicode="322">
+  <Char code="884" width="0.194" height="0.699" />
+  <Char code="885" width="0.194" height="0.004" depth="0.216" />
+  <Char code="890" width="0.111" height="0.000" depth="0.227" />
+  <Char code="894" width="0.278" height="0.430" depth="0.192" />
+  <Char code="900" width="0.167" height="0.699" />
+  <Char code="901" width="0.278" height="0.699" />
+  <Char code="902" width="0.750" height="0.716" />
+  <Char code="903" width="0.278" height="0.430" />
+  <Char code="904" width="0.847" height="0.699" />
+  <Char code="905" width="0.917" height="0.699" />
+  <Char code="906" width="0.528" height="0.699" />
+  <Char code="908" width="0.861" height="0.705" depth="0.022" />
+  <Char code="910" width="0.945" height="0.705" />
+  <Char code="911" width="0.805" height="0.705" />
+  <Char code="912" width="0.250" height="0.699" depth="0.013" />
+  <Char code="913" width="0.750" height="0.716" />
+  <Char code="914" width="0.708" height="0.683" />
+  <Char code="915" width="0.625" height="0.680" />
+  <Char code="916" width="0.833" height="0.716" />
+  <Char code="917" width="0.680" height="0.680" />
+  <Char code="918" width="0.611" height="0.683" />
+  <Char code="919" width="0.750" height="0.683" />
+  <Char code="920" width="0.778" height="0.705" depth="0.022" />
+  <Char code="921" width="0.361" height="0.683" />
+  <Char code="922" width="0.778" height="0.683" />
+  <Char code="923" width="0.694" height="0.716" />
+  <Char code="924" width="0.916" height="0.683" />
+  <Char code="925" width="0.750" height="0.683" />
+  <Char code="926" width="0.667" height="0.678" />
+  <Char code="927" width="0.777" height="0.705" depth="0.022" />
+  <Char code="928" width="0.750" height="0.680" />
+  <Char code="929" width="0.680" height="0.683" />
+  <Char code="931" width="0.722" height="0.683" />
+  <Char code="932" width="0.722" height="0.678" />
+  <Char code="933" width="0.778" height="0.705" />
+  <Char code="934" width="0.722" height="0.683" />
+  <Char code="935" width="0.750" height="0.683" />
+  <Char code="936" width="0.778" height="0.683" />
+  <Char code="937" width="0.722" height="0.705" />
+  <Char code="938" width="0.361" height="0.832" />
+  <Char code="939" width="0.778" height="0.832" />
+  <Char code="940" width="0.500" height="0.700" depth="0.011" />
+  <Char code="941" width="0.430" height="0.699" depth="0.022" />
+  <Char code="942" width="0.500" height="0.699" depth="0.272" />
+  <Char code="943" width="0.250" height="0.699" depth="0.013" />
+  <Char code="944" width="0.500" height="0.699" depth="0.011" />
+  <Char code="945" width="0.500" height="0.441" depth="0.011" />
+  <Char code="946" width="0.500" height="0.705" depth="0.276" />
+  <Char code="947" width="0.555" height="0.441" depth="0.199" />
+  <Char code="948" width="0.472" height="0.699" depth="0.011" />
+  <Char code="949" width="0.430" height="0.453" depth="0.022" />
+  <Char code="950" width="0.472" height="0.716" depth="0.140" />
+  <Char code="951" width="0.500" height="0.453" depth="0.272" />
+  <Char code="952" width="0.569" height="0.705" depth="0.011" />
+  <Char code="953" width="0.250" height="0.441" depth="0.013" />
+  <Char code="954" width="0.528" height="0.452" depth="0.022" />
+  <Char code="955" width="0.500" height="0.696" depth="0.010" />
+  <Char code="956" width="0.519" height="0.452" depth="0.261" />
+  <Char code="957" width="0.472" height="0.439" depth="0.009" />
+  <Char code="958" width="0.472" height="0.716" depth="0.140" />
+  <Char code="959" width="0.528" height="0.441" depth="0.011" />
+  <Char code="960" width="0.514" height="0.430" depth="0.018" />
+  <Char code="961" width="0.472" height="0.441" depth="0.260" />
+  <Char code="962" width="0.444" height="0.441" depth="0.125" />
+  <Char code="963" width="0.569" height="0.431" depth="0.011" />
+  <Char code="964" width="0.458" height="0.431" depth="0.011" />
+  <Char code="965" width="0.500" height="0.456" depth="0.011" />
+  <Char code="966" width="0.583" height="0.454" depth="0.276" />
+  <Char code="967" width="0.555" height="0.442" depth="0.261" />
+  <Char code="968" width="0.583" height="0.718" depth="0.276" />
+  <Char code="969" width="0.667" height="0.450" depth="0.011" />
+  <Char code="970" width="0.250" height="0.625" depth="0.013" />
+  <Char code="971" width="0.500" height="0.625" depth="0.011" />
+  <Char code="972" width="0.528" height="0.699" depth="0.011" />
+  <Char code="973" width="0.500" height="0.699" depth="0.011" />
+  <Char code="974" width="0.667" height="0.699" depth="0.011" />
+  <Char code="977" width="0.569" height="0.705" depth="0.011" />
+  <Char code="981" width="0.578" height="0.718" depth="0.276" />
+  <Char code="984" width="0.500" height="0.694" depth="0.001" />
+  <Char code="985" width="0.500" height="0.599" depth="0.063" />
+  <Char code="986" width="0.778" height="0.678" />
+  <Char code="987" width="0.500" height="0.454" depth="0.027" />
+  <Char code="988" width="0.652" height="0.680" />
+  <Char code="989" width="0.500" height="0.430" depth="0.258" />
+  <Char code="991" width="0.389" height="0.594" depth="0.139" />
+  <Char code="992" width="0.766" height="0.692" />
+  <Char code="993" width="0.722" height="0.694" depth="0.022" />
+  <Char code="1009" width="0.472" height="0.442" depth="0.249" />
+  <Char code="1013" width="0.430" height="0.442" depth="0.011" />
+  <Char code="7936" width="0.500" height="0.694" depth="0.011" />
+  <Char code="7937" width="0.500" height="0.694" depth="0.011" />
+  <Char code="7938" width="0.500" height="0.699" depth="0.011" />
+  <Char code="7939" width="0.500" height="0.699" depth="0.011" />
+  <Char code="7940" width="0.500" height="0.699" depth="0.011" />
+  <Char code="7941" width="0.500" height="0.699" depth="0.011" />
+  <Char code="7942" width="0.500" height="0.694" depth="0.011" />
+  <Char code="7943" width="0.500" height="0.694" depth="0.011" />
+  <Char code="7944" width="0.833" height="0.716" />
+  <Char code="7945" width="0.805" height="0.716" />
+  <Char code="7946" width="0.945" height="0.716" />
+  <Char code="7947" width="0.945" height="0.716" />
+  <Char code="7948" width="0.945" height="0.716" />
+  <Char code="7949" width="0.945" height="0.716" />
+  <Char code="7950" width="0.972" height="0.716" />
+  <Char code="7951" width="0.972" height="0.716" />
+  <Char code="7952" width="0.430" height="0.694" depth="0.022" />
+  <Char code="7953" width="0.430" height="0.694" depth="0.022" />
+  <Char code="7954" width="0.430" height="0.699" depth="0.022" />
+  <Char code="7955" width="0.430" height="0.699" depth="0.022" />
+  <Char code="7956" width="0.430" height="0.699" depth="0.022" />
+  <Char code="7957" width="0.430" height="0.699" depth="0.022" />
+  <Char code="7960" width="0.902" height="0.694" />
+  <Char code="7961" width="0.902" height="0.694" />
+  <Char code="7962" width="0.958" height="0.699" />
+  <Char code="7963" width="0.958" height="0.699" />
+  <Char code="7964" width="0.958" height="0.699" />
+  <Char code="7965" width="0.958" height="0.699" />
+  <Char code="7968" width="0.500" height="0.694" depth="0.272" />
+  <Char code="7969" width="0.500" height="0.694" depth="0.272" />
+  <Char code="7970" width="0.500" height="0.700" depth="0.272" />
+  <Char code="7971" width="0.500" height="0.700" depth="0.272" />
+  <Char code="7972" width="0.500" height="0.700" depth="0.272" />
+  <Char code="7973" width="0.500" height="0.700" depth="0.272" />
+  <Char code="7974" width="0.500" height="0.694" depth="0.272" />
+  <Char code="7975" width="0.500" height="0.694" depth="0.272" />
+  <Char code="7976" width="0.972" height="0.694" />
+  <Char code="7977" width="0.972" height="0.694" />
+  <Char code="7978" width="1.028" height="0.699" />
+  <Char code="7979" width="1.028" height="0.699" />
+  <Char code="7980" width="1.028" height="0.699" />
+  <Char code="7981" width="1.028" height="0.699" />
+  <Char code="7982" width="1.083" height="0.694" />
+  <Char code="7983" width="1.083" height="0.694" />
+  <Char code="7984" width="0.250" height="0.694" depth="0.013" />
+  <Char code="7985" width="0.250" height="0.694" depth="0.013" />
+  <Char code="7986" width="0.250" height="0.699" depth="0.013" />
+  <Char code="7987" width="0.250" height="0.699" depth="0.013" />
+  <Char code="7988" width="0.250" height="0.699" depth="0.013" />
+  <Char code="7989" width="0.250" height="0.699" depth="0.013" />
+  <Char code="7990" width="0.250" height="0.694" depth="0.013" />
+  <Char code="7991" width="0.250" height="0.694" depth="0.013" />
+  <Char code="7992" width="0.583" height="0.694" />
+  <Char code="7993" width="0.583" height="0.694" />
+  <Char code="7994" width="0.639" height="0.699" />
+  <Char code="7995" width="0.639" height="0.699" />
+  <Char code="7996" width="0.639" height="0.699" />
+  <Char code="7997" width="0.639" height="0.699" />
+  <Char code="7998" width="0.694" height="0.694" />
+  <Char code="7999" width="0.694" height="0.694" />
+  <Char code="8000" width="0.528" height="0.694" depth="0.011" />
+  <Char code="8001" width="0.528" height="0.694" depth="0.011" />
+  <Char code="8002" width="0.528" height="0.699" depth="0.011" />
+  <Char code="8003" width="0.528" height="0.699" depth="0.011" />
+  <Char code="8004" width="0.528" height="0.699" depth="0.011" />
+  <Char code="8005" width="0.528" height="0.699" depth="0.011" />
+  <Char code="8008" width="0.944" height="0.705" depth="0.022" />
+  <Char code="8009" width="0.944" height="0.705" depth="0.022" />
+  <Char code="8010" width="1.028" height="0.705" depth="0.022" />
+  <Char code="8011" width="1.028" height="0.705" depth="0.022" />
+  <Char code="8012" width="1.028" height="0.705" depth="0.022" />
+  <Char code="8013" width="1.028" height="0.705" depth="0.022" />
+  <Char code="8016" width="0.500" height="0.694" depth="0.011" />
+  <Char code="8017" width="0.500" height="0.694" depth="0.011" />
+  <Char code="8018" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8019" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8020" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8021" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8022" width="0.500" height="0.694" depth="0.011" />
+  <Char code="8023" width="0.500" height="0.694" depth="0.011" />
+  <Char code="8025" width="1.000" height="0.705" />
+  <Char code="8027" width="1.056" height="0.705" />
+  <Char code="8029" width="1.056" height="0.705" />
+  <Char code="8031" width="1.111" height="0.705" />
+  <Char code="8032" width="0.667" height="0.694" depth="0.011" />
+  <Char code="8033" width="0.667" height="0.694" depth="0.011" />
+  <Char code="8034" width="0.667" height="0.700" depth="0.011" />
+  <Char code="8035" width="0.667" height="0.700" depth="0.011" />
+  <Char code="8036" width="0.667" height="0.700" depth="0.011" />
+  <Char code="8037" width="0.667" height="0.700" depth="0.011" />
+  <Char code="8038" width="0.667" height="0.694" depth="0.011" />
+  <Char code="8039" width="0.667" height="0.694" depth="0.011" />
+  <Char code="8040" width="0.916" height="0.705" />
+  <Char code="8041" width="0.916" height="0.705" />
+  <Char code="8042" width="1.000" height="0.705" />
+  <Char code="8043" width="1.000" height="0.705" />
+  <Char code="8044" width="1.000" height="0.705" />
+  <Char code="8045" width="1.000" height="0.705" />
+  <Char code="8046" width="1.055" height="0.705" />
+  <Char code="8047" width="1.055" height="0.705" />
+  <Char code="8048" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8049" width="0.500" height="0.700" depth="0.011" />
+  <Char code="8050" width="0.430" height="0.699" depth="0.022" />
+  <Char code="8051" width="0.430" height="0.699" depth="0.022" />
+  <Char code="8052" width="0.500" height="0.700" depth="0.272" />
+  <Char code="8053" width="0.500" height="0.699" depth="0.272" />
+  <Char code="8054" width="0.250" height="0.699" depth="0.013" />
+  <Char code="8055" width="0.250" height="0.699" depth="0.013" />
+  <Char code="8056" width="0.528" height="0.699" depth="0.011" />
+  <Char code="8057" width="0.528" height="0.699" depth="0.011" />
+  <Char code="8058" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8059" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8060" width="0.667" height="0.699" depth="0.011" />
+  <Char code="8061" width="0.667" height="0.699" depth="0.011" />
+  <Char code="8064" width="0.500" height="0.694" depth="0.227" />
+  <Char code="8065" width="0.500" height="0.694" depth="0.227" />
+  <Char code="8066" width="0.500" height="0.699" depth="0.227" />
+  <Char code="8067" width="0.500" height="0.699" depth="0.227" />
+  <Char code="8068" width="0.500" height="0.699" depth="0.227" />
+  <Char code="8069" width="0.500" height="0.699" depth="0.227" />
+  <Char code="8070" width="0.500" height="0.694" depth="0.227" />
+  <Char code="8071" width="0.500" height="0.694" depth="0.227" />
+  <Char code="8072" width="0.833" height="0.716" depth="0.211" />
+  <Char code="8073" width="0.805" height="0.716" depth="0.211" />
+  <Char code="8074" width="0.945" height="0.716" depth="0.211" />
+  <Char code="8075" width="0.945" height="0.716" depth="0.211" />
+  <Char code="8076" width="0.945" height="0.716" depth="0.211" />
+  <Char code="8077" width="0.945" height="0.716" depth="0.211" />
+  <Char code="8078" width="0.972" height="0.716" depth="0.211" />
+  <Char code="8079" width="0.972" height="0.716" depth="0.211" />
+  <Char code="8080" width="0.500" height="0.694" depth="0.272" />
+  <Char code="8081" width="0.500" height="0.694" depth="0.272" />
+  <Char code="8082" width="0.500" height="0.700" depth="0.272" />
+  <Char code="8083" width="0.500" height="0.700" depth="0.272" />
+  <Char code="8084" width="0.500" height="0.700" depth="0.272" />
+  <Char code="8085" width="0.500" height="0.700" depth="0.272" />
+  <Char code="8086" width="0.500" height="0.694" depth="0.272" />
+  <Char code="8087" width="0.500" height="0.694" depth="0.272" />
+  <Char code="8088" width="0.972" height="0.694" depth="0.211" />
+  <Char code="8089" width="0.972" height="0.694" depth="0.211" />
+  <Char code="8090" width="1.028" height="0.699" depth="0.211" />
+  <Char code="8091" width="1.028" height="0.699" depth="0.211" />
+  <Char code="8092" width="1.028" height="0.699" depth="0.211" />
+  <Char code="8093" width="1.028" height="0.699" depth="0.211" />
+  <Char code="8094" width="1.083" height="0.694" depth="0.211" />
+  <Char code="8095" width="1.083" height="0.694" depth="0.211" />
+  <Char code="8096" width="0.667" height="0.694" depth="0.227" />
+  <Char code="8097" width="0.667" height="0.694" depth="0.227" />
+  <Char code="8098" width="0.667" height="0.700" depth="0.227" />
+  <Char code="8099" width="0.667" height="0.700" depth="0.227" />
+  <Char code="8100" width="0.667" height="0.700" depth="0.227" />
+  <Char code="8101" width="0.667" height="0.700" depth="0.227" />
+  <Char code="8102" width="0.667" height="0.694" depth="0.227" />
+  <Char code="8103" width="0.667" height="0.694" depth="0.227" />
+  <Char code="8104" width="0.916" height="0.705" depth="0.211" />
+  <Char code="8105" width="0.916" height="0.705" depth="0.211" />
+  <Char code="8106" width="1.000" height="0.705" depth="0.211" />
+  <Char code="8107" width="1.000" height="0.705" depth="0.211" />
+  <Char code="8108" width="1.000" height="0.705" depth="0.211" />
+  <Char code="8109" width="1.000" height="0.705" depth="0.211" />
+  <Char code="8110" width="1.055" height="0.705" depth="0.211" />
+  <Char code="8111" width="1.055" height="0.705" depth="0.211" />
+  <Char code="8112" width="0.500" height="0.670" depth="0.011" />
+  <Char code="8113" width="0.500" height="0.530" depth="0.011" />
+  <Char code="8114" width="0.500" height="0.699" depth="0.227" />
+  <Char code="8115" width="0.500" height="0.441" depth="0.227" />
+  <Char code="8116" width="0.500" height="0.700" depth="0.227" />
+  <Char code="8118" width="0.500" height="0.625" depth="0.011" />
+  <Char code="8119" width="0.500" height="0.625" depth="0.227" />
+  <Char code="8120" width="0.750" height="0.939" />
+  <Char code="8121" width="0.750" height="0.799" />
+  <Char code="8122" width="0.806" height="0.716" />
+  <Char code="8123" width="0.750" height="0.716" />
+  <Char code="8124" width="0.957" height="0.716" depth="0.157" />
+  <Char code="8125" width="0.222" height="0.694" />
+  <Char code="8126" width="0.222" height="0.157" depth="0.157" />
+  <Char code="8127" width="0.222" height="0.694" />
+  <Char code="8128" width="0.333" height="0.625" />
+  <Char code="8129" width="0.444" height="0.694" />
+  <Char code="8130" width="0.500" height="0.700" depth="0.272" />
+  <Char code="8131" width="0.500" height="0.453" depth="0.272" />
+  <Char code="8132" width="0.500" height="0.699" depth="0.272" />
+  <Char code="8134" width="0.500" height="0.625" depth="0.272" />
+  <Char code="8135" width="0.500" height="0.625" depth="0.272" />
+  <Char code="8136" width="0.847" height="0.699" />
+  <Char code="8137" width="0.847" height="0.699" />
+  <Char code="8138" width="0.917" height="0.699" />
+  <Char code="8139" width="0.917" height="0.699" />
+  <Char code="8140" width="0.946" height="0.683" depth="0.157" />
+  <Char code="8141" width="0.278" height="0.699" />
+  <Char code="8142" width="0.278" height="0.699" />
+  <Char code="8143" width="0.333" height="0.694" />
+  <Char code="8144" width="0.250" height="0.670" depth="0.013" />
+  <Char code="8145" width="0.250" height="0.530" depth="0.013" />
+  <Char code="8146" width="0.250" height="0.699" depth="0.013" />
+  <Char code="8147" width="0.250" height="0.699" depth="0.013" />
+  <Char code="8150" width="0.250" height="0.625" depth="0.013" />
+  <Char code="8151" width="0.250" height="0.694" depth="0.013" />
+  <Char code="8152" width="0.361" height="0.928" />
+  <Char code="8153" width="0.361" height="0.788" />
+  <Char code="8154" width="0.528" height="0.699" />
+  <Char code="8155" width="0.528" height="0.699" />
+  <Char code="8157" width="0.278" height="0.699" />
+  <Char code="8158" width="0.278" height="0.699" />
+  <Char code="8159" width="0.333" height="0.694" />
+  <Char code="8160" width="0.500" height="0.679" depth="0.011" />
+  <Char code="8161" width="0.500" height="0.539" depth="0.011" />
+  <Char code="8162" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8163" width="0.500" height="0.699" depth="0.011" />
+  <Char code="8164" width="0.472" height="0.694" depth="0.260" />
+  <Char code="8165" width="0.472" height="0.694" depth="0.260" />
+  <Char code="8166" width="0.500" height="0.625" depth="0.011" />
+  <Char code="8167" width="0.500" height="0.694" depth="0.011" />
+  <Char code="8168" width="0.778" height="0.928" />
+  <Char code="8169" width="0.778" height="0.788" />
+  <Char code="8170" width="0.945" height="0.705" />
+  <Char code="8171" width="0.945" height="0.705" />
+  <Char code="8172" width="0.902" height="0.694" />
+  <Char code="8173" width="0.278" height="0.699" />
+  <Char code="8174" width="0.278" height="0.699" />
+  <Char code="8175" width="0.167" height="0.699" />
+  <Char code="8178" width="0.667" height="0.699" depth="0.227" />
+  <Char code="8179" width="0.667" height="0.450" depth="0.227" />
+  <Char code="8180" width="0.667" height="0.699" depth="0.227" />
+  <Char code="8182" width="0.667" height="0.625" depth="0.011" />
+  <Char code="8183" width="0.667" height="0.625" depth="0.227" />
+  <Char code="8184" width="0.889" height="0.705" depth="0.022" />
+  <Char code="8185" width="0.861" height="0.705" depth="0.022" />
+  <Char code="8186" width="0.861" height="0.705" />
+  <Char code="8187" width="0.805" height="0.705" />
+  <Char code="8188" width="0.940" height="0.705" depth="0.157" />
+  <Char code="8189" width="0.167" height="0.699" />
+  <Char code="8190" width="0.222" height="0.694" />
+</Font>

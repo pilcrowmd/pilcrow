@@ -7,6 +7,8 @@ import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Looper
+import android.text.Spanned
+import android.text.style.BackgroundColorSpan
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -14,6 +16,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.model.RenderMode
+import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
@@ -51,11 +54,19 @@ class DeepNestingReaderTest {
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
     }
 
-    /** The painted text of every item, one entry per item, in adapter order. */
-    private fun renderInReader(markdown: String): List<Pair<Any, String>> {
+    /** One reader item as painted: its holder, its text, and how many search highlights it carries. */
+    private class PaintedItem(val holder: Any, val text: String, val highlights: Int)
+
+    /** Every item, bound and drawn with [query] highlighted, in adapter order. */
+    private fun renderInReader(markdown: String, query: String = ""): List<PaintedItem> {
         val markwon = buildPilcrowMarkwon(activity)
         val details = DetailsState()
-        val adapter = RecyclerAdapterEntries.buildMarkdownAdapter(activity, markwon, details = details)
+        val adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
+            activity,
+            markwon,
+            searchHighlight = SearchHighlight(query = query),
+            details = details,
+        )
         val document = ReaderTree.build(markwon, markdown, plain = false)
         details.load(markdown, Details.sections(document))
         adapter.setParsedMarkdown(markwon, document)
@@ -72,7 +83,7 @@ class DeepNestingReaderTest {
             )
             view.layout(0, 0, view.measuredWidth, view.measuredHeight)
             view.draw(canvas)
-            holder to StringBuilder().also { collect(view, it) }.toString()
+            PaintedItem(holder, StringBuilder().also { collect(view, it) }.toString(), highlights(view))
         }
         shadowOf(Looper.getMainLooper()).idle()
 
@@ -89,10 +100,17 @@ class DeepNestingReaderTest {
         }
     }
 
+    private fun highlights(view: View): Int = when (view) {
+        is TextView -> (view.text as? Spanned)?.getSpans(0, view.text.length, BackgroundColorSpan::class.java)
+            ?.size ?: 0
+        is ViewGroup -> (0 until view.childCount).sumOf { highlights(view.getChildAt(it)) }
+        else -> 0
+    }
+
     private fun assertShownAsPlainText(markdown: String) {
         val items = renderInReader(markdown)
-        assertTrue("every item is a plain-text chunk", items.all { it.first is PlainTextBlockEntry.Holder })
-        assertEquals("the source, verbatim", markdown, items.joinToString("\n") { it.second })
+        assertTrue("every item is a plain-text chunk", items.all { it.holder is PlainTextBlockEntry.Holder })
+        assertEquals("the source, verbatim", markdown, items.joinToString("\n") { it.text })
     }
 
     @Test
@@ -115,25 +133,44 @@ class DeepNestingReaderTest {
     @Test
     fun `ordinary nesting still renders as Markdown`() {
         val items = renderInReader(">".repeat(10) + " formatted\n\n- a\n  - b\n    - **c**")
-        assertFalse("rendered, not plain", items.any { it.first is PlainTextBlockEntry.Holder })
-        val painted = items.joinToString("\n") { it.second }
-        assertEquals("the quote's markers are formatting, not text", "formatted", items.first().second.trim())
+        assertFalse("rendered, not plain", items.any { it.holder is PlainTextBlockEntry.Holder })
+        val painted = items.joinToString("\n") { it.text }
+        assertEquals("the quote's markers are formatting, not text", "formatted", items.first().text.trim())
         assertFalse("no markdown syntax painted", painted.contains('>') || painted.contains("**"))
     }
 
     @Test
-    fun `the TOC and search of a too-deep document are empty rather than a crash`() {
+    fun `the TOC of a too-deep document is empty and its search finds the words on screen`() {
         // A footnote definition makes the TOC parse's footnote pass walk every block, the deep one too.
         val markdown = "# Title\n\n" + ">".repeat(100_000) + " deep[^1]\n\n[^1]: note\n"
         val headings = ParseMarkdownHeadingsUseCase()
         assertEquals(emptyList<Any>(), headings.extractHeadings(markdown))
-        assertEquals(emptyList<Any>(), SearchMarkdownUseCase(headings).findSearchMatches(markdown, "deep"))
+        // Shown as one plain-text chunk, so its one "deep" is item 0 at its exact source offset.
+        assertEquals(
+            listOf(SearchMatch("deep", startIndex = markdown.indexOf("deep"), adapterPosition = 0)),
+            SearchMarkdownUseCase(headings).findSearchMatches(markdown, "deep"),
+        )
+    }
+
+    @Test
+    fun `a too-deep document paints exactly the search matches, item by item`() {
+        // Two plain-text chunks: the deep line and 100 "x" paragraphs, then a line with "deep" twice.
+        val markdown = ">".repeat(400) + " deep\n" + "x\n\n".repeat(100) + "deep deep"
+        val matches = SearchMarkdownUseCase(ParseMarkdownHeadingsUseCase()).findSearchMatches(markdown, "deep")
+
+        val painted = renderInReader(markdown, query = "deep").map { it.highlights }
+        assertEquals("highlights painted per item", listOf(1, 2), painted)
+        assertEquals(
+            "the model counts what each item paints",
+            painted,
+            painted.indices.map { position -> matches.count { it.adapterPosition == position } },
+        )
+        assertEquals(listOf(0, 0, 1), matches.map { it.occurrenceInBlock })
     }
 
     @Test
     fun `the PDF export prints a too-deep document as plain text`() {
-        val renderer = MarkwonRenderer(activity)
-        renderer.awaitFontPreWarm()
+        val renderer = warmedMarkwonRenderer(activity)
         val exporter = PdfExporter(activity, renderer)
         val markdown = ">".repeat(100_000) + " deep"
 

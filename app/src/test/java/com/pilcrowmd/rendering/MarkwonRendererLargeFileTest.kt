@@ -52,7 +52,7 @@ class MarkwonRendererLargeFileTest {
 
         composeRule.setContent {
             val context = LocalContext.current
-            val renderer = remember { MarkwonRenderer(context) }
+            val renderer = remember { warmedMarkwonRenderer(context) }
             Box(
                 Modifier
                     .fillMaxSize()

@@ -17,7 +17,8 @@ import org.robolectric.RobolectricTestRunner
 /**
  * Plain-mode rendering through the REAL adapter machinery: a [PlainTextChunk] document
  * set via setParsedMarkdown dispatches to [PlainTextBlockEntry], which renders the literal
- * verbatim — no Markdown spans, zero vertical padding (chunk seams live in blank-line gaps).
+ * verbatim: no Markdown spans, zero vertical padding (chunk seams live in blank-line gaps; the
+ * forced seam of a run with no blank line is covered by PlainTextSeamTest).
  * The `.md` path is untouched: the parser never emits PlainTextChunk.
  */
 @RunWith(RobolectricTestRunner::class)

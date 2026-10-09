@@ -24,9 +24,8 @@ keys do not exist.
   Makefile, HTTP and CSV. The `text`, `nginx` and `log` blocks show as plain, readable monospace.
 - Search for *ERROR*. It appears in the log section.
 
-**Known gaps in version 1.0.12** – we know about these, no need to report them:
+**Known gaps in version 1.0.13** – we know about these, no need to report them:
 
-- A ` ```yml ` block gets no colour; write ` ```yaml `. Section 2 shows both.
 - The headings drawer lists the front-matter lines as if they were headings.
 - A web address written without angle brackets is not a link.
 - Opening very large log files: see the Big file pack.

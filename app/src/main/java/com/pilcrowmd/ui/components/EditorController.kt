@@ -4,6 +4,7 @@
 package com.pilcrowmd.ui.components
 
 import android.util.Log
+import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.widget.CodeEditor
 
 /**
@@ -45,7 +46,14 @@ class EditorController(private val editor: CodeEditor?) {
             val endPos = editor.text.indexer.getCharPosition(clampedEnd)
 
             // Set selection region and ensure it's visible in the viewport.
-            editor.setSelectionRegion(startPos.line, startPos.column, endPos.line, endPos.column)
+            // CAUSE_SEARCH, so TalkBack announces the match (AccessibleCodeEditor ignores cause 0).
+            editor.setSelectionRegion(
+                startPos.line,
+                startPos.column,
+                endPos.line,
+                endPos.column,
+                SelectionChangeEvent.CAUSE_SEARCH,
+            )
             editor.ensureSelectionVisible()
         } catch (e: Exception) {
             Log.w("EditorController", "Failed to select and reveal match: ${e.message}")
@@ -83,7 +91,8 @@ class EditorController(private val editor: CodeEditor?) {
 
                 // Convert character offset to line/column using Sora's indexer.
                 val pos = editor.text.indexer.getCharPosition(clampedOffset)
-                editor.setSelection(pos.line, pos.column)
+                // A known cause, so TalkBack announces where the jump landed.
+                editor.setSelection(pos.line, pos.column, SelectionChangeEvent.CAUSE_KEYBOARD_OR_CODE)
 
                 // Ensure selection is visible. ensureSelectionVisible performs a minimum scroll,
                 // which may land the heading at the bottom of the viewport if jumping forward,

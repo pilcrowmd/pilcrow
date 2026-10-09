@@ -62,6 +62,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -502,7 +503,12 @@ fun WelcomeScreen(
                                             1.dp,
                                         ).width(44.dp).background(c.accent.copy(alpha = 0.45f)),
                                     )
-                                    Text(text = "✦", color = c.accent, fontSize = 14.sp)
+                                    Text(
+                                        text = "✦",
+                                        color = c.accent,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier.clearAndSetSemantics {},
+                                    )
                                     Box(
                                         Modifier.height(
                                             1.dp,
@@ -534,7 +540,7 @@ fun WelcomeScreen(
                                         .shadow(if (isLoading) 0.dp else 12.dp, RoundedCornerShape(16.dp), clip = false)
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(ctaFill)
-                                        .clickable(enabled = !isLoading) { onOpenFile() }
+                                        .clickable(enabled = !isLoading, role = Role.Button) { onOpenFile() }
                                         .padding(vertical = 18.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically,
@@ -568,7 +574,7 @@ fun WelcomeScreen(
                                         .dimmedWhen(isLoading)
                                         .clip(RoundedCornerShape(16.dp))
                                         .border(1.dp, c.border, RoundedCornerShape(16.dp))
-                                        .clickable(enabled = !isLoading) { onCreateFile() }
+                                        .clickable(enabled = !isLoading, role = Role.Button) { onCreateFile() }
                                         .padding(vertical = 14.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically,
@@ -600,7 +606,7 @@ fun WelcomeScreen(
                                     modifier = Modifier
                                         .dimmedWhen(isLoading)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .clickable(enabled = !isLoading) { onOpenAnyFile() }
+                                        .clickable(enabled = !isLoading, role = Role.Button) { onOpenAnyFile() }
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                 )
                             }
@@ -734,7 +740,7 @@ private fun RecentsSection(
                 fontSize = 13.sp,
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .clickable { onClear() }
+                    .clickable(role = Role.Button) { onClear() }
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
@@ -762,7 +768,7 @@ internal fun RecentRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = r.available && !isLoading) { onOpenRecent(r.uri) }
+            .clickable(enabled = r.available && !isLoading, role = Role.Button) { onOpenRecent(r.uri) }
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -795,7 +801,7 @@ internal fun RecentRow(
             tint = c.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .clickable { onRemoveRecent(r.uri) }
+                .clickable(role = Role.Button) { onRemoveRecent(r.uri) }
                 .padding(4.dp)
                 .size(16.dp),
         )

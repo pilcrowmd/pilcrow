@@ -15,17 +15,13 @@
   code blocks** and they should wrap instead.
 - Try a few blocks in both reading mode and Edit mode.
 
-**Known gaps in version 1.0.12** – we know about these, no need to report them:
+**Known gaps in version 1.0.13** – we know about these, no need to report them:
 
-- Some short or variant names get no colour: `py`, `python3`, `kt` and `yml`, for example. Write
-  `python`, `kotlin`, `yaml` and so on.
 - Inside a list, a quote or a callout, a block in one of the languages new in version 1.0.12 (such
   as those in Part B) shows as plain text.
 - In Edit mode, the code inside a fence is one flat colour.
 - The code font joins some character groups into one symbol: `-->` can look like a single long
   arrow.
-- In a ` ```markdown ` block, a quote line with four or more spaces after `>` is coloured orange.
-- Diffs colour the `+` and `-` text, but the whole line is not tinted green or red.
 
 Found something not on this list? Please open an issue at
 <https://github.com/pilcrowmd/pilcrow/issues> and say which pack and which block.

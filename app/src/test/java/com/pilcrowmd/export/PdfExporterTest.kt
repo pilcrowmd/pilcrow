@@ -9,6 +9,7 @@ import android.net.Uri
 import androidx.compose.ui.graphics.toArgb
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.mockk.every
 import io.mockk.mockk
@@ -36,11 +37,7 @@ class PdfExporterTest {
         // ContentProvider at app startup; Robolectric does not run ContentProviders, so init it
         // explicitly here to let synchronous JLatexMathDrawable rendering work under test.
         ru.noties.jlatexmath.JLatexMathAndroid.init(context)
-        renderer = MarkwonRenderer(context)
-        // Wait out the renderer's background font pre-warm before any test parses on the same Markwon
-        // instance — Markwon's inline parser is stateful and not concurrency-safe, so a parse racing
-        // the still-running pre-warm intermittently threw StringIndexOutOfBoundsException.
-        renderer.awaitFontPreWarm()
+        renderer = warmedMarkwonRenderer(context)
         exporter = PdfExporter(context, renderer)
     }
 
@@ -419,6 +416,21 @@ class PdfExporterTest {
     }
 
     @Test
+    fun testPlainBlankFreeRunIsNotSplitForPdf() {
+        // M-365 caps a blank-free run in the READER so no TextView is recorded in full on every draw.
+        // The PDF paginates whole blocks (a block that would overflow starts a new page), so a forced
+        // seam every 400 lines would leave a half-empty page; PDF layout is off the main thread.
+        val content = (1..1000).joinToString("\n") { "line $it" }
+        val blocks = topLevelBlocksForMode(
+            exporter.getMarkwon(),
+            content,
+            com.pilcrowmd.domain.model.RenderMode.PLAIN,
+        )
+        assertEquals("one block, as before the reader cap", 1, blocks.size)
+        assertEquals(content, (blocks.single() as com.pilcrowmd.rendering.PlainTextChunk).literal)
+    }
+
+    @Test
     fun testFootnoteDefinitionPrintsAsANoteWithPrintColors() {
         // PDF parity: the export has its own create/bind dispatch, so a node type wired into
         // the reader and not into the builder silently prints as something else. Assert the printed
@@ -495,7 +507,7 @@ class PdfExporterTest {
         )
         assertEquals(
             "chunk count from PlainTextBlocks, not the Markdown parse",
-            com.pilcrowmd.rendering.PlainTextBlocks.chunkLiterals(content).size,
+            com.pilcrowmd.domain.markdown.PlainTextChunks.split(content).size,
             plainBounds.size,
         )
         assertTrue("far fewer blocks than the 220-paragraph Markdown parse", plainBounds.size < 10)

@@ -17,6 +17,8 @@
 
 **[pilcrowmd.com](https://pilcrowmd.com)** – screenshots, changelog, privacy policy
 
+**Also for Mac (beta):** a separate app, not open source – [pilcrowmd.com/mac](https://pilcrowmd.com/mac)
+
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/01-reader-dark.png" alt="PilcrowMD rendering a Markdown document – headings, prose, lists, and a blockquote, all rendered natively" width="320">
 
 </div>

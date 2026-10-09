@@ -24,13 +24,10 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
 - The very last line of the file says **End of the General pack**. If you can read it, nothing
   was lost on the way.
 
-**Known gaps in version 1.0.12** – we know about these, no need to report them:
+**Known gaps in version 1.0.13** – we know about these, no need to report them:
 
-- Bold, italic, links and formulas inside a table cell show as plain text; a formula in a cell
-  shows as an empty space.
 - A web address written without angle brackets (`https://…`) is not a link; `<https://…>` is.
 - The headings drawer lists the front-matter lines as if they were headings.
-- Text in reading mode cannot be selected; switch to Edit to copy.
 - Task boxes cannot be ticked in reading mode (by design: reading mode never changes your file).
 - Diagrams (Mermaid) are drawn only if you turn on the online **Mermaid Diagrams** setting;
   otherwise they show as code.

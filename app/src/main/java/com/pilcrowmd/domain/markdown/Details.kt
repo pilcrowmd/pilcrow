@@ -33,9 +33,16 @@ data class DetailsHeader(
  * (a browser runs an unclosed `<details>` to the end too). The body is `header + 1 until last`, plus
  * [last] itself when [closed] is false. A section closed by `</details>` tags that start a block
  * which also paints (the next header, or a line of text) has no `</details>` block of its own: it
- * ends at the block before that one, not [closed].
+ * ends at the block before that one, not [closed]. [hasInlineBody] is true when the header's own
+ * block carries text after its summary ([DetailsHeader.inlineBody]), which paints only while open.
  */
-data class DetailsSection(val header: Int, val last: Int, val closed: Boolean, val openByDefault: Boolean) {
+data class DetailsSection(
+    val header: Int,
+    val last: Int,
+    val closed: Boolean,
+    val openByDefault: Boolean,
+    val hasInlineBody: Boolean = false,
+) {
     /** The separate `</details>` block, or null when there is none (unclosed, or a one-block section). */
     val closeBlock: Int? get() = if (closed && last != header) last else null
 }
@@ -95,25 +102,28 @@ object Details {
                 // also paints (a header, a line of text) stays visible after the section it ends.
                 sections.add(
                     if (closeOnly) {
-                        DetailsSection(start, index, closed = true, openByDefault = opened.openByDefault)
+                        section(start, index, closed = true, opened)
                     } else {
-                        DetailsSection(start, index - 1, closed = false, openByDefault = opened.openByDefault)
+                        section(start, index - 1, closed = false, opened)
                     },
                 )
             }
             if (header == null) return@forEachIndexed
             if (header.closesItself) {
-                sections.add(DetailsSection(index, index, closed = true, openByDefault = header.openByDefault))
+                sections.add(section(index, index, closed = true, header))
             } else {
                 openHeaders.addLast(index to header)
             }
         }
         while (openHeaders.isNotEmpty()) {
             val (start, opened) = openHeaders.removeLast()
-            sections.add(DetailsSection(start, blocks.lastIndex, closed = false, openByDefault = opened.openByDefault))
+            sections.add(section(start, blocks.lastIndex, closed = false, opened))
         }
         return sections.sortedBy { it.header }
     }
+
+    private fun section(header: Int, last: Int, closed: Boolean, opened: DetailsHeader) =
+        DetailsSection(header, last, closed, opened.openByDefault, hasInlineBody = opened.inlineBody.isNotEmpty())
 
     private fun leadingCloses(literal: String): Int =
         LEADING_CLOSES.find(literal)?.let { CLOSE_TAG.findAll(it.value).count() } ?: 0

@@ -1,0 +1,25 @@
+name: Question
+description: Ask a question about using PilcrowMD.
+title: "question: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask anything about using PilcrowMD. Please do not use this form for security issues;
+        follow [SECURITY.md](../../SECURITY.md) and report them privately instead.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What would you like to know?
+    validations:
+      required: true
+  - type: input
+    id: pilcrow-version
+    attributes:
+      label: App version
+      description: See the about/settings screen (e.g. 1.0.12). Leave blank if it does not matter.
+      placeholder: "1.0.12"
+    validations:
+      required: false

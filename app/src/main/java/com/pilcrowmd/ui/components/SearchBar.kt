@@ -16,8 +16,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -32,6 +37,11 @@ import com.pilcrowmd.ui.theme.mdColors
  * Match count shows as "(current+1) / total" (human-readable, 1-indexed display).
  * Prev/next buttons disabled when no matches.
  * All colors from design tokens (no hardcoded hex).
+ *
+ * M-301: opening the bar moves focus into the field and shows the keyboard, so typed text (or
+ * TalkBack focus) lands in the query — not on the toolbar's Search button, and not in the editor
+ * that may still hold input focus. A change of [focusRequestKey] (the toolbar's Search pressed
+ * again while the bar is already open) does the same, putting focus back in the field.
  */
 @Composable
 fun SearchBar(
@@ -43,8 +53,15 @@ fun SearchBar(
     onPrevious: () -> Unit = {},
     onNext: () -> Unit = {},
     onClose: () -> Unit = {},
+    focusRequestKey: Int = 0,
 ) {
     val c = mdColors()
+    val fieldFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(focusRequestKey) {
+        fieldFocus.requestFocus()
+        keyboard?.show()
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -62,7 +79,8 @@ fun SearchBar(
             onValueChange = onQueryChange,
             modifier = Modifier
                 .weight(1f)
-                .height(40.dp),
+                .height(40.dp)
+                .focusRequester(fieldFocus),
             textStyle = TextStyle(
                 color = c.primaryText,
                 fontSize = 16.sp,

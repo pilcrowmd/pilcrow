@@ -17,7 +17,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
-import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
 import org.junit.Assert.assertEquals
@@ -142,7 +142,7 @@ class JumpControlsVisibilityTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             val context = LocalContext.current
-            val renderer = remember { MarkwonRenderer(context) }
+            val renderer = remember { warmedMarkwonRenderer(context) }
             CompositionLocalProvider(LocalMDColors provides DarkColorScheme) {
                 MarkdownPreview(content = longDocument, renderer = renderer)
             }

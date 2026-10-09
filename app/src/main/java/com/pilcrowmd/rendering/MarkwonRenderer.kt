@@ -13,17 +13,24 @@ import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import com.pilcrowmd.ui.theme.PilcrowTypography
 import com.pilcrowmd.ui.theme.PrintCodeColorScheme
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonConfiguration
+import io.noties.markwon.RenderProps
 import io.noties.markwon.core.CorePlugin
 import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.html.HtmlTag
+import io.noties.markwon.html.tag.SimpleTagHandler
 import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
+import io.noties.markwon.syntax.Prism4jSyntaxHighlight
+import io.noties.markwon.syntax.Prism4jTheme
 import io.noties.markwon.syntax.SyntaxHighlightPlugin
 import io.noties.prism4j.GrammarLocator
 import io.noties.prism4j.Prism4j
+import org.commonmark.node.Code
 import java.util.concurrent.ForkJoinPool
 
 /**
@@ -63,8 +70,8 @@ class MarkwonRenderer(
 
     // Lazy singleton: configure once, reuse for all renders.
     // The plugin chain is built by [buildPilcrowMarkwon] so a test can construct an identical,
-    // pre-warm-free instance (the init{} pre-warm below parses on a background thread, and Markwon's
-    // InlineProcessors are stateful/shared — concurrent parses would race).
+    // pre-warm-free instance. Markwon's InlineProcessors are stateful and shared by every parse on an
+    // instance, so concurrent parses on one instance race; the init{} pre-warm below never parses (M-114).
     //
     // M-135: a Markwon instance bakes its code colours in when it is built, so there is one instance
     // per screen theme, each built once. [markwon] is the Dark one. The screen asks for the instance
@@ -140,35 +147,42 @@ class MarkwonRenderer(
         }
     }
 
-    // The font pre-warm parse (see init) runs on this thread. Retained ONLY so a test can
-    // deterministically await it ([awaitFontPreWarm]): Markwon's inline parser is stateful and not
-    // safe for a concurrent parse, so a test that parses on this same instance while the pre-warm is
-    // still running can corrupt parser state (an intermittent StringIndexOutOfBounds). Production
-    // never joins it — the warm-up stays fully asynchronous.
+    // The font pre-warm (see init) runs on this thread. Retained ONLY so a test can deterministically
+    // await it ([awaitFontPreWarm]). Production never joins it: the warm-up stays fully asynchronous.
+    //
+    // M-114: it must never PARSE on an instance the reader uses. Markwon hands one set of inline
+    // processors to every parse on an instance, and each keeps the text and position of the parse in
+    // progress in its own fields, so a warm-up parse here could swap them under a reader parse on the
+    // main thread (StringIndexOutOfBounds in SingleDollarMathInlineProcessor). So it builds [markwon]
+    // off the main thread, as before (the lazy holder is synchronized; building is not parsing), and
+    // warms JLatexMath by building one formula directly. Equivalent: the only JLatexMath work the old
+    // `toMarkdown("$$1$$")` did synchronously was the same TeXFormula parse, behind the same check.
     private val preWarmThread = Thread {
         try {
-            markwon.toMarkdown("$$1$$") // Simple dummy formula
+            // Build first: the build installs the macro limit, which must precede any formula.
+            markwon
+            MathSourceFallbackPlugin.warmUp()
         } catch (e: Exception) {
             Log.w("MarkwonRenderer", "font pre-warm failed (acceptable): ${e.message}")
         }
     }
 
     init {
-        // Font pre-warm: render a dummy formula on a background thread at app init
+        // Font pre-warm: build a dummy formula on a background thread at app init
         // to load JLatexMath fonts (~100-300ms). Prevents first real formula from stuttering.
         preWarmThread.start()
     }
 
     /**
-     * Test-only: block until the init{} font pre-warm parse has finished, so a test can parse on
-     * [markwon] without racing the pre-warm on Markwon's stateful inline parser. No-op in production
-     * (never called there); the warm-up itself remains asynchronous.
+     * Test-only: block until the init{} font pre-warm has finished, so a test starts with [markwon]
+     * built and JLatexMath warmed. No-op in production (never called there); the warm-up itself
+     * remains asynchronous.
      */
     @VisibleForTesting
     internal fun awaitFontPreWarm(timeoutMillis: Long = PRE_WARM_JOIN_TIMEOUT_MS) {
         preWarmThread.join(timeoutMillis)
         // Fail fast + clearly if the pre-warm hasn't finished (e.g. a bogged CI machine), rather than
-        // letting a test proceed and re-flake on the obscure concurrent-parse StringIndexOutOfBounds.
+        // letting a test proceed against a half-warmed renderer.
         check(!preWarmThread.isAlive) { "Font pre-warm did not complete within $timeoutMillis ms" }
     }
 
@@ -182,8 +196,7 @@ class MarkwonRenderer(
 
 /**
  * Build the Pilcrow Markwon instance (full plugin chain). Extracted from [MarkwonRenderer] so
- * tests can build an identical instance without the init{} font pre-warm thread (whose background
- * parse would race the test on Markwon's shared, stateful InlineProcessors). Production always goes
+ * tests can build an identical instance without the init{} font pre-warm thread. Production always goes
  * through [MarkwonRenderer.markwonFor] (or [MarkwonRenderer.printMarkwon] for the PDF).
  */
 /**
@@ -191,24 +204,26 @@ class MarkwonRenderer(
  * the screen, so `diff` and `patch` blocks are coloured too (M-178). It still reads the info string's
  * first word, so a fence with attributes keeps its colours (M-243). This instance reads only the code
  * colours of [PrintCodeColorScheme] and its link colour, which is Print's (M-219); every other PDF
- * colour comes from the export itself.
+ * colour comes from the export itself. Its level-1 and level-2 heading rules end at the text's edge
+ * (M-191, [PrintHeadingRulePlugin]).
  */
 internal fun buildPrintMarkwon(context: Context, mathScale: Float = 1f): Markwon = buildPilcrowMarkwon(
     context,
     PrintCodeColorScheme,
     AliasGrammarLocator(),
     mathScale,
+    layoutWidthHeadingRule = true,
 )
 
 /**
  * Task-list boxes (M-219): fill and outline from [PilcrowColorScheme.link], tick in the page colour.
- * A scheme with no link colour keeps the platform theme's, as every scheme had before M-219.
  */
-private fun taskListPlugin(context: Context, colorScheme: PilcrowColorScheme): TaskListPlugin {
-    val link = colorScheme.link?.toArgb() ?: return TaskListPlugin.create(context)
+private fun taskListPlugin(colorScheme: PilcrowColorScheme): TaskListPlugin {
+    val link = colorScheme.link.toArgb()
     return TaskListPlugin.create(link, link, colorScheme.primaryBackground.toArgb())
 }
 
+@Suppress("LongParameterList") // One per way the instances differ: theme, grammars, maths size, images, print.
 internal fun buildPilcrowMarkwon(
     context: Context,
     colorScheme: PilcrowColorScheme = DarkColorScheme,
@@ -218,6 +233,8 @@ internal fun buildPilcrowMarkwon(
     mathScale: Float = 1f,
     // M-93: draws markdown images through these. Null leaves them as alt text (the PDF).
     images: ReaderImages? = null,
+    // M-191: the PDF's heading rule ends at the text's edge, not at the scaled page canvas's width.
+    layoutWidthHeadingRule: Boolean = false,
 ): Markwon {
     // Prism4j over the kapt-generated grammars, plus the diff/patch aliases unless told otherwise
     val prism4j = Prism4j(grammarLocator)
@@ -242,8 +259,12 @@ internal fun buildPilcrowMarkwon(
         // mutation always lands between the two phases whatever the order. Placed next to
         // CorePlugin because that is the plugin it compensates for, not because it must be.
         .usePlugin(OrderedListRebindPlugin())
+        // M-232: a `1)` list draws `1)`, not `1.`. After CorePlugin, whose list factory it replaces.
+        .usePlugin(OrderedListDelimiterPlugin())
         // M-164: heading sizes H1–H6 relative to the body size.
         .usePlugin(HeadingScalePlugin())
+        // M-191: after CorePlugin, whose heading span factory it replaces.
+        .apply { if (layoutWidthHeadingRule) usePlugin(PrintHeadingRulePlugin()) }
         // Render leading `---…---` as a styled `yaml` code block via a custom
         // BlockParser (no source mutation → char offsets stay aligned with the editor).
         .usePlugin(FrontmatterPlugin())
@@ -252,10 +273,11 @@ internal fun buildPilcrowMarkwon(
         .usePlugin(FootnotePlugin())
         // M-161: GitHub alerts (`> [!NOTE]`), already turned into CalloutBlocks by ReaderDocument.
         .usePlugin(CalloutPlugin())
-        // GFM: tables, strikethrough, task lists
-        .usePlugin(TablePlugin.create(context))
+        // GFM: tables, strikethrough, task lists. M-17: wrapped so a single cell renders its own
+        // content, for the reader's one-TextView-per-cell tables (TableBlockEntry).
+        .usePlugin(TableCellRenderPlugin(TablePlugin.create(context)))
         .usePlugin(StrikethroughPlugin.create())
-        .usePlugin(taskListPlugin(context, colorScheme))
+        .usePlugin(taskListPlugin(colorScheme))
         // Autolinks
         .usePlugin(LinkifyPlugin.create())
         // M-93: local images. After CorePlugin, whose image visitor it replaces.
@@ -314,19 +336,53 @@ internal fun buildPilcrowMarkwon(
 
     return builder
         // Per-language syntax highlighting, coloured from the scheme's code tokens
-        .usePlugin(
-            SyntaxHighlightPlugin.create(
-                prism4j,
-                PilcrowTheme(colorScheme),
-            ),
-        )
+        .usePlugin(CappedSyntaxHighlightPlugin(prism4j, PilcrowTheme(colorScheme)))
         // Must follow SyntaxHighlightPlugin: overrides its single code background with separate
         // inline and fenced-block backgrounds.
         .usePlugin(CodeSurfacePlugin(colorScheme))
         // Limited HTML (<br>, <sub>, <sup> and the like). `<details>` is NOT handled here: this plugin
         // would only strip its tags. The reader draws it as a collapsible section (M-161, DetailsState).
-        .usePlugin(HtmlPlugin.create())
+        .usePlugin(htmlPlugin())
         .build()
+}
+
+/**
+ * Issue #13: Prism4j colours a block on the main thread when the block is bound, and its time grows
+ * faster than the block (a 96 KB json block took 3 s on the JVM, 388 KB took 64 s). A block longer
+ * than [MAX_HIGHLIGHT_CHARS] is left plain monospace instead. Reader and PDF share this builder.
+ * The value is measured on the S24+: a 10,000-char json block held the main thread about 0.6 s,
+ * 15,000 about 1.2 s and 19,000 about 2 s (NEW-99a).
+ */
+private class CappedSyntaxHighlightPlugin(private val prism4j: Prism4j, private val theme: Prism4jTheme) :
+    SyntaxHighlightPlugin(prism4j, theme, null) {
+    override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+        builder.syntaxHighlight(CappedPrism4jHighlight(prism4j, theme))
+    }
+}
+
+private class CappedPrism4jHighlight(prism4j: Prism4j, theme: Prism4jTheme) :
+    Prism4jSyntaxHighlight(prism4j, theme, null) {
+    override fun highlight(info: String?, code: String): CharSequence =
+        if (code.length > MAX_HIGHLIGHT_CHARS) code else super.highlight(info, code)
+}
+
+internal const val MAX_HIGHLIGHT_CHARS = 10_000
+
+/** HtmlPlugin with its default handlers, plus `<code>` (M-246) and `<kbd>` (M-245) drawn as inline code. */
+private fun htmlPlugin(): HtmlPlugin = HtmlPlugin.create {
+    it.addHandler(InlineCodeTagHandler("code")).addHandler(InlineCodeTagHandler("kbd"))
+}
+
+/**
+ * M-246 / M-245: an HTML [tagName] gets exactly the span(s) Markdown inline code gets, so its typeface,
+ * size and background match `` `x` `` (the background is [PilcrowColorScheme.inlineCodeBg]). No
+ * colour of its own.
+ */
+private class InlineCodeTagHandler(private val tagName: String) : SimpleTagHandler() {
+    override fun getSpans(configuration: MarkwonConfiguration, renderProps: RenderProps, tag: HtmlTag): Any? =
+        configuration.spansFactory().get(Code::class.java)?.getSpans(configuration, renderProps)
+
+    override fun supportedTags(): Collection<String> = listOf(tagName)
 }
 
 /** M-93: what the reader's images need — the shared Coil instance, and the note they are relative to. */

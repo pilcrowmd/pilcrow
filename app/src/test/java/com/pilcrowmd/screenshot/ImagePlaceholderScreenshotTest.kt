@@ -21,7 +21,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.rendering.ImagePlaceholderDrawable
-import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.ui.components.MarkdownPreview
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
@@ -65,7 +65,7 @@ class ImagePlaceholderScreenshotTest(private val themeMode: ThemeMode) {
         RuntimeEnvironment.setFontScale(LARGEST_FONT_SCALE)
         composeRule.setContent {
             val context = LocalContext.current
-            val renderer = remember { MarkwonRenderer(context) }
+            val renderer = remember { warmedMarkwonRenderer(context) }
             CompositionLocalProvider(LocalMDColors provides scheme) {
                 Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
                     MarkdownPreview(content = READER_MARKDOWN, renderer = renderer)

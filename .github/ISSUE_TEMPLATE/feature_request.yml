@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         v1 is intentionally focused on reading and editing Markdown beautifully and safely, offline.
-        Requests that respect that scope are easiest to land — see the
+        Requests that respect that scope are easiest to land; see the
         [roadmap](https://github.com/pilcrowmd/pilcrow/blob/main/README.md#roadmap).
   - type: textarea
     id: problem

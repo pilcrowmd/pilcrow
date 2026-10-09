@@ -6,6 +6,7 @@ package com.pilcrowmd.ui.components
 import android.content.Context
 import android.util.TypedValue
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -15,6 +16,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -326,5 +330,112 @@ class PreviewPinchScaleTest {
         applyPinchTextScale(root, 1.5f)
 
         assertEquals(12f, inner.textSize, 0.001f)
+    }
+
+    // ---- the item cache: a row parked there mid-gesture is handed back without a rebind ----
+
+    /** Fixed-height rows, so the gesture's text size cannot move the layout under the scroll. */
+    private inner class RowAdapter : RecyclerView.Adapter<Holder>() {
+        val binds = IntArray(ROWS)
+
+        override fun getItemCount() = ROWS
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
+            textView().apply {
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ROW_PX)
+            },
+        )
+
+        override fun onBindViewHolder(holder: Holder, position: Int) {
+            binds[position]++
+            // As every reader entry does: the bind re-sets the size at the committed scale.
+            (holder.itemView as TextView).setTextSize(TypedValue.COMPLEX_UNIT_PX, base)
+        }
+    }
+
+    private fun layOut(rv: RecyclerView) {
+        val spec = View.MeasureSpec.makeMeasureSpec(VIEWPORT_PX, View.MeasureSpec.EXACTLY)
+        rv.measure(spec, spec)
+        rv.layout(0, 0, VIEWPORT_PX, VIEWPORT_PX)
+    }
+
+    @Test
+    fun aRowCachedAboveTheScreenMidGestureComesBackAtItsBaseSize() =
+        assertCachedRowComesBackAtBase(firstOnScreen = 0, dy = ROW_PX + ROW_PX / 2, cachedRow = 0)
+
+    @Test
+    fun aRowCachedBelowTheScreenMidGestureComesBackAtItsBaseSize() =
+        // Rows 5..7 fill the screen; scrolling up parks row 7 in the cache.
+        assertCachedRowComesBackAtBase(firstOnScreen = 5, dy = -(ROW_PX + ROW_PX / 2), cachedRow = 7)
+
+    /**
+     * A row scrolled just off-screen during a pinch goes to RecyclerView's item cache, which hands it
+     * back WITHOUT a rebind, so the bind-time size reset never reaches it. When the gesture ends on
+     * the scale it started at there is no adapter rebuild either, so only the end-of-gesture step can
+     * put it right.
+     */
+    private fun assertCachedRowComesBackAtBase(firstOnScreen: Int, dy: Int, cachedRow: Int) {
+        val adapter = RowAdapter()
+        val lm = LinearLayoutManager(context)
+        val rv = RecyclerView(context).apply {
+            layoutManager = lm
+            this.adapter = adapter
+        }
+        lm.scrollToPositionWithOffset(firstOnScreen, 0)
+        layOut(rv)
+        val row = rv.findViewHolderForAdapterPosition(cachedRow)
+        assertNotNull("precondition: row $cachedRow must be on screen", row)
+        row!!
+
+        beginPinchScaleGesture(rv)
+        applyPinchTextScale(rv, 1.3f)
+        rv.scrollBy(0, dy)
+
+        // Precondition: the row is in the item cache. Detached, and NOT in the pool, where a rebind
+        // would reset it and make this test pass for a reason unrelated to what it checks.
+        assertNull("precondition: row $cachedRow must be off-screen", rv.findViewHolderForAdapterPosition(cachedRow))
+        assertEquals(
+            "precondition: row $cachedRow must be in the item cache, not the pool",
+            0,
+            rv.recycledViewPool.getRecycledViewCount(row.itemViewType),
+        )
+        assertEquals(
+            "precondition: row $cachedRow must still carry the gesture size",
+            base * 1.3f,
+            (row.itemView as TextView).textSize,
+            0.001f,
+        )
+
+        val onScreen = (0 until rv.childCount).map { rv.getChildAdapterPosition(rv.getChildAt(it)) }
+        val bindsBefore = onScreen.map { adapter.binds[it] }
+
+        endPinchScaleGestureWithoutRebuild(rv)
+        layOut(rv)
+
+        // Only the rows off screen may be rebound: rebinding a visible block re-renders it, restarts
+        // its code colouring and reloads its images, all for a size the reset above already fixed.
+        assertEquals(
+            "rows on screen ($onScreen) must not be rebound",
+            bindsBefore,
+            onScreen.map { adapter.binds[it] },
+        )
+        rv.scrollBy(0, -dy)
+
+        val back = rv.findViewHolderForAdapterPosition(cachedRow)
+        assertNotNull("row $cachedRow must be back on screen", back)
+        assertSame("row $cachedRow must come back in its own holder", row, back)
+        assertEquals(
+            "a row cached mid-gesture must come back at rest at its base size " +
+                "(same holder: ${back === row}, binds: ${adapter.binds[cachedRow]})",
+            base,
+            (back!!.itemView as TextView).textSize,
+            0.001f,
+        )
+    }
+
+    private companion object {
+        const val ROWS = 10
+        const val ROW_PX = 100
+        const val VIEWPORT_PX = 300
     }
 }

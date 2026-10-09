@@ -58,9 +58,15 @@ class DetailsState {
     /**
      * Open every closed section that hides [position], so a jump to it lands on something visible
      * (a search match, a heading, a footnote). Returns the blocks to re-bind, or null if none.
+     *
+     * A target that IS a header opens that section too when the header carries text after its
+     * summary, since that text is painted only while open; a header with none paints the same either
+     * way, so a match there (in its summary) leaves the section as it is.
      */
     fun reveal(position: Int): IntRange? {
-        val hiding = sections.filter { position in bodyOf(it) && it.header !in expanded }
+        val hiding = sections.filter {
+            (position in bodyOf(it) || (position == it.header && it.hasInlineBody)) && it.header !in expanded
+        }
         if (hiding.isEmpty()) return null
         hiding.forEach { expanded += it.header }
         return hiding.minOf { it.header }..hiding.maxOf { it.last }

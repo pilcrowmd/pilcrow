@@ -17,9 +17,11 @@ import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.storage.RecentFile
 import com.pilcrowmd.storage.StorageManager
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +29,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -137,7 +140,7 @@ class MarkdownViewModelNewDocumentTest {
         override suspend fun discardSlot(key: String) = Result.success(Unit)
     }
 
-    private fun vmWith(repo: FakeRepo = FakeRepo(), storage: StorageManager = this.storage): MarkdownViewModel {
+    private fun vmWith(repo: FileRepository = FakeRepo(), storage: StorageManager = this.storage): MarkdownViewModel {
         val parseHeadings = ParseMarkdownHeadingsUseCase()
         return MarkdownViewModel(
             repository = repo,
@@ -432,5 +435,137 @@ class MarkdownViewModelNewDocumentTest {
             storage.recentAdds.firstOrNull()?.uri
         }
         awaitValue(listOf(targetUri), "control: and as the last file") { storage.lastFileWrites }
+    }
+
+    // ── M-202: a new document created while the startup restore is still running ────────────
+
+    private val rememberedUri = Uri.parse("content://test/remembered.md")
+
+    /** Every read is held on [readGate]; [fail] decides whether it then fails or returns a file. */
+    private class RestoreRepo(private val readGate: CompletableDeferred<Unit>, private val fail: Boolean) :
+        FileRepository by FakeRepo() {
+        val readStarted = CompletableDeferred<Unit>()
+
+        @Volatile var readReturned = false
+
+        override suspend fun readFile(uri: Uri): Result<FileText> {
+            readStarted.complete(Unit)
+            // Not interruptible, like the real read: a restore cancelled mid-read still sees it end.
+            withContext(NonCancellable) {
+                readGate.await()
+                readReturned = true
+            }
+            return if (fail) {
+                Result.failure(java.io.IOException("unreadable"))
+            } else {
+                Result.success(FileText("# remembered\n", isUtf8 = true))
+            }
+        }
+    }
+
+    /**
+     * Remembers [uri] as the last file, but answers the startup restore's read of it only once
+     * [gate] opens. [readEnded] is set however that read ends, answered or cancelled, so a test can
+     * wait for it in both cases.
+     */
+    private class HeldLastFileStorage(delegate: StorageManager, gate: CompletableDeferred<Unit>, uri: Uri) :
+        StorageManager by delegate {
+        @Volatile var readEnded = false
+
+        override val lastFileUri: Flow<Uri?> = flow {
+            try {
+                gate.await()
+                emit(uri)
+            } finally {
+                readEnded = true
+            }
+        }
+    }
+
+    /**
+     * The window as reported: the restore has claimed, set `Loading` and is inside its read when the
+     * user creates a new document, and the read then fails. The failure belongs to a file the user
+     * moved away from, so no `Error` may follow the new document's `Success`.
+     *
+     * The barrier is the read RETURNING: the rest of the restore's failure path runs in the same main
+     * looper task, so once the flag is seen after an idle, any `Error` it was going to publish is
+     * already published. Today the gate is completed on the main thread and `Main.immediate` resumes
+     * the restore inline, so the test also fails without the barrier when `newDocument` stops
+     * clearing the restore's claim on `Loading` (measured); the barrier keeps it valid if that
+     * resumption is ever dispatched.
+     */
+    @Test
+    fun aFailingRestoreReadDoesNotReportAnErrorOverANewDocument() {
+        val restoreRead = CompletableDeferred<Unit>()
+        val repo = RestoreRepo(readGate = restoreRead, fail = true)
+        val vm = vmWith(repo, HeldLastFileStorage(storage, CompletableDeferred(Unit), rememberedUri))
+        awaitValue(true, "precondition: the restore is inside its read") { repo.readStarted.isCompleted }
+
+        vm.newDocument()
+        vm.awaitSettled("newDocument")
+
+        restoreRead.complete(Unit)
+        awaitValue(true, "the restore's read returned") { repo.readReturned }
+
+        assertEquals("the failed restore reported over the new document", FileLoadState.Success, vm.fileLoadState.value)
+        assertNull("the new document is still the one open", vm.currentDocument.value?.uri)
+    }
+
+    /**
+     * The narrower window: the new document is created while the restore has claimed but has not yet
+     * learned WHICH file to restore. When it does, and that read fails, the same rule holds.
+     *
+     * The barrier is the remembered-file read ending, which happens in both outcomes: answered, it
+     * resumes the restore, whose failure path is synchronous from there; cancelled, it ends the
+     * restore. Then `Loading` is waited out. That holds only while nothing yields between the read
+     * ending and the restore setting `Loading` (today it runs straight through on Main); if that step
+     * were ever dispatched, this wait could pass before the restore reached `Loading`. As in
+     * [aFailingRestoreReadDoesNotReportAnErrorOverANewDocument], the restore currently resumes
+     * inline when the gate opens, so this also fails without the barrier when the
+     * restore is not stopped (measured).
+     */
+    @Test
+    fun aRestoreThatHadNotYetReadTheRememberedFileDoesNotReportAnErrorOverANewDocument() {
+        val remembered = CompletableDeferred<Unit>()
+        val heldStorage = HeldLastFileStorage(storage, remembered, rememberedUri)
+        val repo = RestoreRepo(readGate = CompletableDeferred(Unit), fail = true)
+        val vm = vmWith(repo, heldStorage)
+
+        vm.newDocument()
+        vm.awaitSettled("newDocument")
+        assertFalse("precondition: the restore has not reached its file read", repo.readStarted.isCompleted)
+
+        remembered.complete(Unit)
+        awaitRestoreEnded(vm, heldStorage)
+
+        assertEquals("the failed restore reported over the new document", FileLoadState.Success, vm.fileLoadState.value)
+        assertNull("the new document is still the one open", vm.currentDocument.value?.uri)
+    }
+
+    /**
+     * The same window with a read that succeeds: the restored file must not replace the new
+     * document, and the load state must stay the new document's `Success`.
+     */
+    @Test
+    fun aRestoreThatHadNotYetReadTheRememberedFileDoesNotReplaceANewDocument() {
+        val remembered = CompletableDeferred<Unit>()
+        val heldStorage = HeldLastFileStorage(storage, remembered, rememberedUri)
+        val repo = RestoreRepo(readGate = CompletableDeferred(Unit), fail = false)
+        val vm = vmWith(repo, heldStorage)
+
+        vm.newDocument()
+        vm.awaitSettled("newDocument")
+        assertFalse("precondition: the restore has not reached its file read", repo.readStarted.isCompleted)
+
+        remembered.complete(Unit)
+        awaitRestoreEnded(vm, heldStorage)
+
+        assertNull("the restored file replaced the new document", vm.currentDocument.value?.uri)
+        assertEquals("the new document's state was overwritten", FileLoadState.Success, vm.fileLoadState.value)
+    }
+
+    private fun awaitRestoreEnded(vm: MarkdownViewModel, heldStorage: HeldLastFileStorage) {
+        awaitValue(true, "the restore's remembered-file read ended") { heldStorage.readEnded }
+        awaitValue(false, "the restore left Loading") { vm.fileLoadState.value is FileLoadState.Loading }
     }
 }

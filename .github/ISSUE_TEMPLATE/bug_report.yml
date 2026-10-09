@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug. Please **do not** use this form for security
-        issues — follow [SECURITY.md](../../SECURITY.md) and report them privately instead.
+        issues; follow [SECURITY.md](../../SECURITY.md) and report them privately instead.
   - type: textarea
     id: what-happened
     attributes:

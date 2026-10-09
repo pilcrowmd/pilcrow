@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -43,9 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.doOnNextLayout
+import androidx.core.view.doOnPreDraw
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
@@ -58,12 +64,15 @@ import com.pilcrowmd.rendering.CodeHighlighting
 import com.pilcrowmd.rendering.DetailsDecoration
 import com.pilcrowmd.rendering.DetailsState
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.ReaderLayoutManager
 import com.pilcrowmd.rendering.ReaderTree
 import com.pilcrowmd.rendering.RecyclerAdapterEntries
 import com.pilcrowmd.rendering.SearchHighlight
+import com.pilcrowmd.rendering.SecondFingerEndsSelection
 import com.pilcrowmd.rendering.applyReaderJumpBehaviour
 import com.pilcrowmd.rendering.clearReaderHighlight
 import com.pilcrowmd.rendering.documentOverflowsViewport
+import com.pilcrowmd.rendering.endBlockSelection
 import com.pilcrowmd.rendering.scrollToDocumentEnd
 import com.pilcrowmd.rendering.setImageTapHandler
 import com.pilcrowmd.storage.ScrollAnchor
@@ -73,6 +82,7 @@ import com.pilcrowmd.ui.theme.mdColors
 import io.noties.markwon.Markwon
 import io.noties.markwon.recycler.MarkwonAdapter
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /**
  * Block-level Markdown preview.
@@ -112,6 +122,8 @@ fun MarkdownPreview(
     currentMatchIndex: Int = 0,
     jumpPosition: Int = -1,
     jumpSeq: Int = 0,
+    // M-184: called with [jumpSeq] once that jump has been performed, so the caller can drop it.
+    onJumpHandled: (Int) -> Unit = {},
     // PLAIN renders the content verbatim via PlainTextBlocks (no Markdown parsing);
     // MARKDOWN is today's path, byte-for-byte unchanged.
     renderMode: RenderMode = RenderMode.MARKDOWN,
@@ -123,6 +135,7 @@ fun MarkdownPreview(
     onImageTap: () -> Unit = {},
 ) {
     val currentOnImageTap = rememberUpdatedState(onImageTap)
+    val currentOnJumpHandled = rememberUpdatedState(onJumpHandled)
     // Captured once per composition-entry, so re-entering Reader mode (or rotating) restores the
     // saved offset without fighting live scroll updates.
     val initialScroll = remember { scrollPosition }
@@ -170,13 +183,15 @@ fun MarkdownPreview(
     // never overwriting an in-flight pinch, since the param stays constant during the gesture.
     val lastParamScale = remember { mutableStateOf(fontScale) }
 
-    Box(modifier = modifier.fillMaxSize().background(c.primaryBackground)) {
+    // M-220: one traversal group, so the jump controls' negative traversalIndex orders them ahead of
+    // the list only within the reader, never ahead of the toolbar above it.
+    Box(modifier = modifier.fillMaxSize().background(c.primaryBackground).semantics { isTraversalGroup = true }) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 RecyclerView(context).apply {
                     recyclerView.value = this // Capture the handle once (factory runs once)
-                    layoutManager = LinearLayoutManager(context)
+                    layoutManager = ReaderLayoutManager(context) // M-157: no jump when a tap focuses a block
                     setBackgroundColor(c.primaryBackground.toArgb())
                     // No item add/remove/change animations: a live pinch-zoom swaps the adapter many
                     // times a second, and the default cross-fade would read as a flicker/blink.
@@ -232,47 +247,24 @@ fun MarkdownPreview(
                             private var gestureScale = 1f
                             private var startScale = 1f
 
-                            // The scale the visible TextViews currently SHOW (continuous). Only used to
-                            // skip frames that would change nothing; the sizes themselves are set
-                            // absolutely from each view's recorded base, so this never drives them.
-                            private var visualScale = 1f
-
                             override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
                                 gestureScale = 1f
                                 startScale = liveFontScale.value
-                                visualScale = startScale
-                                recyclerView.value?.let { beginPinchScaleGesture(it) }
+                                recyclerView.value?.let {
+                                    beginPinchScaleGesture(it)
+                                    // Take the point of text under the fingers where they land, at the start scale.
+                                    applyPinchFrameKeepingFocus(it, detector.focusX, detector.focusY, 1f)
+                                }
                                 return true
                             }
 
                             override fun onScale(detector: ScaleGestureDetector): Boolean {
                                 gestureScale *= detector.scaleFactor
                                 val target = ReaderZoom.dampedScale(startScale, gestureScale)
-                                val ratio = target / visualScale
-                                if (ratio == 1f) return true
                                 val rv = recyclerView.value ?: return true
-                                // Capture the block under the fingers and how far down it the focal point
-                                // sits, BEFORE the reflow changes its height.
-                                val focusY = detector.focusY
-                                val focusChild = rv.findChildViewUnder(detector.focusX, focusY)
-                                val focusPos = focusChild?.let { rv.getChildAdapterPosition(it) }
-                                    ?: RecyclerView.NO_POSITION
-                                val focusFraction = if (focusChild != null && focusChild.height > 0) {
-                                    (focusY - focusChild.top) / focusChild.height.toFloat()
-                                } else {
-                                    0f
-                                }
-                                applyPinchTextScale(rv, target / startScale)
-                                visualScale = target
-                                // After the reflow lays the focal block out at its new height, scroll so
-                                // that same fractional point is back under the fingers.
-                                if (focusChild != null && focusPos != RecyclerView.NO_POSITION) {
-                                    focusChild.doOnNextLayout { laidOut ->
-                                        val newTop = (focusY - laidOut.height * focusFraction).toInt()
-                                        (rv.layoutManager as? LinearLayoutManager)
-                                            ?.scrollToPositionWithOffset(focusPos, newTop)
-                                    }
-                                }
+                                // Every event, also one that leaves the scale where it was: the fingers may
+                                // still have moved, and the text under them moves with them.
+                                applyPinchFrameKeepingFocus(rv, detector.focusX, detector.focusY, target / startScale)
                                 return true
                             }
 
@@ -290,11 +282,13 @@ fun MarkdownPreview(
                                     // will happen — and the views are still showing the last continuous
                                     // (un-quantised) frame. Put them back on their bases explicitly, or
                                     // the next gesture records that drift as its base.
-                                    recyclerView.value?.let { applyPinchTextScale(it, 1f) }
+                                    recyclerView.value?.let { endPinchScaleGestureWithoutRebuild(it) }
                                 }
                             }
                         },
                     )
+                    // M-157: a second finger is a pinch, never a long-press selection.
+                    addOnItemTouchListener(SecondFingerEndsSelection)
                     addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
                         // Feed every event to the detector; intercept (steal from scrolling) only while
                         // an actual scale gesture is in progress, so single-finger scroll still works.
@@ -438,6 +432,8 @@ fun MarkdownPreview(
                         } else {
                             rv.smoothScrollToPosition(jumpPosition)
                         }
+                        // M-184: performed, so it is acknowledged; a reader composed later never replays it.
+                        currentOnJumpHandled.value(jumpSeq)
                     }
                 }
             },
@@ -453,6 +449,46 @@ fun MarkdownPreview(
                 .padding(16.dp),
         )
     }
+}
+
+/**
+ * One live pinch frame: scale the visible blocks to [factor] of their recorded bases and put the
+ * point of text that was under the fingers when the gesture began back under them, at ([focusX],
+ * [focusY]). The text grows and shrinks around the fingers and travels with them when they move.
+ *
+ * The point is taken once per gesture, on its first frame (where the fingers land, before any
+ * reflow), and kept until [beginPinchScaleGesture] clears it. Re-taking it on every frame would
+ * only cancel the growth: the text would stay put while the fingers slide away from it.
+ *
+ * The correction runs at the next pre-draw: after the reflow has laid the block out at its new
+ * height, before that frame is drawn. Not from the block's own layout callback: that fires inside
+ * the list's layout pass, and a scroll requested there is dropped when the pass completes, so the
+ * block slid down by however much the text above it grew. See PreviewPinchFocalAnchorTest.
+ */
+internal fun applyPinchFrameKeepingFocus(rv: RecyclerView, focusX: Float, focusY: Float, factor: Float) {
+    val anchor = rv.getTag(R.id.pinch_focal_anchor) as? PinchFocalAnchor
+        ?: pinchFocalAnchorUnder(rv, focusX, focusY)?.also { rv.setTag(R.id.pinch_focal_anchor, it) }
+    applyPinchTextScale(rv, factor)
+    if (anchor == null) return
+    val holdAnchor = {
+        rv.layoutManager?.findViewByPosition(anchor.position)?.let { block ->
+            rv.scrollBy(0, (block.top + block.height * anchor.fraction - focusY).roundToInt())
+        }
+    }
+    // A reflow is pending: correct once it is laid out. A frame that only moved the fingers changed
+    // no size, so there is nothing to wait for.
+    if (rv.isLayoutRequested) rv.doOnPreDraw { holdAnchor() } else holdAnchor()
+}
+
+/** A point of text: the block at adapter [position], [fraction] of the way down its height. */
+private class PinchFocalAnchor(val position: Int, val fraction: Float)
+
+/** The point of text under ([x], [y]), or null when no block is there (a gap, or past the end). */
+private fun pinchFocalAnchorUnder(rv: RecyclerView, x: Float, y: Float): PinchFocalAnchor? {
+    val block = rv.findChildViewUnder(x, y) ?: return null
+    val position = rv.getChildAdapterPosition(block)
+    if (position == RecyclerView.NO_POSITION || block.height <= 0) return null
+    return PinchFocalAnchor(position, (y - block.top) / block.height)
 }
 
 /**
@@ -518,8 +554,35 @@ internal fun applyPinchTextScale(root: View, factor: Float) {
  * committed scale, which is exactly what a recorded base is required to mean.
  */
 internal fun beginPinchScaleGesture(rv: RecyclerView) {
+    // M-157: a pinch ends any text selection, so no block carries handles into the reflow.
+    endBlockSelection(rv)
     rv.recycledViewPool.clear()
     clearPinchTextScaleBases(rv)
+    rv.setTag(R.id.pinch_focal_anchor, null) // the next frame takes the point under the fingers afresh
+}
+
+/**
+ * End a pinch whose quantised scale landed back on the one it started at, so no adapter rebuild will
+ * reset the sizes: put every attached view back on its recorded base, and send every row that is not
+ * attached through a rebind.
+ *
+ * **The rebind is for the item cache.** A row scrolled just off-screen during the gesture is parked
+ * there, and the cache hands it back WITHOUT a rebind, still at the gesture's size; it is unreachable
+ * from the attached tree. Marking the positions that are not on screen as changed moves cached holders
+ * to the pool, where the bind re-sets the size; on-screen rows are not touched. Not an attach listener
+ * that re-applies the recorded base: after a rebuild that base belongs to the old scale, so it would
+ * shrink freshly bound rows back. Not a cache flush either: there is no getter to restore its size.
+ */
+internal fun endPinchScaleGestureWithoutRebuild(rv: RecyclerView) {
+    applyPinchTextScale(rv, 1f)
+    val adapter = rv.adapter ?: return
+    val attached = (0 until rv.childCount)
+        .map { rv.getChildAdapterPosition(rv.getChildAt(it)) }
+        .filter { it != RecyclerView.NO_POSITION }
+    val first = attached.minOrNull() ?: 0
+    val end = attached.maxOrNull()?.plus(1) ?: 0
+    if (first > 0) adapter.notifyItemRangeChanged(0, first)
+    if (end < adapter.itemCount) adapter.notifyItemRangeChanged(end, adapter.itemCount - end)
 }
 
 /**
@@ -556,6 +619,11 @@ internal const val JUMP_CONTROLS_LINGER_MS = 1_500L
  * With touch exploration on (TalkBack) they stay shown whenever the document scrolls, as before
  * M-195: the covered text is not being read by eye, and a control that vanishes 1.5 s after a
  * scroll is one a TalkBack user cannot find.
+ *
+ * M-220, also only with touch exploration on: they appear without a fade-in, come before the
+ * document in TalkBack's order, and a jump says where it landed. The fade-in starts at alpha 0;
+ * Compose reports a node at alpha 0 as not visible to the user, and sends no event when only the
+ * alpha changes, which fits the device, where the buttons were missing until the list scrolled.
  */
 @Composable
 private fun JumpControls(
@@ -578,19 +646,35 @@ private fun JumpControls(
     // `visible` still gates both paths: hidden on short docs that don't scroll.
     AnimatedVisibility(
         visible = visible && (lingering || touchExploration),
-        enter = fadeIn(),
+        enter = if (touchExploration) EnterTransition.None else fadeIn(),
         exit = fadeOut(),
-        modifier = modifier,
+        modifier = if (touchExploration) {
+            // Read right after the toolbar rather than after the last paragraph: the list ahead of
+            // them is the whole document. Scoped by the reader's traversal group in [MarkdownPreview].
+            modifier.semantics {
+                isTraversalGroup = true
+                traversalIndex = -1f
+            }
+        } else {
+            modifier
+        },
     ) {
-        JumpButtons(recyclerView)
+        JumpButtons(recyclerView, announce = touchExploration)
     }
 }
 
+/** [announce]: say where a jump landed, for TalkBack (M-220); a scroll alone is silent there. */
 @Composable
-private fun JumpButtons(recyclerView: RecyclerView?) {
+private fun JumpButtons(recyclerView: RecyclerView?, announce: Boolean) {
+    // `announceForAccessibility` is deprecated since API 36 in favour of live regions and pane
+    // titles, which describe a state that stays on screen. A jump's result is a one-off with no node
+    // whose text changes to carry it, and Compose 1.7 has no announcement API of its own.
+    @Suppress("DEPRECATION")
+    val sayWhereItLanded: (String) -> Unit = { if (announce) recyclerView?.announceForAccessibility(it) }
     Column {
         JumpButton(icon = Icons.Filled.KeyboardArrowUp, description = "Scroll to top") {
             (recyclerView?.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
+            sayWhereItLanded("Top of document")
         }
         Spacer(modifier = Modifier.height(10.dp))
         JumpButton(icon = Icons.Filled.KeyboardArrowDown, description = "Scroll to bottom") {
@@ -599,6 +683,7 @@ private fun JumpButtons(recyclerView: RecyclerView?) {
             // screen". M-06's spacer removes that clamp, so the resting position is now stated
             // rather than inherited — see `scrollToDocumentEnd`.
             recyclerView?.let { scrollToDocumentEnd(it) }
+            sayWhereItLanded("End of document")
         }
     }
 }
@@ -622,13 +707,16 @@ private fun JumpButton(icon: ImageVector, description: String, onClick: () -> Un
     Surface(
         shape = CircleShape,
         color = c.secondarySurface.copy(alpha = 0.85f),
+        // M-220: the label and the role sit on the clickable node itself, so TalkBack reads one node,
+        // "Scroll to top, button", rather than merging a label up from the icon.
         modifier = Modifier
             .size(40.dp)
-            .clickable(onClick = onClick),
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = description,
+            contentDescription = null,
             tint = c.secondaryText,
             modifier = Modifier.padding(8.dp),
         )

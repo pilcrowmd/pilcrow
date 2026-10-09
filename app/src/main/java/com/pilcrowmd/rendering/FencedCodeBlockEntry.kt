@@ -114,8 +114,8 @@ class FencedCodeBlockEntry(
             // setParsedMarkdown installs Markwon's LinkMovementMethod (a
             // ScrollingMovementMethod) which CONSUMES touch drags on the TextView — that swallows the
             // horizontal pan before it reaches the enclosing HorizontalScrollView, so a wide code
-            // block can't be panned by finger (tables scroll because their cells use plain setText
-            // with no movement method). Code blocks have no clickable links, so drop it.
+            // block can't be panned by finger (table cells drop it the same way unless they
+            // hold a link or footnote marker). Code blocks have no clickable links, so drop it.
             holder.codeView.movementMethod = null
             // Before the search highlight, which copies the text and so keeps these spans.
             highlightCode(holder, node)

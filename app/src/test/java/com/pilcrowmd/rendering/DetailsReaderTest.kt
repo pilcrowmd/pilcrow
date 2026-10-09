@@ -16,6 +16,8 @@ import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.ui.theme.DarkColorScheme
+import com.pilcrowmd.ui.theme.LightColorScheme
+import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -40,14 +42,19 @@ class DetailsReaderTest {
     private fun reader(
         markdown: String = this.markdown,
         viewportPx: Int = 4000,
+        scheme: PilcrowColorScheme = DarkColorScheme,
+        tailSpace: Boolean = false,
     ): Triple<RecyclerView, DetailsState, DetailsDecoration> {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val markwon = buildPilcrowMarkwon(activity)
         val state = DetailsState()
         val list = RecyclerView(activity)
         list.layoutManager = LinearLayoutManager(activity)
+        // The reader installs this before the details decoration (Preview.kt): its tail space after the
+        // last block.
+        if (tailSpace) applyReaderBottomSpacer(list)
         list.setTag(R.id.details_state, state)
-        val decoration = DetailsDecoration(activity, state, DarkColorScheme)
+        val decoration = DetailsDecoration(activity, state, scheme)
         list.addItemDecoration(decoration)
         val adapter = RecyclerAdapterEntries.buildMarkdownAdapter(activity, markwon, details = state)
         val document = ReaderDocument.transform(markwon.parse(markdown))
@@ -190,5 +197,56 @@ class DetailsReaderTest {
         assertTrue("the header shows", height(list, 0) > 0)
         assertEquals("the body is closed", 0, height(list, 1))
         assertTrue("the paragraph after the section shows", height(list, 3) > 0)
+    }
+
+    /** The boxes [decoration] draws over [list] as laid out now. */
+    private fun boxes(list: RecyclerView, decoration: DetailsDecoration): List<RectF> {
+        val boxes = mutableListOf<RectF>()
+        val canvas = object : Canvas() {
+            override fun drawRoundRect(rect: RectF, rx: Float, ry: Float, paint: Paint) {
+                boxes += RectF(rect)
+            }
+        }
+        decoration.onDraw(canvas, list, RecyclerView.State())
+        // Fill and stroke draw the same rectangle; one of each per section.
+        return boxes.distinct()
+    }
+
+    // 0 para · 1 header · 2 body para · 3 </details>   (the section of the product showcase, M-262)
+    private val lastSection =
+        "Before.\n\n<details>\n<summary>Out of scope for this release</summary>\n\n" +
+            "Subscriptions, scheduled deliveries and sharing a basket between accounts. These come after we " +
+            "see how often customers use the first version.\n\n</details>\n"
+
+    /** How far below the opened body paragraph (position 2) the section's box ends, in px. */
+    private fun gapBelowBody(markdown: String, scheme: PilcrowColorScheme): Int {
+        val (list, _, decoration) = reader(markdown, 2000, scheme, tailSpace = true)
+        list.findViewHolderForAdapterPosition(1)!!.itemView.performClick()
+        settle(list, 2000)
+        assertTrue("the body shows after a tap", height(list, 2) > 0)
+        val box = boxes(list, decoration).single()
+        return box.bottom.toInt() - list.findViewHolderForAdapterPosition(2)!!.itemView.bottom
+    }
+
+    /**
+     * M-262: an opened section that is the document's last block ended a whole viewport below its text,
+     * because its box took the close block's decorated bottom, and the reader's tail space after the
+     * last block is part of that. The same section with a paragraph after it is the control: there the
+     * box ends just under the body (close padding less the box gap), and the last section must match.
+     */
+    @Test
+    fun `an open section at the end of the document ends at its text, not at the tail space`() {
+        // Both schemes are measured before any assertion, so a failure reports all four numbers.
+        val gaps = listOf("Dark" to DarkColorScheme, "Light" to LightColorScheme).map { (name, scheme) ->
+            "$name: control ${gapBelowBody(lastSection + "\nAfter.", scheme)} px, " +
+                "last ${gapBelowBody(lastSection, scheme)} px"
+        }
+        val expected = listOf("Dark", "Light").map { "$it: control $CLOSE_GAP_PX px, last $CLOSE_GAP_PX px" }
+        assertEquals("how far below the body text each box ends", expected, gaps)
+    }
+
+    private companion object {
+        /** The close block's 8 dp padding less the box's 4 dp gap, at Robolectric's 1 px per dp. */
+        const val CLOSE_GAP_PX = 4
     }
 }

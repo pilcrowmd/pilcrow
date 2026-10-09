@@ -137,6 +137,7 @@ class FootnoteBlockEntry(
             Log.e("FootnoteBlockEntry", "footnote render failed: ${e.message}", e)
             holder.body.text = ProseBlockEntry.RENDER_FALLBACK_TEXT
         }
+        holder.body.enableBlockSelection() // M-157
     }
 
     private companion object {

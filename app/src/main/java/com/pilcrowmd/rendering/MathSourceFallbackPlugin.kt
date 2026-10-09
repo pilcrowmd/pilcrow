@@ -126,6 +126,26 @@ internal class MathSourceFallbackPlugin(private val math: JLatexMathPlugin) : Ma
         private var initialised = false
 
         /**
+         * M-114: the renderer's start-up warm-up. Builds one formula so the library's tables and fonts
+         * load off the main thread, behind the same readiness check as the bind-time parse. It parses no
+         * Markdown, so it shares no Markwon instance, and no inline-parser state, with the reader.
+         */
+        // Same failures as [parses]; a warm-up that fails leaves the first formula to load them.
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
+        internal fun warmUp() {
+            if (!libraryReady()) return
+            try {
+                TeXFormula(WARM_UP_FORMULA)
+            } catch (e: Exception) {
+                Log.w("JLatexMath", "warm-up failed (acceptable): ${e.message}")
+            } catch (e: LinkageError) {
+                Log.w("JLatexMath", "warm-up failed (acceptable): ${e.message}")
+            }
+        }
+
+        private const val WARM_UP_FORMULA = "1"
+
+        /**
          * Whether the check may touch [TeXFormula]. Its class initializer reads assets through
          * `JLatexMathAndroid`, and if it runs before `JLatexMathAndroid.init` it fails for good: the
          * class is unusable for the rest of the process. On a device the library's ContentProvider

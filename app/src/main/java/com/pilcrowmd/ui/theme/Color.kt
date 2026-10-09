@@ -67,9 +67,8 @@ data class PilcrowColorScheme(
     val footnoteMarker: Color,
 
     // Links, and the fill and outline of task-list boxes, whose tick takes [primaryBackground] (M-219).
-    // `null` keeps the platform theme's colours, as every scheme had before M-219: the PDF export
-    // does, because M-219 does not cover print.
-    val link: Color?,
+    // Every scheme sets one, print included since M-257, so no colour comes from the platform theme.
+    val link: Color,
 
     // GitHub-style callouts (M-161): bar, icon and title colour per type; the tint is derived.
     val callouts: CalloutColors,
@@ -89,8 +88,8 @@ const val CALLOUT_TINT_ALPHA = 0.12f
  *
  * The first six roles are the original map. The rest were added for M-132/M-133 (Markdown, `git`/diff,
  * CSS and friends) and are nullable: a null role leaves its tokens in the default code text colour,
- * exactly as they rendered before those roles existed. Print leaves them all null, which is how the
- * exported PDF stays unchanged.
+ * exactly as they rendered before those roles existed. The PDF's code takes [LightCodeSyntax], so it
+ * draws every role Light sets (M-178).
  */
 data class CodeSyntaxColors(
     val keyword: Color,
@@ -117,6 +116,10 @@ data class CodeSyntaxColors(
     val inserted: Color? = null,
     /** A diff's removed line (`deleted`). */
     val deleted: Color? = null,
+    /** Full-line background behind a diff's added line (M-216); null draws no tint. */
+    val insertedLineBg: Color? = null,
+    /** Full-line background behind a diff's removed line (M-216); null draws no tint. */
+    val deletedLineBg: Color? = null,
 )
 
 /**
@@ -138,7 +141,10 @@ val OneDarkCodeSyntax = CodeSyntaxColors(
     variable = Color(0xFFE06C75),
     builtin = Color(0xFF56B6C2),
     inserted = Color(0xFF98C379),
-    deleted = Color(0xFFE06C75),
+    // M-216: deleted nudged from 0xFFE06C75 (shared with error/variable) to hold 4.5:1 on its tint.
+    deleted = Color(0xFFE78B92),
+    insertedLineBg = Color(0xFF3D433A), // 12% 0xFF98C379 over the Dark panel 0xFF313131
+    deletedLineBg = Color(0xFF463839), // 12% 0xFFE06C75 over the Dark panel 0xFF313131
 )
 
 /**
@@ -159,8 +165,11 @@ val LightCodeSyntax = CodeSyntaxColors(
     literal = Color(0xFF974C39),
     variable = Color(0xFFA33E62),
     builtin = Color(0xFF256C62),
-    inserted = Color(0xFF3F6B2F),
-    deleted = Color(0xFFA8352B),
+    // M-216: inserted and deleted nudged from 0xFF3F6B2F and 0xFFA8352B to hold 4.5:1 on their tints.
+    inserted = Color(0xFF3A622B),
+    deleted = Color(0xFF9E3228),
+    insertedLineBg = Color(0xFFD5D0B4), // 12% 0xFF3F6B2F over the Light panel 0xFFE9DEC6
+    deletedLineBg = Color(0xFFE1CAB3), // 12% 0xFFA8352B over the Light panel 0xFFE9DEC6
 )
 
 /**
@@ -290,7 +299,7 @@ val PrintColorScheme = PilcrowColorScheme(
     scrimOverlay = Color.Black.copy(alpha = 0.32f), // Not used in PDF, for consistency
     codeSyntax = LightCodeSyntax, // M-178: the PDF's code takes Light's tokens (see PrintCodeColorScheme)
     footnoteMarker = Color(0xFF5A4A8A), // same as the print accent: the export must not change
-    link = null, // platform colours, as before M-219: the export must not change
+    link = LightColorScheme.link, // M-257: Light's teal, 5.32:1 on the white page, the same on every device
     callouts = LightCalloutColors, // new with M-161: nothing exported before used a callout
 )
 

@@ -117,6 +117,7 @@ class LocalStorageManager(
     private val fontSetIdKey = stringPreferencesKey("font_set_id")
     private val mermaidCloudEnabledKey = booleanPreferencesKey("mermaid_cloud_enabled")
     private val wrapCodeLinesKey = booleanPreferencesKey("wrap_code_lines")
+    private val formattingBarEnabledKey = booleanPreferencesKey("formatting_bar_enabled")
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val dismissedImageFoldersKey = stringSetPreferencesKey("dismissed_image_folders")
 
@@ -174,6 +175,10 @@ class LocalStorageManager(
 
     override val wrapCodeLines: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[wrapCodeLinesKey] ?: false // Default: OFF — long lines side-scroll (M-134)
+    }.distinctUntilChanged()
+
+    override val formattingBarEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[formattingBarEnabledKey] ?: true // Default: ON (M-217)
     }.distinctUntilChanged()
 
     override val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -288,6 +293,10 @@ class LocalStorageManager(
 
     override suspend fun setWrapCodeLines(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[wrapCodeLinesKey] = enabled }
+    }
+
+    override suspend fun setFormattingBarEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[formattingBarEnabledKey] = enabled }
     }
 
     override suspend fun setThemeMode(mode: ThemeMode) {

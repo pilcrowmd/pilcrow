@@ -19,7 +19,7 @@ and memory, not looks. The text is generated and does not mean anything.
 - **Edit.** Switch to Edit, scroll to the end, type a word, and save. Then reopen the file and
   check your word is there and nothing else changed.
 
-**Known gaps in version 1.0.12** – we know about these, no need to report them:
+**Known gaps in version 1.0.13** – we know about these, no need to report them:
 
 - The reader prepares the whole document at once, on the screen's own thread. On a very large file
   the screen can freeze for a while, and Android may offer to close the app.

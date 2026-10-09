@@ -12,14 +12,8 @@ LaTeX that most note apps and AI assistants produce. PilcrowMD draws them on you
 - Wide formulas should scroll or fit; nothing should be cut off at the right edge.
 - Try both themes (**Settings → Theme**): formulas stay readable on both.
 
-**Known gaps in version 1.0.12** – we know about these, no need to report them:
+**Known gaps in version 1.0.13** – we know about these, no need to report them:
 
-- A formula inside a table cell shows as an empty space.
-- Equation numbers with `\tag{1}` make the whole formula show as source text.
-- Greek letters typed directly inside `\text{…}` (for example `\text{α}`) make the formula show as
-  source text. `\alpha` outside `\text{}` works.
-- In chemistry, a space after a number (`\ce{2 H2O}`) makes the formula show as plain text;
-  `\ce{2H2O}` works.
 - `\( … \)` and `\[ … \]` are not treated as maths; use `$…$` and `$$…$$`.
 - Inline formulas sit slightly low in their line.
 - When a file is reopened, its formulas can show as source for a moment before they are drawn.

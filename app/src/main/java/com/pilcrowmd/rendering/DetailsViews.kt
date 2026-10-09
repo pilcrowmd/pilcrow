@@ -35,7 +35,8 @@ import org.commonmark.node.Node
  * The `<details>` header's text (M-161): the summary in the reading font's bold face after a
  * chevron, and — while open — any body text written inside the same HTML block. The painted text
  * is exactly what `SearchMarkdownUseCase` models for the block (summary, then a newline and the
- * inline body); a closed header paints only the summary, and search opens it before landing there.
+ * inline body); a closed header paints only the summary, and a search match on a header that has an
+ * inline body opens it (`DetailsState.reveal`) before landing there.
  */
 internal fun detailsHeaderText(
     context: Context,
@@ -156,6 +157,7 @@ internal class DetailsDecoration(
     private val boxGap = dp(context, BOX_GAP_DP).toFloat()
     private val closePad = dp(context, CLOSE_PAD_DP)
     private val radius = dp(context, CORNER_DP).toFloat()
+    private val ownOffsets = Rect()
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -187,7 +189,7 @@ internal class DetailsDecoration(
         // section that reaches none of the laid-out rows is skipped before any of that work.
         val reachingScreen = details.sections.filter { it.last >= onScreen.first && it.header <= onScreen.last }
         for (section in reachingScreen) {
-            val box = boxOf(section, parent, layoutManager) ?: continue
+            val box = boxOf(section, parent, layoutManager, state) ?: continue
             c.drawRoundRect(box, radius, radius, fill)
             c.drawRoundRect(box, radius, radius, stroke)
         }
@@ -206,6 +208,7 @@ internal class DetailsDecoration(
         section: DetailsSection,
         parent: RecyclerView,
         layoutManager: RecyclerView.LayoutManager,
+        state: RecyclerView.State,
     ): RectF? {
         if (details.isHidden(section.header)) return null
         val inBox = (0 until parent.childCount).map { parent.getChildAt(it) }.filter { child ->
@@ -219,7 +222,7 @@ internal class DetailsDecoration(
         // A header scrolled off the top: start the box above the viewport so no corner shows.
         val headerShown = inBox.any { parent.getChildAdapterPosition(it) == section.header }
         val top = if (headerShown) inBox.minOf { layoutManager.getDecoratedTop(it) }.toFloat() else -radius * 2
-        val bottom = inBox.maxOf { layoutManager.getDecoratedBottom(it) }.toFloat()
+        val bottom = inBox.maxOf { ownBottom(it, parent, state) }.toFloat()
         val depth = details.depth(section.header)
         return RectF(
             (parent.paddingLeft + pageMargin + depth * insetStart).toFloat(),
@@ -227,6 +230,17 @@ internal class DetailsDecoration(
             (parent.width - parent.paddingRight - pageMargin - depth * insetEnd).toFloat(),
             bottom - boxGap,
         )
+    }
+
+    /**
+     * Where [child] ends with only this decoration's offset below it (M-262). Not the decorated bottom:
+     * that also counts other decorations', and the reader adds tail space after the last block, so a
+     * section that ends the document drew its box that far below its text.
+     */
+    private fun ownBottom(child: View, parent: RecyclerView, state: RecyclerView.State): Int {
+        ownOffsets.setEmpty()
+        getItemOffsets(ownOffsets, child, parent, state)
+        return child.bottom + ownOffsets.bottom
     }
 
     private companion object {

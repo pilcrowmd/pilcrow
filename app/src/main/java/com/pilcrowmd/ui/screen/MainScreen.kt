@@ -9,8 +9,11 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -22,12 +25,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
@@ -38,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,10 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,6 +65,7 @@ import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.repository.StrandedSlot
+import com.pilcrowmd.ui.components.AccessibleCodeEditor
 import com.pilcrowmd.ui.components.EditorController
 import com.pilcrowmd.ui.components.FileNameText
 import com.pilcrowmd.ui.components.GitHubIntegrationScreen
@@ -80,7 +88,6 @@ import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 import com.pilcrowmd.viewmodel.NEW_DOCUMENT_NAME
 import com.pilcrowmd.viewmodel.ViewMode
-import io.github.rosemoe.sora.widget.CodeEditor
 import kotlinx.coroutines.launch
 
 /**
@@ -129,6 +136,7 @@ fun MainScreen(
     val fontSet = FontSets.byId(fontSetId.value)
     val mermaidCloudEnabled = viewModel.mermaidCloudEnabled.collectAsStateWithLifecycle()
     val wrapCodeLines = viewModel.wrapCodeLines.collectAsStateWithLifecycle()
+    val formattingBarEnabled = viewModel.formattingBarEnabled.collectAsStateWithLifecycle()
     // Theme mode (Dark/Light)
     val themeMode = viewModel.themeMode.collectAsStateWithLifecycle()
     // appInfo injected from ViewModel (PackageManager call deferred to AppContainer init)
@@ -144,6 +152,9 @@ fun MainScreen(
     val searchMatches = viewModel.searchMatches.collectAsStateWithLifecycle()
     val currentMatchIndex = viewModel.currentMatchIndex.collectAsStateWithLifecycle()
     val searchVisible = viewModel.searchVisible.collectAsStateWithLifecycle()
+    // M-301: bumped on every toolbar Search press, so pressing Search with the bar already open
+    // puts focus back in the field (setSearchVisible(true) alone is then a no-op).
+    var searchFocusRequest by remember { mutableIntStateOf(0) }
 
     // Warm-intent file waiting on the unsaved-changes prompt
     val pendingOpenUri = viewModel.pendingOpenUri.collectAsStateWithLifecycle()
@@ -206,7 +217,7 @@ fun MainScreen(
     // survives a Reader⇄Editor mode toggle (if the CodeEditor were in Editor's remember, it would be
     // destroyed when Editor leaves composition in Reader mode).
     val soraCodeEditor = remember {
-        CodeEditor(context)
+        AccessibleCodeEditor(context)
     }
     // Release the hoisted CodeEditor when MainScreen leaves composition (app exit / Activity
     // destroy) so its native resources + Context reference are freed (guards the leak surface
@@ -231,26 +242,27 @@ fun MainScreen(
         EditorController(soraCodeEditor)
     }
 
-    // Drive both the system-bar icon appearance AND the bar background from the active theme.
-    // Light theme → dark icons (legible on cream); Dark theme → light icons (legible on dark).
+    // Drive both the system-bar icon appearance AND the bar background from the active theme, via
+    // androidx.activity's enableEdgeToEdge (NEW-37: replaces our own deprecated
+    // Window.setStatusBarColor/setNavigationBarColor calls, which Play flags). Light theme → dark
+    // icons (legible on cream); Dark theme → light icons (legible on dark). Re-run on a theme switch.
     //
     // The bar BACKGROUND is the missing piece behind QA #3 (status bar invisible in light theme on
-    // Android 12 / OPPO A15): on API ≤34 the system draws the status bar with the activity theme's
-    // default statusBarColor (a dark Material value), so light-theme dark icons sat on a dark bar and
-    // vanished. Setting statusBarColor/navigationBarColor to the active theme's primaryBackground (the
-    // token layer — Safeguard 4, no hardcoded hex) makes the bar match the app in both themes. On
-    // API 35+ these setters are deprecated no-ops (edge-to-edge transparent bars), where the Column's
-    // primaryBackground already shows through — so this is purely an API ≤34 correctness fix.
-    val view = LocalView.current
+    // Android 12 / OPPO A15): on API ≤34 the system draws the bars itself, by default in a dark
+    // Material colour, so light-theme dark icons sat on a dark bar and vanished. The scrim is the
+    // active theme's primaryBackground (the token layer — Safeguard 4, no hardcoded hex), so on
+    // API ≤34 the bars stay opaque in the app's own background in both themes, as before. On
+    // API 35+ edge-to-edge is enforced and the Column's primaryBackground already shows through; the
+    // bars get the same colour the old setters gave them at every API level. A fixed light/dark
+    // style leaves the 3-button nav-bar contrast scrim off, as Play 1.0.11 showed; re-enabling it
+    // painted a light band over the TOC drawer's scrim (NEW-37a).
     val lightSystemBars = themeMode.value == ThemeMode.LIGHT
     val systemBarColor = (if (lightSystemBars) LightColorScheme else DarkColorScheme).primaryBackground
     androidx.compose.runtime.LaunchedEffect(lightSystemBars) {
-        val window = (context as? android.app.Activity)?.window ?: return@LaunchedEffect
-        applyLegacySystemBarColors(window, systemBarColor.toArgb())
-        WindowCompat.getInsetsController(window, view).apply {
-            isAppearanceLightStatusBars = lightSystemBars
-            isAppearanceLightNavigationBars = lightSystemBars
-        }
+        val activity = context as? ComponentActivity ?: return@LaunchedEffect
+        val scrim = systemBarColor.toArgb()
+        val style = if (lightSystemBars) SystemBarStyle.light(scrim, scrim) else SystemBarStyle.dark(scrim)
+        activity.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
 
     // Close the TOC drawer whenever the open file changes (e.g. a warm-intent open, which can
@@ -328,12 +340,15 @@ fun MainScreen(
     // Drive editor to the selected heading when in Editor mode.
     // Delegate heading-marker search + offset math + editor internals to EditorController.
     androidx.compose.runtime.LaunchedEffect(headingJump.value?.seq, mode.value) {
-        if (mode.value == ViewMode.EDITOR && headingJump.value != null) {
-            val selectedHeading = headings.value.find { it.adapterPosition == headingJump.value!!.position }
+        val jump = headingJump.value
+        if (mode.value == ViewMode.EDITOR && jump != null) {
+            val selectedHeading = headings.value.find { it.adapterPosition == jump.position }
             val content = currentDocument.value?.content ?: ""
             if (selectedHeading != null) {
                 editorController.scrollToHeading(selectedHeading.level, selectedHeading.text, content, content.length)
             }
+            // M-184: consumed here, so switching to the reader does not run it a second time.
+            viewModel.onHeadingJumpHandled(jump.seq)
         }
     }
 
@@ -438,7 +453,8 @@ fun MainScreen(
         imageFolderViewModel?.onFolderPicked(tree)
     }
     androidx.compose.runtime.LaunchedEffect(imageFolderViewModel) {
-        // The picker opens at the note itself, which Android shows as the note's own folder.
+        // The picker opens at the note itself, which Android shows as the note's own folder; at
+        // Android's default when the note is no document (M-272: another app's share).
         imageFolderViewModel?.pickFolder?.collect { start -> folderPickerLauncher.launch(start) }
     }
 
@@ -538,6 +554,7 @@ fun MainScreen(
     // primary background; systemBarsPadding() then insets the toolbar + content below the
     // status bar and above the nav bar (API 35 enforces edge-to-edge — without this the
     // toolbar renders under the system clock/battery and its controls are unreachable).
+    // The horizontal display-cutout padding keeps text out of the camera hole in landscape (NEW-37b).
     val activeColorScheme = when (themeMode.value) {
         ThemeMode.DARK -> DarkColorScheme
         ThemeMode.LIGHT -> LightColorScheme
@@ -574,7 +591,8 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(mdColors().primaryBackground)
-                    .systemBarsPadding(),
+                    .systemBarsPadding()
+                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)),
             ) {
                 // Persistent stranded-WAL-slot indicator (escape hatch): shows on every screen
                 // (welcome + document) whenever recovery files await action, and opens the dialog
@@ -627,7 +645,10 @@ fun MainScreen(
                                 viewModel.closeFile()
                             }
                         },
-                        onSearch = { viewModel.setSearchVisible(true) },
+                        onSearch = {
+                            searchFocusRequest++
+                            viewModel.setSearchVisible(true)
+                        },
                         onTOC = { scope.launch { drawerState.open() } },
                         onExportPdf = {
                             // Launch SAF CREATE_DOCUMENT dialog for PDF export. Default name = the
@@ -681,6 +702,7 @@ fun MainScreen(
                             onPrevious = { viewModel.previousMatch() },
                             onNext = { viewModel.nextMatch() },
                             onClose = { viewModel.setSearchVisible(false) },
+                            focusRequestKey = searchFocusRequest,
                         )
                     }
                 }
@@ -705,6 +727,8 @@ fun MainScreen(
                         onMermaidCloudChanged = { viewModel.setMermaidCloudEnabled(it) },
                         wrapCodeLines = wrapCodeLines.value,
                         onWrapCodeLinesChanged = { viewModel.setWrapCodeLines(it) },
+                        formattingBarEnabled = formattingBarEnabled.value,
+                        onFormattingBarChanged = { viewModel.setFormattingBarEnabled(it) },
                         themeMode = themeMode.value,
                         onThemeSelected = { viewModel.setThemeMode(it) },
                         appVersion = appInfo.versionName,
@@ -815,6 +839,7 @@ fun MainScreen(
                                         currentMatchIndex = currentMatchIndex.value,
                                         jumpPosition = headingJump.value?.position ?: -1,
                                         jumpSeq = headingJump.value?.seq ?: 0,
+                                        onJumpHandled = { viewModel.onHeadingJumpHandled(it) },
                                         renderMode = renderMode.value,
                                         documentUri = currentDocument.value!!.uri,
                                         imageAccessKey = imageFolder?.value?.accessKey.orEmpty(),
@@ -824,13 +849,23 @@ fun MainScreen(
                                 ViewMode.EDITOR -> {
                                     // Editor mode: editable source with line numbers + One Dark highlighting.
                                     // Restores scroll from editorScroll.
-                                    // key(uri): the editor owns its TextFieldValue locally; re-seed it only
-                                    // when a different file is opened, never on every keystroke echo.
-                                    key(currentDocument.value!!.uri) {
+                                    // key(id), not key(uri): the document's id survives Save-As (the
+                                    // slot adopts the new location onto the same id), so the editor and
+                                    // its undo history survive it too (M-23), including a new document's
+                                    // first Save-As, where the uri goes null → real (M-112). Re-keying
+                                    // rebuilds the node, whose factory setText()s a new Content and drops
+                                    // the undo stack. A different document has a different id and still
+                                    // gets a freshly seeded editor.
+                                    key(currentDocument.value!!.id) {
                                         // The document this editor was composed for. Its edits carry
                                         // this id, so an edit still arriving after another document
                                         // was published is dropped, not written into it.
                                         val editedDocument = currentDocument.value!!.id
+                                        // TalkBack names the editor after the open file (M-265).
+                                        val editorFileName = currentDocument.value?.displayName.orEmpty()
+                                        androidx.compose.runtime.LaunchedEffect(editorFileName) {
+                                            soraCodeEditor.fileName = editorFileName
+                                        }
                                         MarkdownEditor(
                                             modifier = Modifier.fillMaxSize(),
                                             content = currentDocument.value!!.content,
@@ -842,6 +877,7 @@ fun MainScreen(
                                             fontScale = editorFontScale.value,
                                             fontSet = fontSet,
                                             themeMode = themeMode.value,
+                                            plainText = plainToggleAvailable.value,
                                             scrollPosition = editorScroll.value,
                                             onScrollChanged = { position ->
                                                 viewModel.updateEditorScroll(position)
@@ -851,6 +887,9 @@ fun MainScreen(
                                                 viewModel.updateEditorCursor(offset)
                                             },
                                             codeEditorInstance = soraCodeEditor,
+                                            onUndo = { soraCodeEditor.undo() },
+                                            onRedo = { soraCodeEditor.redo() },
+                                            formattingBarEnabled = formattingBarEnabled.value,
                                         )
                                     }
                                 }
@@ -1048,19 +1087,6 @@ private class OpenAnyDocument : ActivityResultContract<Unit, Uri?>() {
 
     override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
         if (resultCode == Activity.RESULT_OK) intent?.data else null
-}
-
-/**
- * Set the status- and navigation-bar background to [color] (ARGB). `Window.statusBarColor` /
- * `navigationBarColor` are deprecated on API 35+ (where edge-to-edge makes the bars transparent and
- * these are no-ops), but on API ≤34 they are the only way to colour the system-drawn bars — needed so
- * the bar background follows the app theme (QA #3). Isolated here so the deprecation suppression is
- * narrow and the call site stays clean.
- */
-@Suppress("DEPRECATION")
-private fun applyLegacySystemBarColors(window: android.view.Window, color: Int) {
-    window.statusBarColor = color
-    window.navigationBarColor = color
 }
 
 /**

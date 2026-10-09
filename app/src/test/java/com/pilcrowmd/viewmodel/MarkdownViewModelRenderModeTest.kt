@@ -15,12 +15,14 @@ import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
+import com.pilcrowmd.storage.StorageManager
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,6 +34,8 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Render-mode state: extension defaults, per-URI override persistence, re-derivation on
@@ -85,7 +89,7 @@ class MarkdownViewModelRenderModeTest {
 
     private fun vmWith(content: String): MarkdownViewModel = vmWith(FakeRepo(content))
 
-    private fun vmWith(repo: FakeRepo): MarkdownViewModel {
+    private fun vmWith(repo: FakeRepo, storage: StorageManager = this.storage): MarkdownViewModel {
         val parseHeadings = ParseMarkdownHeadingsUseCase()
         return MarkdownViewModel(
             repository = repo,
@@ -243,6 +247,52 @@ class MarkdownViewModelRenderModeTest {
         assertTrue(vm.plainToggleAvailable.value)
     }
 
+    /**
+     * M-34 regression guard. A load must work out its render mode BEFORE it publishes the document
+     * (M-127). If it publishes first and reads the override afterwards, a Save-As started in that
+     * window derives PLAIN for the `.txt` copy, and the load's late read then lands MARKDOWN on top
+     * of it, for good. On CI that was a lost race between two DataStore reads on IO threads.
+     *
+     * [OrderedOverrideStorage] removes the luck: the LOAD's override read is held until the Save-As
+     * read has returned, so a late load write is forced to land last. Deliberately no headings
+     * barrier here (unlike [saveAsTxtNameReDerivesToPlain]): `loadAndAwait` returning must already
+     * mean the load's render mode is settled. With the ordering intact the load's read cannot be
+     * released by a Save-As that has not started yet, so it waits out [LOAD_READ_HOLD_MS] (the
+     * test's cost) and the document is published only after it.
+     */
+    @Test
+    fun saveAsDerivationIsNotOverwrittenByALateLoadRead() {
+        val gate = OrderedOverrideStorage(storage, loadUri = mdUri)
+        val vm = vmWith(FakeRepo("# heading"), gate)
+        vm.loadAndAwait(mdUri)
+
+        vm.saveActiveDocumentAs(Uri.parse("content://test/copy.txt"))
+        // The barrier is the load's own read returning, so a late write has had its chance before
+        // the render mode is judged. It is set on Main in the same message as that write.
+        awaitValue(true, "the load's override read returned") { gate.loadReadReturned }
+        awaitValue(RenderMode.PLAIN, "adopted .txt identity renders plain") { vm.renderMode.value }
+        assertTrue(vm.plainToggleAvailable.value)
+    }
+
+    /**
+     * Holds the override read for [loadUri] on an IO thread until a read for any other URI has
+     * returned, with a [LOAD_READ_HOLD_MS] fallback so an intact ordering is not deadlocked.
+     */
+    private class OrderedOverrideStorage(private val delegate: StorageManager, private val loadUri: Uri) :
+        StorageManager by delegate {
+        private val otherReadReturned = CountDownLatch(1)
+
+        @Volatile
+        var loadReadReturned = false
+            private set
+
+        override suspend fun getRenderModeOverride(uri: Uri): RenderMode? {
+            if (uri != loadUri) return delegate.getRenderModeOverride(uri).also { otherReadReturned.countDown() }
+            withContext(Dispatchers.IO) { otherReadReturned.await(LOAD_READ_HOLD_MS, TimeUnit.MILLISECONDS) }
+            return delegate.getRenderModeOverride(uri).also { loadReadReturned = true }
+        }
+    }
+
     // --- TOC gating ---
 
     @Test
@@ -342,5 +392,6 @@ class MarkdownViewModelRenderModeTest {
     private companion object {
         const val AWAIT_TIMEOUT_MS = 5_000L
         const val POLL_MS = 5L
+        const val LOAD_READ_HOLD_MS = 1_000L
     }
 }

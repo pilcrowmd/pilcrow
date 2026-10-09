@@ -113,6 +113,9 @@ fun TextView.enableGenerousFootnoteTaps() {
     setOnTouchListener { view, event ->
         if (event.action != MotionEvent.ACTION_UP) return@setOnTouchListener false
         val textView = view as? TextView ?: return@setOnTouchListener false
+        // M-157: lifting a finger after a long-press, or while text is selected, belongs to the
+        // selection. Without this, ending a selection near a marker would jump to the note.
+        if (!textView.isPlainTap(event)) return@setOnTouchListener false
         val spanned = textView.text as? Spanned ?: return@setOnTouchListener false
         val x = event.x - textView.totalPaddingLeft + textView.scrollX
         val y = event.y - textView.totalPaddingTop + textView.scrollY
@@ -125,6 +128,9 @@ fun TextView.enableGenerousFootnoteTaps() {
         // hit.
         if (spanned.clickableSpanAt(layout, line, x) != null) return@setOnTouchListener false
         val nearby = spanned.footnoteSpanNear(layout, line, x, slopPx) ?: return@setOnTouchListener false
+        // Consuming the UP keeps it from the TextView, which would have cancelled the long-press it
+        // armed on DOWN; left armed, it selects a word in this block half a second after the jump.
+        textView.cancelLongPress()
         nearby.onClick(textView)
         true
     }

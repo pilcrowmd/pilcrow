@@ -16,6 +16,7 @@ import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.storage.StorageManager
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +31,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import kotlin.coroutines.CoroutineContext
 
 /**
  * In-document search belongs to the document it was run against. When a DIFFERENT document becomes
@@ -87,7 +89,7 @@ class MarkdownViewModelSearchResetTest {
     private val uriB = Uri.parse("content://test/other.md")
     private val copyUri = Uri.parse("content://test/copy.md")
 
-    private fun vm(): MarkdownViewModel {
+    private fun vm(cpu: CoroutineDispatcher = Dispatchers.Default): MarkdownViewModel {
         val parseHeadings = ParseMarkdownHeadingsUseCase()
         return MarkdownViewModel(
             repository = FakeRepo(mapOf(uriA to "Lorem ipsum.\n\nLorem again.\n", uriB to "Nothing to see.\n")),
@@ -98,7 +100,28 @@ class MarkdownViewModelSearchResetTest {
             appInfo = object : AppInfo {
                 override val versionName = "test"
             },
+            cpuDispatcher = cpu,
         )
+    }
+
+    /**
+     * Holds the work handed to it while [holding], so a search can be left running on the old state;
+     * once [holding] is off, new work runs inline (a load must still get through). [release] runs
+     * the held work on the calling thread, so the search body has finished when it returns.
+     */
+    private class GateDispatcher : CoroutineDispatcher() {
+        var holding = true
+        val held = mutableListOf<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            if (holding) held += block else block.run()
+        }
+
+        fun release() {
+            val blocks = held.toList()
+            held.clear()
+            blocks.forEach { it.run() }
+        }
     }
 
     /** See [MarkdownViewModelRenderModeTest.awaitValue] — same barrier, same caveats. */
@@ -179,5 +202,77 @@ class MarkdownViewModelSearchResetTest {
         assertTrue("search bar still open after Save-As", vm.searchVisible.value)
         assertEquals("query kept after Save-As", "Lorem", vm.searchQuery.value)
         awaitValue(2, "matches kept (re-run) after Save-As") { vm.searchMatches.value.size }
+    }
+
+    /**
+     * Starts a "Lorem" search on A with its scan held on [gate], so it is still running when the
+     * test changes the state under it. A is loaded before the gate holds, so its load gets through.
+     */
+    private fun heldSearchOnA(gate: GateDispatcher): MarkdownViewModel {
+        gate.holding = false
+        val vm = vm(gate)
+        vm.loadAndAwait(uriA)
+        vm.setSearchVisible(true)
+        awaitValue(true, "search bar open") { vm.searchVisible.value }
+        gate.holding = true
+        vm.updateSearchQuery("Lorem")
+        awaitValue(1, "the search scan is held") { gate.held.size }
+        return vm
+    }
+
+    /**
+     * A search still running when the bar is closed by hand must not paint its matches afterwards.
+     * Barrier: [GateDispatcher.release] runs the scan to completion, and idling the main looper
+     * then runs whatever the search does with the result; only after both are the matches read.
+     */
+    @Test
+    fun aSearchStillRunningWhenTheBarClosesPublishesNothing() {
+        val gate = GateDispatcher()
+        val vm = heldSearchOnA(gate)
+
+        vm.setSearchVisible(false)
+        vm.assertSearchCleared("closing the bar")
+
+        gate.release()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("no late matches after the close", 0, vm.searchMatches.value.size)
+        assertEquals("query still cleared", "", vm.searchQuery.value)
+    }
+
+    /** A search still running on A when B loads must not paint A's matches over B. Same barrier. */
+    @Test
+    fun aSearchStillRunningOnTheOldDocumentPublishesNothingOnTheNewOne() {
+        val gate = GateDispatcher()
+        val vm = heldSearchOnA(gate)
+
+        gate.holding = false
+        vm.loadAndAwait(uriB)
+        vm.assertSearchCleared("loading B")
+
+        gate.release()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("still on B", uriB, vm.currentDocument.value?.uri)
+        assertEquals("no matches from A on B", 0, vm.searchMatches.value.size)
+        assertEquals("query still cleared", "", vm.searchQuery.value)
+    }
+
+    /**
+     * A newer query wins: the older "Lorem" scan (2 matches) is still held when "again" (1 match)
+     * runs and publishes; releasing "Lorem" afterwards must not replace the newer result. Same
+     * barrier: the release runs the old scan to completion, the looper idle runs what follows it.
+     */
+    @Test
+    fun anOlderSearchFinishingLateDoesNotReplaceTheNewerOne() {
+        val gate = GateDispatcher()
+        val vm = heldSearchOnA(gate)
+
+        gate.holding = false
+        vm.updateSearchQuery("again")
+        awaitValue(1, "the newer query's single match is published") { vm.searchMatches.value.size }
+
+        gate.release()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("the older query's matches never land", 1, vm.searchMatches.value.size)
+        assertEquals("query is still the newer one", "again", vm.searchQuery.value)
     }
 }

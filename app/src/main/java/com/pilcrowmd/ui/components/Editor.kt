@@ -7,8 +7,9 @@ import android.content.Context
 import android.util.Log
 import android.view.ViewGroup
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -32,6 +33,9 @@ import com.pilcrowmd.ui.theme.mdColors
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.event.SubscriptionReceipt
+import io.github.rosemoe.sora.lang.EmptyLanguage
+import io.github.rosemoe.sora.langs.textmate.TextMateColorScheme
+import io.github.rosemoe.sora.langs.textmate.TextMateLanguage
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.github.rosemoe.sora.widget.schemes.EditorColorScheme
 import io.github.rosemoe.sora.widget.subscribeAlways
@@ -56,7 +60,10 @@ import io.github.rosemoe.sora.widget.subscribeAlways
  * - Sora's CodeEditor has native incremental undo/redo (canUndo/redo, undo/redo methods)
  * - Stack persists if the same CodeEditor instance is retained across mode toggles
  * - Hoisted to MainScreen level (via remember) and passed to MarkdownEditor
- * - Toolbar undo/redo buttons call onUndo()/onRedo() callbacks
+ * - Toolbar undo/redo buttons call onUndo()/onRedo() callbacks; so do the formatting bar's
+ *
+ * Formatting bar (M-217): with `formattingBarEnabled`, a `FormattingBar` sits under the editor,
+ * inside the same imePadding, so it rides right above the keyboard.
  *
  * Font scaling:
  * - fontScale multiplier applied to 14sp editor base
@@ -77,6 +84,7 @@ fun MarkdownEditor(
     fontScale: Float = 1.0f,
     fontSet: FontSet = FontSets.DEFAULT,
     themeMode: ThemeMode = ThemeMode.DARK,
+    plainText: Boolean = false,
     scrollPosition: Int = 0,
     onScrollChanged: (Int) -> Unit = {},
     initialCursor: Int = 0,
@@ -84,6 +92,7 @@ fun MarkdownEditor(
     onUndo: () -> Unit = {},
     onRedo: () -> Unit = {},
     codeEditorInstance: CodeEditor? = null,
+    formattingBarEnabled: Boolean = false,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -126,24 +135,25 @@ fun MarkdownEditor(
                     }
                 }
             }
+            receipts += editor.continueListsOnEnter()
         }
         onDispose { receipts.forEach { it.unsubscribe() } }
     }
 
     val c = mdColors()
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(c.primaryBackground)
             .imePadding(),
     ) {
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             factory = { context ->
                 // Use hoisted CodeEditor instance to retain undo stack across mode toggles.
                 // If codeEditorInstance is provided (from MainScreen-level remember), reuse it.
                 // Otherwise, create a new one (fallback for dev/testing).
-                val editor = codeEditorInstance ?: CodeEditor(context)
+                val editor = codeEditorInstance ?: AccessibleCodeEditor(context)
 
                 // DETACH BEFORE ATTACH. `AndroidView` hands this straight to `AndroidViewHolder`,
                 // which calls `addView(...)`; `ViewGroup.addViewInner` THROWS if the child still has
@@ -174,6 +184,10 @@ fun MarkdownEditor(
                 (editor.parent as? ViewGroup)?.removeView(editor)
 
                 try {
+                    // Language BEFORE content: setText on an editor still holding the previous
+                    // document's Markdown grammar starts an analysis of the new text, and its
+                    // styles land after the switch to plain text (M-31).
+                    applyEditorLanguage(editor, plainText)
                     // Set initial content
                     editor.setText(content)
 
@@ -209,7 +223,7 @@ fun MarkdownEditor(
 
                     // Set TextMate color scheme for syntax highlighting
                     try {
-                        setupTextMateHighlighting(context, editor, themeMode, c)
+                        setupTextMateHighlighting(context, editor, themeMode, c, plainText)
                     } catch (e: Exception) {
                         Log.w("MarkdownEditor", "TextMate highlighting setup failed, using default colors", e)
                         // Fallback: use a plain color scheme without highlighting (Safeguard 3)
@@ -238,6 +252,13 @@ fun MarkdownEditor(
             },
             update = { editor ->
                 try {
+                    // The document's kind can reach this node after its content does (the slot
+                    // publishes the document first), so keep the language in step here too. It
+                    // goes BEFORE the content: setText under the previous document's Markdown
+                    // grammar starts an analysis whose styles land after the switch to plain
+                    // text, so a .txt opened after a .md kept the Markdown colours (M-31).
+                    applyEditorLanguage(editor, plainText)
+
                     // Update editor content only if it changed upstream (not on every recomposition)
                     if (editor.text.toString() != content) {
                         suppressContentChange = true
@@ -278,6 +299,13 @@ fun MarkdownEditor(
             // composition, which never runs onRelease at all. The editor's own lifecycle stays
             // where it was: MainScreen's DisposableEffect calls release() (D4-REVIEW-3).
         )
+        if (formattingBarEnabled) {
+            FormattingBar(
+                onAction = { action -> codeEditor?.applyFormat(action) },
+                onUndo = onUndo,
+                onRedo = onRedo,
+            )
+        }
     }
 }
 
@@ -285,12 +313,14 @@ fun MarkdownEditor(
  * Setup TextMate syntax highlighting for markdown.
  * Initializes the TextMate registry, grammar, and theme once per app.
  * Loads md-dark.json or md-light.json based on themeMode.
+ * The colour scheme is installed for every document; [plainText] only picks the language.
  */
-private fun setupTextMateHighlighting(
+internal fun setupTextMateHighlighting(
     context: Context,
     editor: CodeEditor,
     themeMode: ThemeMode = ThemeMode.DARK,
     colorScheme: PilcrowColorScheme,
+    plainText: Boolean = false,
 ) {
     try {
         // Initialize file provider for TextMate assets
@@ -339,13 +369,36 @@ private fun setupTextMateHighlighting(
         editor.colorScheme = textMateColorScheme
         editor.dividerWidth = context.resources.displayMetrics.density // ~1dp gutter divider
         editor.setEditorLanguage(
-            io.github.rosemoe.sora.langs.textmate.TextMateLanguage.create("text.html.markdown", false),
+            if (plainText) {
+                EmptyLanguage()
+            } else {
+                io.github.rosemoe.sora.langs.textmate.TextMateLanguage.create("text.html.markdown", false)
+            },
         )
 
         Log.d("MarkdownEditor", "TextMate highlighting configured successfully")
     } catch (e: Exception) {
         Log.w("MarkdownEditor", "TextMate highlighting setup failed: ${e.message}", e)
         throw e // Let the caller handle the fallback
+    }
+}
+
+/**
+ * Update-path counterpart of the factory's language choice: Markdown grammar for a Markdown
+ * document, [EmptyLanguage] for plain text (M-31), so a `.txt` is drawn in the scheme's
+ * TEXT_NORMAL (the theme's `editor.foreground`) with no token colours. The colour scheme is left
+ * alone: plain text keeps the theme's text and background.
+ * Runs on every update (every keystroke), so it changes nothing unless the language is wrong.
+ * It never installs TextMate on an editor whose scheme is not a [TextMateColorScheme]: that means
+ * TextMate setup failed in the factory, and the editor stays plain rather than retrying.
+ * TextMateLanguage EXTENDS EmptyLanguage, hence the exact-class check for plain text.
+ */
+internal fun applyEditorLanguage(editor: CodeEditor, plainText: Boolean) {
+    val current = editor.editorLanguage
+    if (plainText && current.javaClass != EmptyLanguage::class.java) {
+        editor.setEditorLanguage(EmptyLanguage())
+    } else if (!plainText && current !is TextMateLanguage && editor.colorScheme is TextMateColorScheme) {
+        editor.setEditorLanguage(TextMateLanguage.create("text.html.markdown", false))
     }
 }
 

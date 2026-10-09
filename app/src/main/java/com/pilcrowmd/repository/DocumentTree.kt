@@ -7,9 +7,13 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 
-/** One entry of a folder, as the documents provider lists it. */
-data class TreeChild(val documentId: String, val name: String, val isFolder: Boolean)
+/** One entry of a folder, as the documents provider lists it. [size] is null when not reported. */
+data class TreeChild(val documentId: String, val name: String, val isFolder: Boolean, val size: Long? = null)
+
+/** A note's name and, when its provider reports it, its size in bytes. */
+data class NoteFile(val name: String, val size: Long?)
 
 /**
  * The few Storage Access Framework calls folder access needs, kept apart so the path rules in
@@ -27,6 +31,14 @@ interface DocumentTree {
     fun children(treeUri: Uri, folderId: String): List<TreeChild>
 
     fun documentUri(treeUri: Uri, documentId: String): Uri
+
+    /** The name and size of any openable [uri], or null when it has no readable name. */
+    fun describe(uri: Uri): NoteFile?
+
+    /** The document ID of [treeUri]'s top folder. */
+    fun rootId(treeUri: Uri): String
+
+    fun releaseTree(treeUri: Uri)
 }
 
 /** [DocumentTree] over the real content resolver. */
@@ -38,6 +50,29 @@ class ProviderDocumentTree(private val resolver: ContentResolver) : DocumentTree
 
     override fun takeTree(treeUri: Uri) {
         resolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    override fun releaseTree(treeUri: Uri) {
+        resolver.releasePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    override fun rootId(treeUri: Uri): String = DocumentsContract.getTreeDocumentId(treeUri)
+
+    /** Columns are found by name: a provider may leave out the ones it does not know (SIZE). */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // any provider failure means "no name"
+    override fun describe(uri: Uri): NoteFile? = try {
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
+            ?.use { cursor ->
+                val name = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val size = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (!cursor.moveToFirst() || name < 0 || cursor.isNull(name)) return@use null
+                NoteFile(
+                    name = cursor.getString(name),
+                    size = if (size < 0 || cursor.isNull(size)) null else cursor.getLong(size),
+                )
+            }?.takeIf { it.name.isNotEmpty() }
+    } catch (e: Exception) {
+        null
     }
 
     /**
@@ -58,6 +93,7 @@ class ProviderDocumentTree(private val resolver: ContentResolver) : DocumentTree
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_SIZE,
         )
         return resolver.query(uri, projection, null, null, null)?.use { cursor ->
             buildList {
@@ -67,6 +103,7 @@ class ProviderDocumentTree(private val resolver: ContentResolver) : DocumentTree
                             documentId = cursor.getString(0),
                             name = cursor.getString(1).orEmpty(),
                             isFolder = cursor.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR,
+                            size = if (cursor.isNull(SIZE_COLUMN)) null else cursor.getLong(SIZE_COLUMN),
                         ),
                     )
                 }
@@ -76,4 +113,9 @@ class ProviderDocumentTree(private val resolver: ContentResolver) : DocumentTree
 
     override fun documentUri(treeUri: Uri, documentId: String): Uri =
         DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+
+    private companion object {
+        /** COLUMN_SIZE's place in the [children] projection. */
+        const val SIZE_COLUMN = 3
+    }
 }

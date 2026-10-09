@@ -158,11 +158,25 @@ class ParseMarkdownHeadingsUseCaseTest {
         val headings = useCase.extractHeadings(content)
 
         assertEquals(2, headings.size)
-        // Text should be extracted cleanly - check it contains key words without markdown
-        assertTrue(headings[0].text.contains("Heading"))
-        assertTrue(headings[0].text.contains("asterisks"))
-        assertTrue(headings[1].text.contains("Heading"))
-        assertTrue(headings[1].text.contains("link"))
+        // Text is extracted without markdown syntax; inline code keeps its literal (M-264).
+        assertEquals("Heading with asterisks and code", headings[0].text)
+        assertEquals("Heading with link and bold", headings[1].text)
+    }
+
+    @Test
+    fun testExtractHeadingsKeepsInlineCodeText() {
+        // M-264: inline code has no Text child, so the drawer label used to read "The  function".
+        val headings = useCase.extractHeadings("## The `foo` function")
+
+        assertEquals(listOf(HeadingNode(level = 2, text = "The foo function", adapterPosition = 0)), headings)
+    }
+
+    @Test
+    fun testExtractHeadingsJoinsSetextLinesWithSpace() {
+        // M-264: a two-line setext heading holds a soft line break, which used to vanish ("Foobar").
+        val headings = useCase.extractHeadings("Foo\nbar\n===")
+
+        assertEquals(listOf(HeadingNode(level = 1, text = "Foo bar", adapterPosition = 0)), headings)
     }
 
     @Test

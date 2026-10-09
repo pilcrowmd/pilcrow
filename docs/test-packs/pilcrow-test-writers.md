@@ -16,24 +16,21 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 - **Edit and save.** Switch to Edit, change a word, save, and reopen: the file must come back
   exactly as you left it, with nothing reflowed or reformatted.
 
-**Known gaps in version 1.0.12** – we know about these, no need to report them:
+**Known gaps in version 1.0.13** – we know about these, no need to report them:
 
-- Bold, italic and links inside a table cell show as plain text; a picture in a cell is dropped.
+- A picture in a table cell is dropped.
 - A link to another note (`./notes.md`) does nothing when tapped.
 - Callouts with a custom title, a fold marker (`> [!TIP]-`) or inside a list show as plain quotes
   with the marker visible.
 - `!!! note` and `::: warning` boxes (from other Markdown tools) show as plain text.
 - `==highlight==`, `~subscript~` and `^superscript^` show as typed.
-- `<kbd>` keys are not styled, and emoji codes like `:smile:` stay as text (real emoji work).
+- Emoji codes like `:smile:` stay as text (real emoji work).
 - Definition lists (a term, then a line starting with `:`) are not styled.
-- A numbered list written `1)` shows `1.`.
 - A heading with `{#my-id}` after it shows that text.
 - Wiki links `[[Page]]` and review marks like `{++added++}` show as typed.
 - Footnotes written inline (`^[note]`) are not supported. A footnote used twice links back to its
   first use only.
 - In a right-to-left list, the bullet stays on the left.
-- Search inside a quote or list with several paragraphs can highlight a slightly wrong spot.
-- Text in reading mode cannot be selected; switch to Edit to copy.
 
 Found something not on this list? Please open an issue at
 <https://github.com/pilcrowmd/pilcrow/issues> and say which pack and which part.

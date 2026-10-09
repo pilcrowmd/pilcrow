@@ -36,6 +36,9 @@ import org.robolectric.annotation.GraphicsMode
  *
  *  - `image_folder_banner_ask_*`: "This note has 2 pictures in its folder." with Not now / Allow folder.
  *  - `image_folder_banner_cannot_*`: the Download/storage-root explanation with OK.
+ *  - `image_folder_banner_pick_*`: a note from Recent, "Pick the folder that holds trip.md", with
+ *    Not now / Pick folder (M-272).
+ *  - `image_folder_banner_wrong_*`: "trip.md is not in that folder." with Not now / Pick again (M-272).
  *
  * Pixel goldens assert nothing textually; a re-record must be looked at (M-56).
  */
@@ -56,6 +59,12 @@ class ImageFolderBannerScreenshotTest(private val themeMode: ThemeMode, private 
 
     @Test
     fun cannotShowHere() = capture(ImageFolderBanner.CannotShowHere, "cannot")
+
+    @Test
+    fun pickNoteFolder() = capture(ImageFolderBanner.PickNoteFolder(pictureCount = 2, noteName = "trip.md"), "pick")
+
+    @Test
+    fun wrongFolder() = capture(ImageFolderBanner.WrongFolder(noteName = "trip.md"), "wrong")
 
     private fun capture(banner: ImageFolderBanner, kind: String) {
         val scheme = if (themeMode == ThemeMode.DARK) DarkColorScheme else LightColorScheme

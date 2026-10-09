@@ -6,6 +6,7 @@ package com.pilcrowmd.viewmodel
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pilcrowmd.domain.markdown.PlainTextChunks
 import com.pilcrowmd.domain.model.DocumentKind
 import com.pilcrowmd.domain.model.HeadingNode
 import com.pilcrowmd.domain.model.RenderMode
@@ -14,7 +15,6 @@ import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
-import com.pilcrowmd.rendering.PlainTextBlocks
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.RecentFile
@@ -117,9 +117,9 @@ constructor(
     private val pdfExporter: PdfExporter,
     val appInfo: com.pilcrowmd.di.AppInfo,
     /**
-     * Where [loadDocument]'s CPU work runs. Injectable ONLY so a test can assert that work leaves
-     * the main thread (Play Vitals ANR, 1.0.3) — production always uses the default. Defaulted, so
-     * `provideFactory` and the AppContainer are untouched.
+     * Where [loadDocument]'s CPU work and the search scan run. Injectable ONLY so a test can see that
+     * work leave Main (Play Vitals ANR, 1.0.3) or hold a search while the state under it changes —
+     * production always uses the default. Defaulted, so `provideFactory` and the AppContainer are untouched.
      */
     private val cpuDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
 ) : ViewModel() {
@@ -338,6 +338,10 @@ constructor(
     // Reader code blocks: wrap long lines instead of side-scrolling (default off, M-134).
     val wrapCodeLines: StateFlow<Boolean> = storage.wrapCodeLines
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    // Editor formatting bar above the keyboard (default on, M-217).
+    val formattingBarEnabled: StateFlow<Boolean> = storage.formattingBarEnabled
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     // Theme mode selection (Dark or Light). Persisted in DataStore.
     val themeMode: StateFlow<ThemeMode> = storage.themeMode
@@ -797,8 +801,13 @@ constructor(
         slot.editorCursor.value = offset
     }
 
+    // The search in flight, cancelled by a newer query and by [closeSearch], so a scan that was
+    // still running when the bar closed or the document changed never publishes its matches.
+    private var searchJob: Job? = null
+
     fun updateSearchQuery(query: String) {
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _searchQuery.emit(query)
             if (query.isNotEmpty()) {
                 val content = slot.document.value?.content ?: return@launch
@@ -806,13 +815,15 @@ constructor(
                 // large file (or a common term with thousands of hits) can't freeze the UI / ANR.
                 // Plain mode: the visible text IS the literal source, so match over the
                 // same chunk split the plain render uses (adapter positions align).
-                val matches = withContext(Dispatchers.Default) {
+                val matches = withContext(cpuDispatcher) {
                     if (slot.renderMode.value == RenderMode.PLAIN) {
-                        searchUseCase.findPlainSearchMatches(PlainTextBlocks.chunkLiterals(content), query)
+                        searchUseCase.findPlainSearchMatches(PlainTextChunks.split(content), query)
                     } else {
                         searchUseCase.findSearchMatches(content, query)
                     }
                 }
+                // No re-check needed here: the scan does not stop when cancelled, but withContext
+                // throws on return once this job is cancelled, so its result is never published.
                 _searchMatches.emit(matches)
                 _currentMatchIndex.emit(0) // Focus first match
             } else {
@@ -862,6 +873,7 @@ constructor(
     }
 
     private suspend fun closeSearch() {
+        searchJob?.cancel()
         _searchVisible.emit(false)
         // Exiting search clears its state. The preview observes the now-empty
         // matches and re-binds without highlight spans — no stale highlights linger.
@@ -878,6 +890,27 @@ constructor(
         // Signal Preview to smooth-scroll to this block; seq makes repeat taps distinct.
         headingJumpSeq++
         _headingJump.value = HeadingJump(heading.adapterPosition, headingJumpSeq)
+    }
+
+    /**
+     * The surface that performed jump [seq] reports it (M-184). A jump is a one-shot command: left
+     * in place, the next freshly composed reader (the reader coming back from the editor, say)
+     * saw it as unhandled and ran it again. Only the matching seq clears it, so a late report for
+     * an older tap never drops a newer one.
+     */
+    fun onHeadingJumpHandled(seq: Int) {
+        if (_headingJump.value?.seq == seq) _headingJump.value = null
+    }
+
+    init {
+        // M-184: a jump belongs to the document it was tapped in. When a different document becomes
+        // current (load, re-open, new document) or none does (close), drop any jump not yet
+        // performed, or the new document's reader runs it at a position from the old one. Same key
+        // as the search reset in the first init block: Save-As keeps the DocumentId, so it keeps the
+        // jump. A separate init block because it must run after `_headingJump` is initialised.
+        viewModelScope.launch {
+            slot.document.map { it?.id }.distinctUntilChanged().collect { _headingJump.value = null }
+        }
     }
 
     /**
@@ -1154,6 +1187,11 @@ constructor(
             // file claimed earlier and loses the slot, however the two finish (M-109: the restore
             // used to publish over the new document and discard what the user had typed).
             val claim = slot.claim()
+            // Stopped as [open] stops it (M-202). The claim keeps the restore from publishing, but a
+            // restore still waiting to learn which file to reopen would start its load AFTER this
+            // publish, put the screen back in `Loading` and, if its read failed, report that failure
+            // over the new document.
+            restoreJob.cancel()
             // Everything is known without I/O — no file, no override, an empty TOC — so the whole
             // document is published in one step, with no late write-back (the late `Success` this
             // used to emit after a heading pass could overwrite a newer load's `Error`). Retiring
@@ -1198,6 +1236,10 @@ constructor(
 
     fun setWrapCodeLines(enabled: Boolean) {
         viewModelScope.launch { storage.setWrapCodeLines(enabled) }
+    }
+
+    fun setFormattingBarEnabled(enabled: Boolean) {
+        viewModelScope.launch { storage.setFormattingBarEnabled(enabled) }
     }
 
     fun setThemeMode(mode: ThemeMode) {
@@ -1282,15 +1324,19 @@ constructor(
 
     /**
      * Apply the detected line-ending format before saving.
-     * If format is "CRLF", converts any \n to \r\n (and any stray \r to \r\n, avoiding \r\r\n).
-     * If format is "LF", leaves as-is (no conversion).
+     * If format is "CRLF", converts every \n to \r\n. If format is "LF", leaves as-is.
      *
-     * Uses a careful regex replace to avoid double-conversion of existing \r\n:
-     * The pattern \\r?\\n matches either \n (and replaces with \r\n) or existing \r\n (and replaces with \r\n).
+     * Only `\n` is converted, never `\r\n` as a unit (M-353). Load folds every `\r\n` to `\n`
+     * ([prepareLoad]), so a freshly loaded model holds no CRLF of its own and every `\r` in it is a
+     * byte the file really had: `\r\r\n` on disk is `\r\n` in the model and must go back as
+     * `\r\r\n`. The previous `\r?\n` regex treated that surviving CR plus the restored LF as one
+     * CRLF and wrote the CR away (33 bytes in, 32 out; Safeguard 2). The one way a `\r\n` of its
+     * own can enter the model is text pasted into the editor, which is not normalised; that pair
+     * is now written back as `\r\r\n`, i.e. as the bytes the model holds.
      */
     private fun applyLineEnding(text: String, format: String): String {
         return if (format == "CRLF") {
-            text.replace(Regex("""\r?\n"""), "\r\n")
+            text.replace("\n", "\r\n")
         } else {
             text
         }

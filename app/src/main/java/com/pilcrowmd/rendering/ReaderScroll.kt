@@ -33,8 +33,8 @@ import androidx.recyclerview.widget.RecyclerView
 
 /**
  * Install M-06's two reader behaviours — the bottom spacer and the arrival highlight — as one
- * decoration, because they are one interaction: the spacer gets the definition to the top of the
- * screen, and the highlight tells the eye it has arrived.
+ * decoration, because they are one interaction: the spacer gives the end of the document a little
+ * room, and the highlight tells the eye it has arrived.
  *
  * [highlightColor] is passed in rather than chosen here (Safeguard 4): the Markwon visitor that
  * emits footnote markers is shared by the reader (Dark/Light) and the PDF export (Print), so
@@ -51,7 +51,7 @@ fun applyReaderBottomSpacer(recyclerView: RecyclerView) {
 }
 
 /**
- * One viewport of headroom below the LAST block, plus a brief tint over a block that was jumped to.
+ * A little headroom below the LAST block, plus a brief tint over a block that was jumped to.
  *
  * AN ITEM DECORATION, NOT PADDING, AND THE DIFFERENCE IS NOT A STYLE CHOICE. `clipToPadding = false`
  * plus a bottom padding looks like the obvious way to make the last block reachable and is wrong:
@@ -61,9 +61,11 @@ fun applyReaderBottomSpacer(recyclerView: RecyclerView) {
  * (`findFirstVisibleItemPosition() == -1`). A decoration grows the last item's occupied space
  * instead, which extends the scroll range and leaves the viewport whole.
  *
- * One viewport rather than a measured `viewport - lastBlockHeight`: the minimum depends on the last
- * block's height, which is not known until it is bound, and it is read from [RecyclerView.getHeight]
- * at offset time so it follows rotation without being recomputed anywhere.
+ * The headroom is one fifth of the viewport: some space after the end, but never a near-blank
+ * screen when the reader scrolls all the way down. The price is accepted: a jump to a heading, a
+ * search match or a `#link` near the end stops where the document ends, rather than putting the
+ * target at the top. It is read from [RecyclerView.getHeight] at offset time so it follows rotation
+ * without being recomputed anywhere.
  */
 private class ReaderJumpDecoration(@ColorInt highlightColor: Int) : RecyclerView.ItemDecoration() {
 
@@ -78,9 +80,9 @@ private class ReaderJumpDecoration(@ColorInt highlightColor: Int) : RecyclerView
         val position = parent.getChildAdapterPosition(view)
         // `position >= 0` is load-bearing, not defensive noise: on an empty list `lastPosition` is
         // -1, and `getChildAdapterPosition` returns NO_POSITION — also -1 — for a view on its way
-        // out. Without this the two compare equal and a departing view is handed a whole viewport
-        // of offset mid-flight. Raised in review.
-        outRect.bottom = if (position >= 0 && position == lastPosition) parent.height else 0
+        // out. Without this the two compare equal and a departing view is handed the tail offset
+        // mid-flight. Raised in review.
+        outRect.bottom = if (position >= 0 && position == lastPosition) parent.height / TAIL_FRACTION else 0
     }
 
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
@@ -127,6 +129,9 @@ private class ReaderJumpDecoration(@ColorInt highlightColor: Int) : RecyclerView
     private companion object {
         /** Long enough for the eye to find the block, short enough not to sit on the page. */
         const val HIGHLIGHT_MILLIS = 1_200L
+
+        /** The headroom below the last block, as a fraction of the viewport: one fifth. */
+        const val TAIL_FRACTION = 5
     }
 }
 

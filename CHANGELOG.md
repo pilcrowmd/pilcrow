@@ -7,6 +7,59 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-10-09
+
+### Added
+
+- **Select and copy text.** Long-press in a paragraph, list, quote or heading to select text
+  inside that block, with the usual handles and Copy. Code blocks and tables stay scrollable
+  sideways and are not selectable. A second finger ends the selection, so pinch zoom still works.
+- **Formatting bar above the keyboard** in the editor: bold, lists, links and more. It can be
+  turned off in Settings.
+- **Lists and quotes continue when you press Enter** in the editor.
+- **The editor works with TalkBack:** it reads the text and its file name, speaks typing and
+  deleting, and moves by character, word and line.
+- **Diff code blocks tint added lines green and removed lines red across the whole line**, on
+  screen and in PDFs.
+
+### Changed
+
+- **Table cells show bold, italics, links and maths.**
+- **Numbered lists keep their own style:** `1)` stays `1)`, as well as `1.`.
+- **The reader leaves a fifth of a screen after the last block**, not a whole empty screen.
+- **HTML `<code>` and `<kbd>` look like inline code.**
+- **Plain `.txt` files open in the editor without Markdown colours.**
+- **A very long code block (over 10,000 characters) is shown without colours**, so it opens
+  without a freeze.
+- **TalkBack:** the Welcome and Settings controls read correctly, and the jump buttons can be
+  reached.
+- **A note opened from a file manager or another app** whose folder Android does not name now
+  offers *Pick folder* to show its pictures.
+- **PilcrowMD is listed when a file manager shares a `.md` file** with a generic file type.
+
+### Fixed
+
+- **Pinch zoom keeps the text under your fingers**, also while they move, and a paragraph pushed
+  off the screen during a pinch comes back at its normal size.
+- **Saving keeps a lone carriage return before a Windows line ending exactly as it was.**
+- **Save As keeps the editor open with its undo history.**
+- **Search:** counts and highlights match what is shown, words in very deeply nested notes are
+  found, a match in the summary line of a closed details section opens it, the search field takes
+  focus when search opens, and an unfinished search no longer shows results after you close it or
+  open another file.
+- **Maths:** spaced `\ce` coefficients, `\tag` equation numbers, and Greek or Cyrillic inside
+  `\text{}` render.
+- **Code blocks:** common language-name aliases such as `python3`, `kt` and `yml` get their
+  colours, and in a ` ```markdown ` block a quote line indented after the `>` is no longer
+  coloured as code.
+- **PDF export:** links and task boxes use the light teal on every device, and heading rules run
+  to the edge of the text.
+- **The contents list keeps inline code and line breaks** in heading names.
+- **A table-of-contents jump runs once**, not again the next time the note opens.
+- **An open details section at the end of a note no longer leaves a tall blank.**
+- **A long run of plain text with no blank line no longer freezes the reader.**
+- **Opening a document while the app restores the last one** no longer brings the old one back.
+
 ## [1.0.12] - 2026-10-05
 
 ### Added

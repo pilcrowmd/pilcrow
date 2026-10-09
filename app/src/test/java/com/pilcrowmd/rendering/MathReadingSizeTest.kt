@@ -41,7 +41,7 @@ class MathReadingSizeTest {
     fun setup() {
         // Robolectric never runs jlatexmath's init provider (see MarkdownScreenshotTest).
         ru.noties.jlatexmath.JLatexMathAndroid.init(context)
-        renderer = MarkwonRenderer(context).also { it.awaitFontPreWarm() }
+        renderer = warmedMarkwonRenderer(context)
     }
 
     private fun renderedMathHeight(

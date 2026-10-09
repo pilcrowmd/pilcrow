@@ -26,7 +26,6 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
 import io.noties.markwon.recycler.MarkwonAdapter
 import org.commonmark.node.FencedCodeBlock
-import ru.noties.jlatexmath.JLatexMathDrawable
 
 /**
  * Parse [content] ONCE and return its top-level Markdown blocks as standalone (unlinked) nodes.
@@ -61,7 +60,8 @@ internal fun topLevelBlocksForMode(
     renderMode: com.pilcrowmd.domain.model.RenderMode,
 ): List<org.commonmark.node.Node> {
     if (renderMode != com.pilcrowmd.domain.model.RenderMode.PLAIN) return parseTopLevelBlocks(markwon, content)
-    val document = com.pilcrowmd.rendering.PlainTextBlocks.build(content)
+    // No reader cap: the PDF paginates whole blocks, so a forced seam would leave half-empty pages.
+    val document = com.pilcrowmd.rendering.PlainTextBlocks.build(content, maxChunkLines = Int.MAX_VALUE)
     val nodes = buildList {
         var node = document.firstChild
         while (node != null) {
@@ -142,27 +142,13 @@ internal class PdfContentLayoutBuilder(
                 for (i in 0 until view.childCount) resolveLatexSynchronously(view.getChildAt(i), fontScale)
             is TextView -> {
                 val spanned = view.text as? Spanned ?: return
-                val spans = spanned.getSpans(0, spanned.length, JLatexAsyncDrawableSpan::class.java)
-                if (spans.isEmpty()) return
                 val density = context.resources.displayMetrics.density
                 val textSizePx = PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * density * fontScale
-                val textColor = PrintColorScheme.primaryText.toArgb()
-                var resized = false
-                for (span in spans) {
-                    val asyncDrawable = span.drawable
-                    if (asyncDrawable.hasResult()) continue
-                    runCatching {
-                        val math = JLatexMathDrawable.builder(asyncDrawable.destination)
-                            .textSize(textSizePx)
-                            .color(textColor)
-                            .build()
-                        math.setBounds(0, 0, math.intrinsicWidth, math.intrinsicHeight)
-                        asyncDrawable.setResult(math)
-                        resized = true
-                    }.onFailure { e ->
-                        android.util.Log.w("PdfExporter", "Synchronous LaTeX render failed: ${e.message}")
-                    }
-                }
+                val resized = com.pilcrowmd.rendering.resolveLatexSynchronously(
+                    spanned,
+                    textSizePx,
+                    PrintColorScheme.primaryText.toArgb(),
+                )
                 // M-181: the text was laid out with the placeholders' size, and the export reuses one
                 // view per block type, so a view that already laid out text keeps those line heights
                 // and the formula draws over its neighbours. Setting the text again lays it out with

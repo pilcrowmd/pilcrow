@@ -6,7 +6,7 @@ package com.pilcrowmd.ui.components
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
-import io.github.rosemoe.sora.widget.CodeEditor
+import com.pilcrowmd.testing.withRealSize
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -56,7 +56,7 @@ class MarkdownEditorRtlAlignmentTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun hoistedEditor(): CodeEditor = CodeEditor(ApplicationProvider.getApplicationContext())
+    private fun hoistedEditor() = AccessibleCodeEditor(ApplicationProvider.getApplicationContext()).withRealSize()
 
     /**
      * RED before the fix: `wordwrapRtlDisplaySupport` is `false` on a freshly configured editor,

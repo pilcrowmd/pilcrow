@@ -18,7 +18,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
-import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.ui.components.MarkdownPreview
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
@@ -60,7 +60,7 @@ class SearchHighlightScreenshotTest {
 
         composeRule.setContent {
             val context = LocalContext.current
-            val renderer = remember { MarkwonRenderer(context) }
+            val renderer = remember { warmedMarkwonRenderer(context) }
             Box(
                 Modifier
                     .fillMaxSize()

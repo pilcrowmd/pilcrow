@@ -1,0 +1,6 @@
+- Select and copy text: long-press in a paragraph, list, quote or heading.
+- Editor: formatting bar above the keyboard, lists continue on Enter, works with TalkBack.
+- Pinch zoom keeps the text under your fingers.
+- Tables show bold, links and maths. Diff code blocks are tinted.
+- Pictures: a note opened from a file manager can now ask for its folder.
+- Fixes for search, maths, PDF export, very long code blocks and saving.

@@ -15,7 +15,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
-import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
@@ -47,7 +47,7 @@ import java.io.IOException
  * An edit that reaches the ViewModel AFTER another document has been
  * published, but BEFORE the screen has recomposed onto it, must not land on the new document.
  *
- * The editor swaps documents only when `key(uri)` recomposes, so for up to one frame after a load
+ * The editor swaps documents only when `key(id)` recomposes, so for up to one frame after a load
  * publishes B the view still shows A and still carries A's content-change subscription. A change in
  * that window arrives as `updateContent(A's text)`, and the slot wrote it onto whatever document was
  * current — B. The editor then re-seeds from B's model, which now IS A's text, so nothing heals and
@@ -132,9 +132,10 @@ class StaleEditorWriteTest {
     @Test
     fun anEditArrivingBeforeTheSwapRecomposesDoesNotLandOnTheNewDocument() {
         val vm = viewModel()
+        val renderer = warmedMarkwonRenderer(compose.activity)
         compose.setContent {
             MaterialTheme {
-                MainScreen(viewModel = vm, context = compose.activity, renderer = MarkwonRenderer(compose.activity))
+                MainScreen(viewModel = vm, context = compose.activity, renderer = renderer)
             }
         }
         vm.loadFile(aUri)

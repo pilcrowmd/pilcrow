@@ -29,4 +29,9 @@
       RecyclerView, so the span in a block's text reaches the screen without a global callback.
     -->
     <item name="image_tap_handler" type="id" />
+    <!--
+      The point of text under the fingers when a reader pinch began, on the reader's RecyclerView, so
+      every frame of that gesture holds the same point under the fingers as they move.
+    -->
+    <item name="pinch_focal_anchor" type="id" />
 </resources>

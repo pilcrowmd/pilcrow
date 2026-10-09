@@ -9,7 +9,7 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.model.RenderMode
-import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import org.commonmark.node.FencedCodeBlock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -33,9 +33,7 @@ class PdfFrontmatterRoutingTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        val renderer = MarkwonRenderer(context)
-        // Same reason as PdfExporterTest: a parse racing the pre-warm on the shared Markwon can throw.
-        renderer.awaitFontPreWarm()
+        val renderer = warmedMarkwonRenderer(context)
         exporter = PdfExporter(context, renderer)
     }
 

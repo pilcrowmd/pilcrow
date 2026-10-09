@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -55,6 +56,14 @@ class CeShimJLatexAcceptanceTest {
     @Test fun tier2ParensAndHydrate() = assertRenders("\\ce{Ca(OH)2} \\ce{CuSO4*5H2O}")
 
     @Test fun tier3Reaction() = assertRenders("\\ce{2H2 + O2 -> 2H2O}")
+
+    /** M-229: spaced coefficients render as chemistry, not as the `\text{…}` fallback. */
+    @Test fun tier3SpacedCoefficients() {
+        listOf("\\ce{2 H2 + O2 -> 2 H2O}", "\\ce{CH4 + 2 O2 -> CO2 + 2 H2O}").forEach { input ->
+            assertFalse("translated, not the text fallback: $input", CeMacroShim.translate(input).contains("\\text{"))
+            assertRenders(input)
+        }
+    }
 
     @Test fun tier3ArrowsStatesMarkers() =
         assertRenders("\\ce{A <=> B} \\ce{A <-> B} \\ce{A <- B} \\ce{AgCl(s) v} \\ce{H2 ^} \\ce{1/2O2}")

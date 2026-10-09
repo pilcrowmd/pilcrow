@@ -34,6 +34,12 @@ sealed interface ImageFolderBanner {
 
     /** The note sits in a folder Android will not let the app open (Download/, the top of storage). */
     data object CannotShowHere : ImageFolderBanner
+
+    /** M-272: the note has [pictureCount] pictures, but its URI does not say which folder holds it. */
+    data class PickNoteFolder(val pictureCount: Int, val noteName: String) : ImageFolderBanner
+
+    /** M-272: the folder just picked for the note does not hold [noteName]. */
+    data class WrongFolder(val noteName: String) : ImageFolderBanner
 }
 
 data class ImageFolderUi(
@@ -51,6 +57,10 @@ data class ImageFolderUi(
  * once per folder: "Not now" is remembered per folder, after which only "Tap to show" and the
  * overflow-menu item reach the picker. A note in a folder Android will not grant gets a short
  * explanation instead, and never the picker.
+ *
+ * A note whose URI names no folder (M-272, e.g. opened from Recent) asks the user to pick the
+ * folder that holds it; "Not now" is remembered for that note. A pick that turns out not to hold
+ * the note says so, and a grant made only for that pick is given back.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImageFolderViewModel(
@@ -66,21 +76,29 @@ class ImageFolderViewModel(
     private val shown = MutableStateFlow<Shown?>(null)
     private val refreshes = MutableStateFlow(0)
 
+    /** M-272: the note whose last folder pick did not hold it; cleared when another note is shown. */
+    private val missedPick = MutableStateFlow<Uri?>(null)
+
     private val facts: StateFlow<Facts?> = combine(shown, refreshes) { note, _ -> note }
         .mapLatest { note -> note?.let { factsFor(it) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val state: StateFlow<ImageFolderUi> = combine(facts, storage.dismissedImageFolders) { f, dismissed ->
-        uiFor(f, dismissed)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, ImageFolderUi())
+    val state: StateFlow<ImageFolderUi> =
+        combine(facts, storage.dismissedImageFolders, missedPick) { f, dismissed, missed ->
+            uiFor(f, dismissed, missed)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, ImageFolderUi())
 
-    private val pickFolderEvents = MutableSharedFlow<Uri>(extraBufferCapacity = 1)
+    private val pickFolderEvents = MutableSharedFlow<Uri?>(extraBufferCapacity = 1)
 
-    /** Where to open the folder picker: the note itself, so it starts in the note's folder. */
-    val pickFolder: SharedFlow<Uri> = pickFolderEvents.asSharedFlow()
+    /**
+     * Where to open the folder picker: the note itself, so it starts in the note's folder; null
+     * when the note is no document (another app's share), so Android opens it where it likes.
+     */
+    val pickFolder: SharedFlow<Uri?> = pickFolderEvents.asSharedFlow()
 
     /** The reader shows [uri] with [content]; null when no document is shown. */
     fun onDocumentShown(uri: Uri?, content: String) {
+        if (uri != missedPick.value) missedPick.value = null
         shown.value = uri?.let { Shown(it, content) }
     }
 
@@ -89,11 +107,16 @@ class ImageFolderViewModel(
         refreshes.update { it + 1 }
     }
 
-    /** "Not now" (or "OK" on the can't-show banner): remembered for this folder. */
+    /** "Not now" (or "OK" on the can't-show banner): remembered for this folder, or this note. */
     fun dismissBanner() {
-        val key = when (val folder = facts.value?.folder) {
+        val current = facts.value
+        val key = when (val folder = current?.folder) {
             is NoteFolder.NeedsGrant -> folder.folderKey
             is NoteFolder.Blocked -> folder.folderKey
+            is NoteFolder.Unlocated -> {
+                missedPick.value = null
+                noteKey(current.uri)
+            }
             else -> return
         }
         viewModelScope.launch { storage.setImageFolderDismissed(key, true) }
@@ -102,8 +125,12 @@ class ImageFolderViewModel(
     /** "Allow folder", "Tap to show" or the menu item. Does nothing where the picker cannot help. */
     fun requestFolderAccess() {
         val current = facts.value ?: return
-        val folder = current.folder as? NoteFolder.NeedsGrant ?: return
-        if (current.pictures > 0) pickFolderEvents.tryEmit(folder.pickerStart)
+        val start = when (val folder = current.folder) {
+            is NoteFolder.NeedsGrant -> folder.pickerStart
+            is NoteFolder.Unlocated -> folder.pickerStart
+            else -> return
+        }
+        if (current.pictures > 0) pickFolderEvents.tryEmit(start)
     }
 
     /** The picker's answer; null when the user backed out. */
@@ -111,15 +138,32 @@ class ImageFolderViewModel(
         if (treeUri == null) return
         val asked = facts.value
         viewModelScope.launch {
+            val alreadyGranted = asked != null && treeUri in asked.grants
             folders.grantFolder(treeUri)
             refresh()
             // A grant that covers the note clears that folder's "Not now", so losing the grant
             // later (revoked, or pruned by Android) brings the banner back.
-            val before = asked?.folder as? NoteFolder.NeedsGrant ?: return@launch
-            if (folders.folderFor(asked.uri) is NoteFolder.Covered) {
-                storage.setImageFolderDismissed(before.folderKey, false)
+            when (val before = asked?.folder) {
+                is NoteFolder.NeedsGrant -> if (folders.folderFor(asked.uri) is NoteFolder.Covered) {
+                    storage.setImageFolderDismissed(before.folderKey, false)
+                }
+                is NoteFolder.Unlocated -> checkPickHolds(asked.uri, treeUri, alreadyGranted)
+                else -> Unit
             }
         }
+    }
+
+    /**
+     * M-272: did the folder picked for [note] hold it? A grant made only for a miss is given back.
+     * Either way the note's "Not now" is cleared: a hit so that losing the grant later brings the
+     * banner back, a miss because "not in that folder" answers the pick and must show.
+     */
+    private suspend fun checkPickHolds(note: Uri, treeUri: Uri, alreadyGranted: Boolean) {
+        val holds = folders.folderFor(note) is NoteFolder.Covered
+        if (!holds && !alreadyGranted) folders.releaseFolder(treeUri)
+        missedPick.value = note.takeUnless { holds }
+        storage.setImageFolderDismissed(noteKey(note), false)
+        if (!holds) refresh()
     }
 
     private suspend fun factsFor(note: Shown): Facts {
@@ -128,7 +172,7 @@ class ImageFolderViewModel(
         return Facts(note.uri, pictures, folders.folderFor(note.uri), folders.grantedFolders())
     }
 
-    private fun uiFor(facts: Facts?, dismissed: Set<String>): ImageFolderUi {
+    private fun uiFor(facts: Facts?, dismissed: Set<String>, missed: Uri?): ImageFolderUi {
         if (facts == null) return ImageFolderUi()
         val accessKey = facts.grants.joinToString("|")
         // A note with no pictures next to it arrives here as Unknown (factsFor), so it gets nothing.
@@ -142,11 +186,22 @@ class ImageFolderViewModel(
                 banner = ImageFolderBanner.CannotShowHere.takeUnless { folder.folderKey in dismissed },
                 accessKey = accessKey,
             )
+            is NoteFolder.Unlocated -> ImageFolderUi(
+                banner = when (missed) {
+                    facts.uri -> ImageFolderBanner.WrongFolder(folder.noteName)
+                    else -> ImageFolderBanner.PickNoteFolder(facts.pictures, folder.noteName)
+                }.takeUnless { noteKey(facts.uri) in dismissed },
+                canAskForFolder = true,
+                accessKey = accessKey,
+            )
             is NoteFolder.Covered, NoteFolder.Unknown -> ImageFolderUi(accessKey = accessKey)
         }
     }
 
     companion object {
+        /** "Not now" for a note whose folder is unknown is remembered for the note itself. */
+        private fun noteKey(note: Uri) = "note:$note"
+
         fun provideFactory(container: AppContainer): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = ImageFolderViewModel(

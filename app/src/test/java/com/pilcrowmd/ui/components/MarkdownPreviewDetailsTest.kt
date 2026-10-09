@@ -13,7 +13,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
-import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -46,7 +46,7 @@ class MarkdownPreviewDetailsTest {
         }
         composeRule.setContent {
             val context = LocalContext.current
-            val renderer = remember { MarkwonRenderer(context) }
+            val renderer = remember { warmedMarkwonRenderer(context) }
             MarkdownPreview(
                 content = content,
                 renderer = renderer,

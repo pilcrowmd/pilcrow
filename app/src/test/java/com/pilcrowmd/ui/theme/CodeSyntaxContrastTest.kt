@@ -71,4 +71,32 @@ class CodeSyntaxContrastTest {
             assertTrue("Print '$role' is %.2f:1 on the PDF code panel, below 4.5:1".format(ratio), ratio >= 4.5)
         }
     }
+
+    /**
+     * M-216: a diff's added and removed text is drawn on its line tint, and that pair is held to
+     * the same 4.5:1 as every other code colour. Dark is measured too: its `deleted` was nudged for this.
+     */
+    private fun assertDiffPairs(label: String, syntax: CodeSyntaxColors) {
+        val pairs = mapOf(
+            "inserted" to (syntax.inserted to syntax.insertedLineBg),
+            "deleted" to (syntax.deleted to syntax.deletedLineBg),
+        )
+        for ((role, pair) in pairs) {
+            val (fg, bg) = pair
+            assertNotNull("$label '$role' is unset", fg)
+            assertNotNull("$label '$role' line tint is unset", bg)
+            val ratio = contrast(fg!!, bg!!)
+            println("M-216 contrast $label $role on its tint: %.2f:1".format(ratio))
+            assertTrue("$label '$role' is %.2f:1 on its line tint, below 4.5:1".format(ratio), ratio >= 4.5)
+        }
+    }
+
+    @Test
+    fun diffTextReachesFourAndAHalfToOneOnItsLineTintInDark() = assertDiffPairs("Dark", DarkColorScheme.codeSyntax)
+
+    @Test
+    fun diffTextReachesFourAndAHalfToOneOnItsLineTintInLight() = assertDiffPairs("Light", LightColorScheme.codeSyntax)
+
+    @Test
+    fun diffTextReachesFourAndAHalfToOneOnItsLineTintInPrint() = assertDiffPairs("Print", PrintColorScheme.codeSyntax)
 }

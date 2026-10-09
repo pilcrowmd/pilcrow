@@ -13,9 +13,12 @@ import com.pilcrowmd.domain.model.HeadingNode
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.node.AbstractVisitor
+import org.commonmark.node.Code
 import org.commonmark.node.Document
+import org.commonmark.node.HardLineBreak
 import org.commonmark.node.Heading
 import org.commonmark.node.Node
+import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
 import org.commonmark.parser.Parser
 
@@ -50,8 +53,9 @@ class ParseMarkdownHeadingsUseCase {
             // Same factory the renderer registers (FootnotePlugin) — shared so the top-level block
             // sequences stay 1:1. ParseParityTest fails if one side ever gains it without the other.
             .customBlockParserFactory(FootnoteBlockParserFactory())
-            // NEW-11: a tree too deep to walk comes back empty, so the TOC and search find nothing in
-            // it instead of overflowing the stack — the reader shows that document as plain text.
+            // NEW-11: a tree too deep to walk comes back empty, so the TOC finds nothing in it instead
+            // of overflowing the stack. The reader shows that document as plain text, and search
+            // reads it the same way.
             .postProcessor(NestingLimit.postProcessor)
             .build()
     }
@@ -90,13 +94,26 @@ class ParseMarkdownHeadingsUseCase {
     }
 
     /**
-     * Extract all text content from a node (used by extractHeadings to get heading text).
+     * Extract all text content from a node (used by extractHeadings to get heading text):
+     * text, inline code literals, and a single space for each line break (M-264).
      */
     private fun extractTextFromNode(node: Node): String {
         val sb = StringBuilder()
         node.accept(object : AbstractVisitor() {
             override fun visit(text: Text) {
                 sb.append(text.literal)
+            }
+
+            override fun visit(code: Code) {
+                sb.append(code.literal)
+            }
+
+            override fun visit(softLineBreak: SoftLineBreak) {
+                sb.append(' ')
+            }
+
+            override fun visit(hardLineBreak: HardLineBreak) {
+                sb.append(' ')
             }
         })
         return sb.toString()

@@ -51,20 +51,63 @@ object InlineMathDelimiters {
      * All raw-source character ranges (inclusive) that render as LaTeX math: display `$$…$$` and
      * inline `$…$`. Used by search to exclude math from searchable text (it renders as a formula
      * image, not text). Escaped `\$` is never a delimiter. Ranges are non-overlapping, left-to-right.
+     *
+     * Read left to right as the renderer's inline parser reads it: a code span is consumed whole, so
+     * a `$` inside one never opens a formula (in `` `$HOME`, `PATH`, `$PWD` `` nothing is maths), while
+     * a formula that opens first may still close on a `$` inside a later code span.
      */
     fun mathRanges(content: String): List<IntRange> {
         val ranges = mutableListOf<IntRange>()
         var i = 0
         while (i < content.length) {
             val range = mathAt(content, i)
-            if (range != null) {
-                ranges.add(range)
-                i = range.last + 1
-            } else {
-                i++
+            when {
+                range != null -> {
+                    ranges.add(range)
+                    i = range.last + 1
+                }
+                content[i] == '`' -> i = afterCodeSpan(content, i)
+                else -> i++
             }
         }
         return ranges
+    }
+
+    /**
+     * The index after the backtick run at [start], and after the code span it opens if it opens one:
+     * a run opens a code span when the next run of the same length closes it. A code span does not
+     * outlast its paragraph, so no closer is looked for past a blank line. An escaped backtick is
+     * literal and opens nothing.
+     */
+    private fun afterCodeSpan(content: String, start: Int): Int {
+        if (isEscaped(content, start)) return start + 1
+        val openEnd = runEnd(content, start)
+        var i = openEnd
+        while (i < content.length) {
+            when {
+                content[i] == '`' -> {
+                    val closeEnd = runEnd(content, i)
+                    if (closeEnd - i == openEnd - start) return closeEnd
+                    i = closeEnd
+                }
+                content[i] == '\n' && blankLineFollows(content, i) -> return openEnd
+                else -> i++
+            }
+        }
+        return openEnd
+    }
+
+    private fun runEnd(content: String, start: Int): Int {
+        var end = start
+        while (end < content.length && content[end] == '`') end++
+        return end
+    }
+
+    /** Whether the line after the newline at [newline] is blank (spaces, tabs and quote markers only). */
+    private fun blankLineFollows(content: String, newline: Int): Boolean {
+        var i = newline + 1
+        while (i < content.length && content[i] in " \t>") i++
+        return i >= content.length || content[i] == '\n' || content[i] == '\r'
     }
 
     /** The math range that STARTS at [i] (display `$$…$$` or inline `$…$`), or null if none does. */

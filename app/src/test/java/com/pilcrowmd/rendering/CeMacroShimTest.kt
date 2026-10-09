@@ -96,6 +96,30 @@ class CeMacroShimTest {
 
     @Test fun t3FractionCoefficient() = assertEquals("{\\tfrac{1}{2}\\mathrm{O_{2}}}", t("\\ce{1/2O2}"))
 
+    // M-229: a coefficient written as its own term (`2 H2`) is glued to the species after it.
+    @Test fun t3SpacedCoefficients() = assertEquals(
+        "{2\\mathrm{H_{2}} + \\mathrm{O_{2}} \\longrightarrow 2\\mathrm{H_{2}O}}",
+        t("\\ce{2 H2 + O2 -> 2 H2O}"),
+    )
+
+    @Test fun t3SpacedCoefficientsCombustion() = assertEquals(
+        "{\\mathrm{CH_{4}} + 2\\mathrm{O_{2}} \\longrightarrow \\mathrm{CO_{2}} + 2\\mathrm{H_{2}O}}",
+        t("\\ce{CH4 + 2 O2 -> CO2 + 2 H2O}"),
+    )
+
+    @Test fun t3SpacedFractionCoefficient() = assertEquals("{\\tfrac{1}{2}\\mathrm{O_{2}}}", t("\\ce{1/2 O2}"))
+
+    @Test fun t3SpacedCoefficientBeforeParen() = assertEquals("{3\\mathrm{(NH_{4})}}", t("\\ce{3 (NH4)}"))
+
+    // Controls: a number with no species after it is not glued to anything, and falls back as before.
+    @Test fun spacedNumberAloneFallsBack() = assertEquals("{\\text{2}}", t("\\ce{2}"))
+
+    @Test fun spacedNumberAtEndFallsBack() = assertEquals("{\\text{H2 + 2}}", t("\\ce{H2 + 2}"))
+
+    @Test fun spacedNumberBeforePlusIsNotGlued() = assertEquals("{\\text{2 + H2}}", t("\\ce{2 + H2}"))
+
+    @Test fun spacedNumberBeforeArrowIsNotGlued() = assertEquals("{\\text{2 -> H2}}", t("\\ce{2 -> H2}"))
+
     // Deliberate token order: glued state stripped BEFORE the trailing-charge rule,
     // so the `+` is a charge, not a mid-token bond triggering fallback.
     @Test fun t3ChargeThenState() = assertEquals("{\\mathrm{Na^{+}}\\,\\mathrm{(aq)}}", t("\\ce{Na+(aq)}"))
@@ -153,6 +177,7 @@ class CeMacroShimTest {
         "\\ce{Na+(aq)}", "\\ce{Fe^{3+}(aq)}", "\\ce{C-C}", "\\ce{C=C}", "\\ce{^{227}_{90}Th}",
         "\\ce{A ->[H2O] B}", "\\ce{\\ce{H2O}}", "\\ce{H2O} + \\ce{C-C}", "x \\ce{} y",
         "\\frac{\\ce{H2O}}{2}", "\\ce{Na+} and \\ce{Cl-}", "\\ce{A} x \\ce{B}", "\\ce{ H2O }",
+        "\\ce{2 H2 + O2 -> 2 H2O}", "\\ce{1/2 O2}", "\\ce{H2 + 2}",
     )
 
     @Test

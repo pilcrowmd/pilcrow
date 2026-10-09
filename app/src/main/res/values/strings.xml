@@ -3,4 +3,6 @@
     <string name="app_name">PilcrowMD</string>
     <!-- Talkback label for the arrow on a footnote definition that returns to its first reference. -->
     <string name="footnote_back_link">Back to the footnote reference</string>
+    <!-- TalkBack name of the editor's text box; the file name is appended after a comma (M-265). -->
+    <string name="editor_accessibility_name">Markdown text</string>
 </resources>

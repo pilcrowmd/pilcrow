@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.domain.usecase
 
+import com.pilcrowmd.domain.model.SearchMatch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -528,5 +529,31 @@ class SearchMarkdownUseCaseTest {
 
         assertEquals(1, matches.size)
         assertEquals(1, matches[0].adapterPosition)
+    }
+
+    /**
+     * Past the nesting limit (150 > MAX_DEPTH) and shallow enough to parse unguarded. After the deep
+     * line, 100 "x" paragraphs fill the first plain-text chunk; the last "needle" opens the second.
+     * As Markdown that needle would be block 100, so only the plain chunk split can answer 1.
+     */
+    private val tooDeep = ">".repeat(150) + " needle\n" + "x\n\n".repeat(100) + "needle"
+
+    @Test
+    fun testTooDeepDocumentIsSearchedOverThePaintedPlainTextChunks() {
+        val matches = useCase.findSearchMatches(tooDeep, "needle")
+
+        assertEquals(
+            listOf(
+                SearchMatch("needle", startIndex = 151, adapterPosition = 0, occurrenceInBlock = 0),
+                SearchMatch("needle", startIndex = tooDeep.length - "needle".length, adapterPosition = 1),
+            ),
+            matches,
+        )
+    }
+
+    @Test
+    fun testTooDeepDocumentHasNoContents() {
+        // Plain text has no headings: the deep document's contents stay empty although it opens with one.
+        assertEquals(emptyList<Any>(), parseHeadingsUseCase.extractHeadings("# Title\n\n" + tooDeep))
     }
 }

@@ -37,8 +37,12 @@ fun HeadingsDrawer(
             .width(280.dp)
             .background(c.primaryBackground)
             // Inset below the status bar / above the nav bar so the title doesn't draw
-            // under the system clock (API 35 edge-to-edge).
+            // under the system clock (API 35 edge-to-edge). The cutout padding is Start-only,
+            // unlike the Horizontal used elsewhere: the drawer opens from the start edge, so a
+            // camera on the end side is not under it and must not take a cutout-wide margin out
+            // of the 280 dp.
             .systemBarsPadding()
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Start))
             .padding(PilcrowSpacing.sm),
     ) {
         // Title

@@ -25,9 +25,14 @@ import org.robolectric.RobolectricTestRunner
  * BOTTOM instead — about a screen short of where the user was sent.
  *
  * These tests pin the geometry directly rather than the rendered document, because the clamp is a
- * property of the list, not of Markdown. `blockHeight` is deliberately much smaller than
- * `viewportHeight` so the shortfall is unambiguous: without the fix the target cannot be topped at
- * all, with it the target sits exactly at the top.
+ * property of the list, not of Markdown.
+ *
+ * The headroom below the last block is now capped at one fifth of the viewport (M-98): scrolling to
+ * the very end shows some space after the document, never a near-blank screen. The accepted price
+ * is that a jump to a block near the end stops where the document ends instead of topping it.
+ * `blockHeight` (100 px) is deliberately much smaller than both a viewport (900 px) and
+ * a fifth of one (180 px), so the cap is the only thing that decides the tail gap: with a
+ * full-viewport spacer the gap is 800 px or more, with the cap it is exactly 180 px.
  */
 @RunWith(RobolectricTestRunner::class)
 class FootnoteJumpClampTest {
@@ -97,20 +102,36 @@ class FootnoteJumpClampTest {
         )
     }
 
+    private fun lastBlock(recyclerView: RecyclerView): View {
+        val lastChild = (recyclerView.layoutManager as LinearLayoutManager).findViewByPosition(blockCount - 1)
+        return requireNotNull(lastChild) { "guard: the last block must be laid out, or there is no gap to measure" }
+    }
+
     @Test
-    fun `WITH the spacer the last block reaches the top of the viewport`() {
+    fun `scrolled fully down, the gap below the last block is some but at most a fifth of the viewport`() {
+        val recyclerView = listOfBlocks(applyBottomSpacer = true)
+        // Far more than the document is tall: the list stops at its own end, spacer included.
+        recyclerView.scrollBy(0, blockCount * blockHeight + viewportHeight * 2)
+        layOut(recyclerView)
+        val gap = viewportHeight - lastBlock(recyclerView).bottom
+        assertTrue(
+            "The blank space after the document must be at most a fifth of the screen, never a " +
+                "near-blank screen; it was $gap px in a $viewportHeight px viewport.",
+            gap <= viewportHeight / 5,
+        )
+        assertTrue("but there must be SOME space after the last block; it was $gap px.", gap > 0)
+    }
+
+    @Test
+    fun `a jump to a short last block does not leave a near-blank screen below it`() {
         val recyclerView = listOfBlocks(applyBottomSpacer = true)
         jumpToLast(recyclerView)
-        val layoutManager = recyclerView.layoutManager as LinearLayoutManager
+        val gap = viewportHeight - lastBlock(recyclerView).bottom
         assertEquals(
-            "A footnote definition is always the last block; topping it is the whole of M-06.",
-            blockCount - 1,
-            layoutManager.findFirstVisibleItemPosition(),
-        )
-        assertEquals(
-            "and it must sit AT the top edge, not merely be the first visible item.",
-            0,
-            recyclerView.getChildAt(0).top,
+            "Asking for the last block at the top must stop where the document ends: its bottom " +
+                "sits exactly a fifth of the screen above the viewport's bottom (the spacer, no more).",
+            viewportHeight / 5,
+            gap,
         )
     }
 

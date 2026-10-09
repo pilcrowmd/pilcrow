@@ -8,12 +8,15 @@ import com.pilcrowmd.domain.markdown.CalloutBlock
 import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.domain.markdown.InlineMathDelimiters
+import com.pilcrowmd.domain.markdown.PlainTextChunks
+import com.pilcrowmd.domain.markdown.TooDeepDocument
 import com.pilcrowmd.domain.model.SearchMatch
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
 import org.commonmark.ext.gfm.tables.TableCell
 import org.commonmark.ext.gfm.tables.TableHead
 import org.commonmark.ext.gfm.tables.TableRow
+import org.commonmark.node.Block
 import org.commonmark.node.Code
 import org.commonmark.node.FencedCodeBlock
 import org.commonmark.node.HardLineBreak
@@ -54,6 +57,9 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
     fun findSearchMatches(content: String, query: String): List<SearchMatch> {
         if (query.isEmpty()) return emptyList()
         val doc = parseHeadingsUseCase.parseDocument(content) ?: return emptyList()
+        // A document nested too deep to render is painted as plain-text chunks (`ReaderTree`), so it
+        // is searched over the same chunks: its parse is empty, but every word of it is on screen.
+        if (doc is TooDeepDocument) return findPlainSearchMatches(PlainTextChunks.split(content), query)
         return BlockScanner(content, query).scan(doc)
     }
 
@@ -105,6 +111,9 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
         // line break is interior to a multi-line display formula and keeps the run open.
         private var inMath = false
 
+        // What inline HTML paints depends on the tags before it in the same render (block or cell).
+        private var html = InlineHtmlPaint()
+
         // Raw-source positions that render as a LaTeX formula image (inline `$…$` + display `$$…$$`).
         // Their *latex source* is excluded from prose search text so math is never a match (it renders
         // as an image, not searchable text). The renderer's highlighter + scroll
@@ -140,6 +149,7 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
             val sb = StringBuilder()
             val rawOffsets = mutableListOf<Int>()
             inMath = false // each chunk (block, or table cell) starts outside any math run
+            html = InlineHtmlPaint()
             appendVisible(root, sb, rawOffsets)
             val text = sb.toString()
             if (text.isEmpty()) return
@@ -163,7 +173,8 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
         /**
          * Append [node]'s visible contribution to [sb], pushing the raw-source offset of each appended
          * char to [offsets] in lockstep. Mirrors Markwon's default TextView rendering:
-         *  - text / inline code / fenced+indented code / inline+block HTML → their literal text;
+         *  - text / inline code / fenced+indented code / block HTML → their literal text;
+         *  - inline HTML → only what it paints, never its markup (see [InlineHtmlPaint]);
          *  - soft break → a space, hard break → a newline (what Markwon draws);
          *  - image → nothing (its alt text is not painted; counting it would be a phantom match);
          *  - anything else → recurse (paragraphs, headings, links, emphasis, table cells…).
@@ -180,9 +191,11 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
                     return
                 }
                 // Prose Text is the only place `$…$`/`$$…$$` are parsed into math by the renderer, so
-                // only it skips math; code/HTML render `$` literally → keep them searchable.
+                // it always skips math. Code and inline HTML render `$` literally and stay searchable,
+                // unless the whole node sits inside a formula (M-33): then it is part of the image.
                 is Text -> appendLiteral(node.literal, sb, offsets, skipMath = true)
-                is Code -> appendLiteral(node.literal, sb, offsets)
+                is Code ->
+                    appendLiteral(node.literal, sb, offsets, codeOpensInMath(content, mathMask, locate(node.literal)))
                 is FencedCodeBlock -> appendLiteral(node.literal, sb, offsets)
                 is IndentedCodeBlock -> appendLiteral(node.literal, sb, offsets)
                 is HtmlBlock -> appendHtmlBlock(node, sb, offsets)
@@ -191,7 +204,13 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
                     appendAnchored(node.kind.title + "\n", node.marker, sb, offsets)
                     appendChildren(node, sb, offsets)
                 }
-                is HtmlInline -> appendLiteral(node.literal, sb, offsets)
+                // M-33: a tag opens with '<' and a formula with '$', so the tag is inside a formula
+                // exactly when its first character is, and then joins the formula's placeholder.
+                is HtmlInline -> if (mathMask.getOrElse(locate(node.literal)) { false }) {
+                    appendLiteral(node.literal, sb, offsets, skipMath = true)
+                } else {
+                    appendAnchored(html.paint(node.literal, sb), node.literal, sb, offsets)
+                }
                 // A resolved footnote marker paints its ORDINAL, so that is what search must see —
                 // appending nothing would under-model the block, and appending the raw `[^label]`
                 // would count text the TextView never draws (the phantom-match class removed).
@@ -202,9 +221,21 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
             }
         }
 
+        /**
+         * M-28: two blocks inside one container (the paragraphs of a quote, the items of a list) are
+         * painted on separate lines, so a '\n' goes between them. Without it `> one` / `> two` was
+         * modelled as "onetwo" and a query straddling the join counted a match nothing paints. The
+         * separator consumes no source: it is anchored at the cursor, which does not move. A query is
+         * a single line, so the '\n' can only remove such straddling matches, never add one.
+         */
         private fun appendChildren(node: Node, sb: StringBuilder, offsets: MutableList<Int>) {
             var child = node.firstChild
             while (child != null) {
+                if (child is Block && child.previous != null) {
+                    inMath = false
+                    sb.append('\n')
+                    offsets.add(cursor)
+                }
                 appendVisible(child, sb, offsets)
                 child = child.next
             }
@@ -364,6 +395,20 @@ class SearchMarkdownUseCase(private val parseHeadingsUseCase: ParseMarkdownHeadi
         // bound the previous block-offset locator used.
         const val LOOKAHEAD = 4096
     }
+}
+
+/**
+ * M-33: whether the inline code span whose text starts at [codeStart] lies inside a formula, decided
+ * by its OPENING backtick, not by its characters. `$b `c` d$` paints one formula, so its code is part
+ * of the image; `` `$x$` `` paints the code literally, and its `$x$` must stay searchable even though
+ * the raw-source math scan behind [mathMask], which knows nothing of code spans, marks those
+ * characters as maths. The code's text excludes the backticks and the one space each side may carry,
+ * so step back over those spaces to the backtick.
+ */
+private fun codeOpensInMath(content: String, mathMask: BooleanArray, codeStart: Int): Boolean {
+    var pos = codeStart - 1
+    while (pos >= 0 && content[pos] == ' ') pos--
+    return pos >= 0 && content[pos] == '`' && mathMask.getOrElse(pos) { false }
 }
 
 /** Visit every [TableCell] of [table] in row-major order (header row, then body rows; cells L→R). */

@@ -39,8 +39,8 @@ class FootnoteRenderingTest {
 
     @Before
     fun setUp() {
-        // Same plugin chain as production, without MarkwonRenderer's pre-warm thread (its concurrent
-        // parse races Markwon's stateful inline parser).
+        // Same plugin chain as production, without MarkwonRenderer's pre-warm thread, so nothing else
+        // runs on this instance while the test parses.
         markwon = buildPilcrowMarkwon(ApplicationProvider.getApplicationContext())
     }
 

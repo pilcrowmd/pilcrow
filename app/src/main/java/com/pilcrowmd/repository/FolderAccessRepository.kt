@@ -18,7 +18,15 @@ sealed interface NoteFolder {
     /** Android's folder picker refuses this folder (Download/, the top of storage). */
     data class Blocked(val folderKey: String) : NoteFolder
 
-    /** The note's URI does not say which folder it is in (another app's file share, `msf:` IDs). */
+    /**
+     * M-272: the note's URI does not say which folder it is in (opened from the picker's Recent
+     * view, `msf:` IDs, another app's file share). A granted folder counts once its top level holds
+     * a file named [noteName] of the note's size. The folder picker starts at [pickerStart] (the
+     * note, when it is a document URI) or, when null, wherever Android opens it.
+     */
+    data class Unlocated(val noteName: String, val pickerStart: Uri?) : NoteFolder
+
+    /** Nothing to offer: the note's folder is unknown and so is its name. */
     data object Unknown : NoteFolder
 }
 
@@ -52,6 +60,9 @@ interface FolderAccessRepository : RelativeImageResolver {
 
     /** Keep read access to the folder the user picked, across restarts. */
     suspend fun grantFolder(treeUri: Uri): Result<Unit>
+
+    /** Give back a folder grant. Best effort: a failure is swallowed. */
+    suspend fun releaseFolder(treeUri: Uri)
 
     /** Where [noteUri] sits, and whether a grant covers it. */
     suspend fun folderFor(noteUri: Uri): NoteFolder

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<TeXFont>
+<SymbolMappings>
+  <Mapping include="fonts/jlm_pilcrowtext_cyrillic.map.xml" />
+</SymbolMappings>
+<FontDescriptions>
+  <Metrics include="fonts/jlm_pilcrowtext_cyrillic.xml" />
+</FontDescriptions>
+<TeXSymbols include="fonts/symbols_cyrillic.xml" />
+<FormulaSettings include="fonts/mappings_cyrillic.xml" />
+</TeXFont>

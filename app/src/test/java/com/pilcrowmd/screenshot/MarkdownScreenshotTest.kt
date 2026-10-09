@@ -17,8 +17,8 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
-import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.MathSourceSpan
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.ui.components.MarkdownPreview
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
@@ -106,7 +106,7 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
     fun golden() {
         composeRule.setContent {
             val context = LocalContext.current
-            val renderer = remember { MarkwonRenderer(context) }
+            val renderer = remember { warmedMarkwonRenderer(context) }
 
             // Select color scheme based on theme
             val colorScheme = when (case.themeMode) {

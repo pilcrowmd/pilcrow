@@ -48,6 +48,21 @@ class PilcrowTheme(private val colorScheme: PilcrowColorScheme = DarkColorScheme
             end,
             android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
         )
+
+        // M-216: a diff's added or removed line also gets a full-line tint, when the scheme sets one.
+        val lineBg = when (syntax.type()) {
+            "inserted" -> colorScheme.codeSyntax.insertedLineBg
+            "deleted" -> colorScheme.codeSyntax.deletedLineBg
+            else -> null
+        }
+        if (lineBg != null) {
+            builder.setSpan(
+                DiffLineBackgroundSpan(lineBg.toArgb()),
+                start,
+                end,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
     }
 
     /**
@@ -81,6 +96,38 @@ class PilcrowTheme(private val colorScheme: PilcrowColorScheme = DarkColorScheme
             role(CodeSyntaxColors::inserted, "inserted")
             role(CodeSyntaxColors::deleted, "deleted")
         }
+    }
+}
+
+/**
+ * Fills each line it covers, from the layout's left edge to its right edge, with an opaque [color]
+ * (M-216). The text is untouched.
+ *
+ * A leading-margin span of width 0, not a `LineBackgroundSpan`: Markwon's code-block span repaints the
+ * block's whole background in the text pass, after the layout's line-background pass, so a line
+ * background is painted over. Leading margins are drawn in span order and this one comes after the
+ * code-block span, so it lands on top of that fill and under the glyphs.
+ */
+internal class DiffLineBackgroundSpan(color: Int) : android.text.style.LeadingMarginSpan {
+    private val fill = android.graphics.Paint().apply { this.color = color }
+
+    override fun getLeadingMargin(first: Boolean): Int = 0
+
+    override fun drawLeadingMargin(
+        canvas: android.graphics.Canvas,
+        paint: android.graphics.Paint,
+        x: Int,
+        dir: Int,
+        top: Int,
+        baseline: Int,
+        bottom: Int,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        first: Boolean,
+        layout: android.text.Layout?,
+    ) {
+        canvas.drawRect(0f, top.toFloat(), (layout?.width ?: canvas.width).toFloat(), bottom.toFloat(), fill)
     }
 }
 

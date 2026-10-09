@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<TeXFont>
+<SymbolMappings>
+  <Mapping include="fonts/jlm_pilcrowtext_greek.map.xml" />
+</SymbolMappings>
+<FontDescriptions>
+  <Metrics include="fonts/jlm_pilcrowtext_greek.xml" />
+</FontDescriptions>
+<TeXSymbols include="fonts/symbols_greek.xml" />
+<FormulaSettings include="fonts/mappings_greek.xml" />
+</TeXFont>

@@ -41,12 +41,23 @@ fun ImageFolderBannerView(
 ) {
     val c = mdColors()
     val (title, detail) = when (banner) {
-        is ImageFolderBanner.AskForFolder -> {
-            val pictures = if (banner.pictureCount == 1) "1 picture" else "${banner.pictureCount} pictures"
-            "This note has $pictures in its folder." to "Allow PilcrowMD to open the folder to show them."
-        }
+        is ImageFolderBanner.AskForFolder ->
+            "This note has ${picturesOf(banner.pictureCount)} in its folder." to
+                "Allow PilcrowMD to open the folder to show them."
         ImageFolderBanner.CannotShowHere ->
             "Pictures can't be shown from this folder." to "Move the note and its pictures into a subfolder."
+        is ImageFolderBanner.PickNoteFolder ->
+            "This note has ${picturesOf(banner.pictureCount)} in its folder." to
+                "Android did not say which folder that is. Pick the folder that holds ${banner.noteName} to show them."
+        is ImageFolderBanner.WrongFolder ->
+            "${banner.noteName} is not in that folder." to "Pick the folder that holds it to show its pictures."
+    }
+    // The button that opens the picker; null for the can't-show banner, which only has "OK".
+    val allowLabel = when (banner) {
+        is ImageFolderBanner.AskForFolder -> "Allow folder"
+        is ImageFolderBanner.PickNoteFolder -> "Pick folder"
+        is ImageFolderBanner.WrongFolder -> "Pick again"
+        ImageFolderBanner.CannotShowHere -> null
     }
     Column(modifier = modifier.fillMaxWidth().background(c.border)) {
         Row(
@@ -70,16 +81,15 @@ fun ImageFolderBannerView(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    when (banner) {
-                        is ImageFolderBanner.AskForFolder -> {
-                            TextButton(onClick = onDismiss) {
-                                Text("Not now", color = c.secondaryText, fontSize = 14.sp)
-                            }
-                            TextButton(onClick = onAllow) {
-                                Text("Allow folder", color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
+                    if (allowLabel != null) {
+                        TextButton(onClick = onDismiss) {
+                            Text("Not now", color = c.secondaryText, fontSize = 14.sp)
                         }
-                        ImageFolderBanner.CannotShowHere -> TextButton(onClick = onDismiss) {
+                        TextButton(onClick = onAllow) {
+                            Text(allowLabel, color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        TextButton(onClick = onDismiss) {
                             Text("OK", color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -90,3 +100,5 @@ fun ImageFolderBannerView(
         Spacer(Modifier.height(1.dp))
     }
 }
+
+private fun picturesOf(count: Int) = if (count == 1) "1 picture" else "$count pictures"

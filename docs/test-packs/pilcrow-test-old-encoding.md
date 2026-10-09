@@ -12,7 +12,7 @@ pack. This header uses only plain English letters so that you can read it either
 - Press **Save**: the app offers to save a copy as a new file and does not overwrite this one.
   This file must stay exactly as it was.
 
-**Known gaps in version 1.0.12**
+**Known gaps in version 1.0.13**
 
 - The copy you save still shows a replacement mark wherever this file had a letter the app could
   not read.

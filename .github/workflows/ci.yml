@@ -39,6 +39,20 @@ name: CI
 # UNION, so listing `docs/**/*.md` as well is correct under EITHER reading, which beats betting on
 # one. Safe to widen because it is already established that nothing under `docs/` is a build input.
 #
+# IMAGES UNDER `docs/` ARE SKIPPED TOO (M-141). PR #159 (prose plus three PNGs under
+# `docs/evidence/`) ran this gate four times, about 29 billed minutes, because a PNG matched none of
+# the `.md` patterns. Re-measured before widening, as the paragraph above requires (2026-09-20, on
+# `0da4cdb`):
+#   1. Gradle and build config (`app/build.gradle.kts`, `build.gradle.kts`, `settings.gradle.kts`,
+#      `gradle.properties`, `gradle/**`): 0 references to `docs`.
+#   2. Every file under `app/` (build output excluded), bare token `docs`: 12 hits, all comments.
+#   3. The Roborazzi goldens live in `app/src/test/screenshots/`, under `app/`, not `docs/`.
+#   4. The marketing capture writes to the repo-root `screenshots/`, not `docs/screenshots/`.
+#   5. `settings.gradle.kts` includes `:app` only, and there is no `buildSrc`.
+# Only the image types are listed, not all of `docs/**`, so anything else added under `docs/` still
+# builds until someone re-runs these checks for it. The store-image provenance scan is not in this
+# workflow (it runs in `publish-gate.yml`, which has no path filter), so this cannot hide it.
+#
 # THE LATENT TRAP, recorded because it is invisible until the day it bites: if the `CI` check ever
 # becomes REQUIRED in branch protection or a repository ruleset, a skipped run leaves that check
 # pending for ever and no docs PR can merge again. Verified on 2026-09-18 that `main` has neither
@@ -52,12 +66,36 @@ on:
       - 'docs/**.md'
       - 'docs/**/*.md'
       - '*.md'
+      - 'docs/**.png'
+      - 'docs/**/*.png'
+      - 'docs/**.jpg'
+      - 'docs/**/*.jpg'
+      - 'docs/**.jpeg'
+      - 'docs/**/*.jpeg'
+      - 'docs/**.gif'
+      - 'docs/**/*.gif'
+      - 'docs/**.webp'
+      - 'docs/**/*.webp'
+      - 'docs/**.svg'
+      - 'docs/**/*.svg'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'docs/**.md'
       - 'docs/**/*.md'
       - '*.md'
+      - 'docs/**.png'
+      - 'docs/**/*.png'
+      - 'docs/**.jpg'
+      - 'docs/**/*.jpg'
+      - 'docs/**.jpeg'
+      - 'docs/**/*.jpeg'
+      - 'docs/**.gif'
+      - 'docs/**/*.gif'
+      - 'docs/**.webp'
+      - 'docs/**/*.webp'
+      - 'docs/**.svg'
+      - 'docs/**/*.svg'
 
 # CONCURRENCY — one live run per branch, superseded runs stop.
 # Without this, three pushes in a row to a PR bill three full ~11-minute builds and only the last
@@ -92,8 +130,11 @@ permissions:
 
 jobs:
   build:
-    # Pinned to an immutable runner image (not the floating `ubuntu-latest`) for reproducible CI.
-    runs-on: ubuntu-24.04
+    # Where the Actions variable CI_RUNS_ON is unset (any fork or mirror), the job runs on an
+    # immutable hosted image (not the floating `ubuntu-latest`) for reproducible CI. A repository
+    # can send it to its own runner by setting CI_RUNS_ON to a JSON label list, e.g.
+    # ["self-hosted","linux","<label>"]. Fallback: delete CI_RUNS_ON -> ubuntu-24.04.
+    runs-on: ${{ vars.CI_RUNS_ON && fromJSON(vars.CI_RUNS_ON) || 'ubuntu-24.04' }}
     steps:
       # Third-party actions are pinned to immutable commit SHAs (supply-chain hardening); the
       # trailing comment records the human-readable version each SHA corresponds to.

@@ -4,6 +4,7 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import android.graphics.Paint
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.ViewGroup
@@ -20,7 +21,8 @@ import io.noties.markwon.recycler.MarkwonAdapter
  * Adapter entry for [PlainTextChunk]: sets the chunk's literal directly on a
  * prose-styled TextView — no Markwon render, no parsing, every character verbatim. Typography
  * matches [ProseBlockEntry] (reading font, 17sp × scale, primaryText, 1.35 line height) so a
- * `.txt` reads like body prose; vertical padding is zero (see adapter_plain_text.xml).
+ * `.txt` reads like body prose; vertical padding is zero except next to a forced split of a
+ * blank-line-free run (see [seamBottomPadding]).
  */
 class PlainTextBlockEntry(
     private val context: Context,
@@ -47,6 +49,21 @@ class PlainTextBlockEntry(
             TypedValue.COMPLEX_UNIT_SP,
             PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * fontScale,
         )
+        // A blank-line-free run is split into several TextViews (M-365). A TextView's last line gets
+        // no line spacing and, with font padding, its first line starts at `top` not `ascent`, so
+        // stacked chunks would jump at the seam. These paddings make the baseline-to-baseline
+        // distance across a forced seam equal the one inside a block, and leave the block's bottom
+        // where one unsplit TextView would put it. Re-applied on every bind: holders are recycled.
+        // A chunk with both flags false keeps font padding and zero padding, exactly as before.
+        val tv = holder.textView
+        tv.includeFontPadding = !node.continuesPrevious
+        val seamBottom = seamBottomPadding(
+            tv.paint.fontMetricsInt,
+            tv.lineSpacingMultiplier,
+            node.continuesPrevious,
+            node.continuesNext,
+        )
+        tv.setPaddingRelative(tv.paddingStart, 0, tv.paddingEnd, seamBottom)
         // Reset shared-holder state (mirrors ProseBlockEntry), then set the literal directly —
         // no markwon.render, no parsing: the text IS the content.
         holder.textView.setTextColor(colorScheme.primaryText.toArgb())
@@ -61,3 +78,30 @@ class PlainTextBlockEntry(
 
     class Holder(val textView: TextView) : MarkwonAdapter.Holder(textView)
 }
+
+/**
+ * Bottom padding for a chunk next to a forced seam (see [PlainTextBlockEntry.bindHolder]). [pitch] is
+ * the line height StaticLayout gives a line that is followed by another: the font height plus its own
+ * rounding of the extra spacing. 0 when the chunk touches no forced seam, and never negative (a font
+ * whose `bottom` lies further below `descent` than the spacing extra gets no padding, not a pull-up).
+ */
+internal fun seamBottomPadding(
+    fm: Paint.FontMetricsInt,
+    lineSpacingMultiplier: Float,
+    continuesPrevious: Boolean,
+    continuesNext: Boolean,
+): Int {
+    val height = fm.descent - fm.ascent
+    val pitch = height + (height * (lineSpacingMultiplier - 1f) + ROUND_HALF_UP).toInt()
+    // Without font padding the block's last line ends at `descent`; with it, at `bottom`.
+    val lastLineEnd = if (continuesPrevious) fm.descent else fm.bottom
+    val padding = when {
+        continuesNext -> pitch + fm.ascent - lastLineEnd
+        continuesPrevious -> fm.bottom - fm.descent
+        else -> 0
+    }
+    return padding.coerceAtLeast(0)
+}
+
+/** StaticLayout rounds its extra line spacing half up; mirrored so the seam arithmetic matches it. */
+private const val ROUND_HALF_UP = 0.5f

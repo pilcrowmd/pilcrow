@@ -13,16 +13,23 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,6 +59,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -89,6 +100,8 @@ fun SettingsScreen(
     onMermaidCloudChanged: (Boolean) -> Unit = {},
     wrapCodeLines: Boolean = false,
     onWrapCodeLinesChanged: (Boolean) -> Unit = {},
+    formattingBarEnabled: Boolean = true,
+    onFormattingBarChanged: (Boolean) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.DARK,
     onThemeSelected: (ThemeMode) -> Unit = {},
     appVersion: String = "",
@@ -102,6 +115,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(c.primaryBackground)
             .systemBarsPadding()
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
@@ -148,7 +162,7 @@ fun SettingsScreen(
         SettingsCard {
             CardTitle("Theme")
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ThemeOption(
                     icon = Icons.Outlined.DarkMode,
                     label = "Dark",
@@ -168,7 +182,7 @@ fun SettingsScreen(
         SettingsCard {
             CardTitle("Reading & code font")
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FontSets.ALL.forEach { set ->
                     FontPill(set = set, selected = set.id == fontSetId, onClick = { onFontSetSelected(set.id) })
                 }
@@ -258,6 +272,43 @@ fun SettingsScreen(
                 }
                 Switch(
                     checked = openInEditMode,
+                    onCheckedChange = null,
+                    modifier = Modifier.scale(0.8f),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = c.primaryText,
+                        checkedTrackColor = c.accent,
+                        uncheckedThumbColor = c.secondaryText,
+                        uncheckedTrackColor = c.secondarySurface,
+                    ),
+                )
+            }
+        }
+
+        // M-217: the editor's formatting bar, on by default.
+        CardGap()
+        SettingsCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(
+                        value = formattingBarEnabled,
+                        role = Role.Switch,
+                        onValueChange = onFormattingBarChanged,
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    CardTitle("Show formatting bar")
+                    Text(
+                        text = "Buttons for bold, lists and links above the keyboard",
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(
+                    checked = formattingBarEnabled,
                     onCheckedChange = null,
                     modifier = Modifier.scale(0.8f),
                     colors = SwitchDefaults.colors(
@@ -415,7 +466,7 @@ private fun RowScope.ThemeOption(
                 if (selected) c.accent.copy(alpha = 0.12f) else c.primaryBackground,
             )
             .border(1.dp, borderColor, RoundedCornerShape(9.dp))
-            .clickable(enabled = enabled) { onClick() }
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -447,7 +498,7 @@ private fun RowScope.FontPill(set: FontSet, selected: Boolean, onClick: () -> Un
                 if (selected) c.accent else c.border,
                 RoundedCornerShape(9.dp),
             )
-            .clickable { onClick() }
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             // Breathing room once the label outgrows the floor; inert at 1.0 (label is centred).
             .padding(vertical = 4.dp),
         contentAlignment = Alignment.Center,
@@ -496,7 +547,8 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
             fontSize = 12.sp,
             modifier = Modifier
                 .clip(CircleShape)
-                .clickable { onChange(steppedScale(scale, -5)) }
+                .clickable(role = Role.Button) { onChange(steppedScale(scale, -5)) }
+                .clearAndSetSemantics { contentDescription = "Smaller text" }
                 .padding(4.dp),
         )
         Slider(
@@ -508,7 +560,9 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
             modifier = Modifier
                 .weight(1f)
                 .height(28.dp)
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = 4.dp)
+                // Speak the percent the readout shows, not the fraction of the 85–160 range.
+                .semantics { stateDescription = "${scaleToPercent(scale)}%" },
             colors = SliderDefaults.colors(
                 thumbColor = c.accent,
                 activeTrackColor = c.accent,
@@ -521,7 +575,8 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
             fontSize = 19.sp,
             modifier = Modifier
                 .clip(CircleShape)
-                .clickable { onChange(steppedScale(scale, +5)) }
+                .clickable(role = Role.Button) { onChange(steppedScale(scale, +5)) }
+                .clearAndSetSemantics { contentDescription = "Larger text" }
                 .padding(4.dp),
         )
         Box(

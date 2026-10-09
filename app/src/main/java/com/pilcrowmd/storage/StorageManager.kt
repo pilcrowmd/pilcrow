@@ -164,6 +164,12 @@ interface StorageManager {
     /** Persist the code-block wrap setting. */
     suspend fun setWrapCodeLines(enabled: Boolean)
 
+    /** Flow of the editor's "Show formatting bar" setting. Default: true (M-217). */
+    val formattingBarEnabled: Flow<Boolean>
+
+    /** Persist the formatting-bar setting. */
+    suspend fun setFormattingBarEnabled(enabled: Boolean)
+
     /**
      * Flow of the selected theme mode. Default: ThemeMode.DARK (ensures Dark remains default).
      * v1: DataStore. vNext: could sync across devices.

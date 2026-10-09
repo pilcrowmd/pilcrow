@@ -90,6 +90,13 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
             name = "table",
             markdown = "| Left | Center | Right |\n|:-----|:------:|------:|\n| a | b | c |\n| dd | ee | ff |",
         ),
+        // M-17, M-32: a cell keeps its bold, link, code and maths, as a paragraph does.
+        MarkdownSample(
+            name = "table_inline",
+            markdown = "| Kind | Example |\n|---|---|\n| **bold** | [link](https://example.com) |\n" +
+                "| `code` | \$x^2\$ |",
+            awaitMathRender = true,
+        ),
         MarkdownSample(
             name = "horizontal_rule",
             markdown = "Above the rule.\n\n---\n\nBelow the rule.",
@@ -148,6 +155,17 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
                 "\$\$\\left\\{ \\begin{array}{ll} t, & 0 \\le t < 1 \\\\ " +
                 "0, & \\text{elsewhere} \\end{array} \\right.\$\$",
             awaitMathRender = true,
+        ),
+        // M-197 (issue #9): Greek and Cyrillic letters inside \text{} draw from the bundled
+        // Pilcrow Math Text fonts, not as the formula's source. The issue's formula, then Cyrillic.
+        // Cropped: see [cropToMath].
+        MarkdownSample(
+            name = "latex_text_scripts",
+            markdown = "Greek and Cyrillic in text:\n\n" +
+                "\$\$f(x)=\\begin{cases}1, & \\text{αν } x>0\\\\0, & \\text{αλλιώς}\\end{cases}" +
+                " \\quad \\text{привет}\$\$",
+            awaitMathRender = true,
+            cropToMath = true,
         ),
         // mhchem chemistry (\ce{…}) is translated to plain LaTeX by CeMacroShimPlugin before
         // JLatexMath: formulas and reactions become renderable math; beyond-tier content (the

@@ -11,12 +11,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -99,6 +104,7 @@ fun LicensesListView(
         modifier = modifier
             .fillMaxSize()
             .systemBarsPadding()
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
     ) {
         // Header
@@ -236,6 +242,7 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .systemBarsPadding()
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
     ) {
         // Header
@@ -447,6 +454,13 @@ fun loadDependencies(context: Context): List<License> {
         License(name = "IBM Plex Mono", license = "OFL-1.1"),
         License(name = "Merriweather", license = "OFL-1.1"),
         License(name = "Atkinson Hyperlegible", license = "OFL-1.1"),
+        // M-197: the Greek and Cyrillic letters inside \text{} in formulas. A renamed subset, so its
+        // notice carries the original copyright lines and Reserved Font Name.
+        License(
+            name = "Pilcrow Math Text Greek and Cyrillic (subset of CMU Serif)",
+            license = "OFL-1.1",
+            textAsset = "licenses/OFL-PilcrowMathText.txt",
+        ),
         License(name = "VSCode Markdown TextMate Grammar", license = "MIT"),
     ) + READER_GRAMMAR_LICENSES
 

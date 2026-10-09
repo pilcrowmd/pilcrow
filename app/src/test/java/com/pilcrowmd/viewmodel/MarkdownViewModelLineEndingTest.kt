@@ -15,6 +15,7 @@ import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.testing.MainDispatcherSuite
+import com.pilcrowmd.ui.components.PilcrowCodeEditor
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ import org.junit.experimental.categories.Category
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowLooper
 
 /**
  * Unit tests for MarkdownViewModel line-ending round-trip fidelity (Safeguard 2).
@@ -481,6 +483,111 @@ class MarkdownViewModelLineEndingTest {
             "resetSaveState consumes SaveError → Idle",
             FileLoadState.Idle,
             vm.fileLoadState.value,
+        )
+    }
+
+    // ---- M-353: a bare CR in the file must survive the CRLF round trip (Safeguard 2) ----
+    //
+    // Load folds every "\r\n" to "\n"; any "\r" left in the model is a byte the file really had.
+    // Saving a CRLF document therefore converts ONLY "\n" back to "\r\n". The old `\r?\n` regex
+    // treated the surviving CR + the restored LF as one CRLF and wrote the CR away (33 bytes in,
+    // 32 out; found by PR #239's byte-identity corpus).
+
+    private suspend fun assertRoundTripsByteIdentical(content: String, expectedEnding: String, name: String) {
+        val vm = createViewModelWithContent(content)
+        val testUri = Uri.parse("content://test/$name")
+
+        vm.loadFile(testUri)
+        vm.awaitLoaded()
+        assertEquals(expectedEnding, vm.lineEnding.value)
+
+        vm.saveFile()
+        vm.awaitSaveSettled()
+
+        val saved = capturedSaves[testUri]
+        assertEquals("$name should round-trip byte-identical", content, saved)
+    }
+
+    @Test
+    fun testCrBeforeCrlfRoundTrips() = runTest {
+        assertRoundTripsByteIdentical("line one\r\r\nline two\r\nline three\r\n", "CRLF", "cr_cr_lf.md")
+    }
+
+    @Test
+    fun testTwoCrsBeforeCrlfRoundTrip() = runTest {
+        assertRoundTripsByteIdentical("a\r\r\r\nb\r\n", "CRLF", "cr_cr_cr_lf.md")
+    }
+
+    @Test
+    fun testLoneCrInsideLineRoundTrips() = runTest {
+        assertRoundTripsByteIdentical("a\rb\r\nc\r\n", "CRLF", "lone_cr.md")
+    }
+
+    @Test
+    fun testLoneCrOnlyFileRoundTrips() = runTest {
+        assertRoundTripsByteIdentical("a\rb\rc", "LF", "cr_only.md")
+    }
+
+    @Test
+    fun testCrAtEndOfFileRoundTrips() = runTest {
+        assertRoundTripsByteIdentical("line\r\nend\r", "CRLF", "trailing_cr.md")
+    }
+
+    @Test
+    fun testCrlfBlankLinesRoundTrip() = runTest {
+        assertRoundTripsByteIdentical("para\r\n\r\npara\r\n\r\n", "CRLF", "crlf_blank.md")
+    }
+
+    @Test
+    fun testCrBeforeCrlfInMixedCrlfDominantFile() = runTest {
+        // Mixed endings normalise to the dominant style (documented limitation, pinned by
+        // testMixedCrlfDominant above); the bare CR is content and must still come back.
+        val content = "A\r\r\nB\nC\r\nD\r\n"
+        val vm = createViewModelWithContent(content)
+        val testUri = Uri.parse("content://test/mixed_cr.md")
+
+        vm.loadFile(testUri)
+        vm.awaitLoaded()
+        assertEquals("CRLF", vm.lineEnding.value)
+
+        vm.saveFile()
+        vm.awaitSaveSettled()
+
+        assertEquals("A\r\r\nB\r\nC\r\nD\r\n", capturedSaves[testUri])
+    }
+
+    // ---- M-353: a pasted CRLF must be saved as CRLF, never as CR CR LF (Safeguard 2) ----
+    //
+    // Measured on the emulator: pasting "\r\n" into a CRLF file saved the break as 0d 0d 0a, because
+    // Sora kept the pasted CR and the save then restored a CRLF from its LF. PilcrowCodeEditor folds the
+    // pair at insertion; this drives the real editor into the real ViewModel save.
+
+    @Test
+    fun testPastedCrlfIsSavedAsCrlfNotCrCrLf() = runTest {
+        val vm = createViewModelWithContent("A\r\nB\r\n")
+        val testUri = Uri.parse("content://test/paste_crlf.md")
+        vm.loadFile(testUri)
+        vm.awaitLoaded()
+
+        val editor = PilcrowCodeEditor(context)
+        editor.setText(vm.currentDocument.value!!.content)
+        // Sora builds the layout on its own thread pool and fails an insert made before it is done.
+        val deadline = System.currentTimeMillis() + 30_000
+        while (!editor.isEditable && System.currentTimeMillis() < deadline) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(10)
+        }
+        assertTrue("precondition: the editor must accept input", editor.isEditable)
+        editor.commitText("PASTE-A\r\nPASTE-B\r\n") // the cursor sits at the start of the document
+        vm.updateContent(vm.currentDocument.value!!.id, editor.text.toString())
+
+        vm.saveFile()
+        vm.awaitSaveSettled()
+
+        assertEquals(
+            "a pasted CRLF must reach the file as 0d 0a, never 0d 0d 0a",
+            "PASTE-A\r\nPASTE-B\r\nA\r\nB\r\n",
+            capturedSaves[testUri],
         )
     }
 }

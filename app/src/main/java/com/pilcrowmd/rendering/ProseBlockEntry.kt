@@ -134,6 +134,8 @@ class ProseBlockEntry(
             holder.textView.text = RENDER_FALLBACK_TEXT
             holder.textView.setTextColor(colorScheme.secondaryText.toArgb())
         }
+        // M-157: last, after the text and the tap target are in place. A header takes a tap instead.
+        if (detailsHeader == null) holder.textView.enableBlockSelection()
     }
 
     /** M-161: the plain block's padding, or a callout's box, or a `<details>` header's inset. */
@@ -174,6 +176,10 @@ class ProseBlockEntry(
     private fun bindDetailsHeader(holder: Holder, header: com.pilcrowmd.domain.markdown.DetailsHeader) {
         val state = details
         val expanded = state?.isExpanded(holder.bindingAdapterPosition) ?: true
+        // A header is tapped, not selected (M-157). A selectable view takes focus on its first tap
+        // instead of clicking, so the section would need two taps. Before the toggle, which sets the
+        // click this would otherwise clear.
+        holder.textView.setTextIsSelectable(false)
         holder.textView.text = detailsHeaderText(context, header, expanded, headerStyle)
         holder.textView.bindDetailsToggle(expanded, state?.let { { toggleSection(holder, it) } })
     }

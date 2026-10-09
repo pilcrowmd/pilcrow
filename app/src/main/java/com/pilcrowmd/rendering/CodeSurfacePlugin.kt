@@ -13,14 +13,14 @@ import io.noties.markwon.core.MarkwonTheme
  * sets the two separately: fenced blocks take [PilcrowColorScheme.codeBlockBg], inline code takes
  * [PilcrowColorScheme.inlineCodeBg]. Registered AFTER `SyntaxHighlightPlugin`, so it wins.
  *
- * Also the link colour (M-219), when the scheme has one: [PilcrowColorScheme.link]. Without it Markwon
- * paints links in the TextView's `textColorLink`, from the platform theme.
+ * Also the link colour (M-219): [PilcrowColorScheme.link], instead of the TextView's `textColorLink`
+ * from the platform theme.
  */
 internal class CodeSurfacePlugin(private val colorScheme: PilcrowColorScheme) : AbstractMarkwonPlugin() {
     override fun configureTheme(builder: MarkwonTheme.Builder) {
         builder
             .codeBackgroundColor(colorScheme.inlineCodeBg.toArgb())
             .codeBlockBackgroundColor(colorScheme.codeBlockBg.toArgb())
-        colorScheme.link?.let { builder.linkColor(it.toArgb()) }
+            .linkColor(colorScheme.link.toArgb())
     }
 }

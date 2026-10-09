@@ -12,7 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
-import io.github.rosemoe.sora.widget.CodeEditor
+import com.pilcrowmd.testing.withRealSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
@@ -53,7 +53,7 @@ class MarkdownEditorReattachTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun hoistedEditor(): CodeEditor = CodeEditor(ApplicationProvider.getApplicationContext())
+    private fun hoistedEditor() = AccessibleCodeEditor(ApplicationProvider.getApplicationContext()).withRealSize()
 
     /**
      * RED without the fix. **The precondition matters and was established by experiment, not

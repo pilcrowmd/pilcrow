@@ -13,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.PilcrowColorScheme
+import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.noties.markwon.core.spans.LinkSpan
 import io.noties.markwon.ext.tasklist.TaskListSpan
 import org.json.JSONObject
@@ -33,7 +34,7 @@ import kotlin.math.pow
  * took the platform theme's colours, and a test that read a token would not have seen that. On the
  * S24+ the platform gave links `#80CBC4` (1.63:1 on the light page) but gave task boxes and the whole
  * PDF a different, device-dependent accent (about `#475D92`; Robolectric resolves the same here).
- * The PDF is not part of M-219, so the print instance must still take the platform colours.
+ * Since M-257 the PDF takes Light's link teal, so it no longer depends on the device either.
  *
  * Ratios use the WCAG 2.x formula, (L1 + 0.05) / (L2 + 0.05), with 4.5:1 as the bar.
  */
@@ -129,19 +130,25 @@ class ContrastFixesTest {
     }
 
     @Test
-    fun `the PDF keeps the platform colours for links and task boxes`() {
+    fun `PDF links and task boxes take the light teal, which reads on the white page`() {
+        val teal = LightColorScheme.link.toArgb()
+        assertEquals("the print link token is the light one", teal, PrintColorScheme.link.toArgb())
+        val page = PrintColorScheme.primaryBackground.toArgb()
+        assertTrue("the print link reads on the page", ratio(teal, page) >= AA)
+
         val print = buildPrintMarkwon(context)
         val link = print.toMarkdown("[a link](https://example.org)").let { t ->
             val paint = TextPaint().apply { linkColor = themeColor(android.R.attr.textColorLink) }
             t.getSpans(0, t.length, LinkSpan::class.java).single().updateDrawState(paint)
             paint.color
         }
-        assertEquals(themeColor(android.R.attr.textColorLink), link)
+        assertEquals("the PDF link span", teal, link)
         val box = print.toMarkdown("- [x] done").let { t -> t.getSpans(0, t.length, TaskListSpan::class.java).single() }
         val (fill, outline, tick) = boxColours(box)
-        assertEquals(themeColor(android.R.attr.textColorLink), fill)
-        assertEquals(themeColor(android.R.attr.textColorLink), outline)
-        assertEquals(themeColor(android.R.attr.colorBackground), tick)
+        assertEquals("the PDF task-box fill", teal, fill)
+        assertEquals("the PDF task-box outline", teal, outline)
+        assertEquals("the PDF tick is the page colour", page, tick)
+        assertTrue("the tick reads on the filled box", ratio(tick, fill) >= AA)
     }
 
     @Test

@@ -43,11 +43,16 @@
             </intent-filter>
 
             <!-- Handle files shared via the share sheet (ACTION_SEND) -->
+            <!-- Some file managers label .md with a generic or non-standard type, so accept those too. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="text/markdown" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="text/x-markdown" />
+                <data android:mimeType="text/x-web-markdown" />
+                <data android:mimeType="application/x-markdown" />
             </intent-filter>
         </activity>
 

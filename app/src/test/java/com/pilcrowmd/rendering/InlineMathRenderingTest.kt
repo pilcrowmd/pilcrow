@@ -33,8 +33,8 @@ import org.robolectric.RobolectricTestRunner
 class InlineMathRenderingTest {
 
     // Built via buildPilcrowMarkwon (identical plugin chain to production) WITHOUT MarkwonRenderer's
-    // init{} pre-warm thread — whose concurrent background parse would race this one on Markwon's
-    // shared, stateful InlineProcessors and make the parse non-deterministic across the suite.
+    // init{} pre-warm thread, so nothing else runs on this instance while the test parses. (The
+    // pre-warm no longer parses on the renderer's instance either, M-114.)
     private lateinit var markwon: Markwon
 
     @Before

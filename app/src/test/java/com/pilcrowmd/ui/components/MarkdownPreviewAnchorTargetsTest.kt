@@ -14,7 +14,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
 import com.pilcrowmd.rendering.AnchorTargets
-import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -53,7 +53,7 @@ class MarkdownPreviewAnchorTargetsTest {
         val content = mutableStateOf("Intro.\n\n## First\n\ntext\n\n## Second\n")
         composeRule.setContent {
             val context = LocalContext.current
-            val renderer = remember { MarkwonRenderer(context) }
+            val renderer = remember { warmedMarkwonRenderer(context) }
             MarkdownPreview(content = content.value, renderer = renderer)
         }
         drain()
