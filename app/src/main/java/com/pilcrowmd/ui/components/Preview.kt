@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +66,7 @@ import com.pilcrowmd.rendering.CodeHighlighting
 import com.pilcrowmd.rendering.DetailsDecoration
 import com.pilcrowmd.rendering.DetailsState
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.MermaidDiagrams
 import com.pilcrowmd.rendering.ParagraphSeamState
 import com.pilcrowmd.rendering.ReaderLayoutManager
 import com.pilcrowmd.rendering.RecyclerAdapterEntries
@@ -75,6 +77,9 @@ import com.pilcrowmd.rendering.cancelReaderJump
 import com.pilcrowmd.rendering.clearReaderHighlight
 import com.pilcrowmd.rendering.documentOverflowsViewport
 import com.pilcrowmd.rendering.endBlockSelection
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRequest
+import com.pilcrowmd.rendering.mermaid.MermaidStyle
 import com.pilcrowmd.rendering.readerBodyLineHeightPx
 import com.pilcrowmd.rendering.revealBlockInViewport
 import com.pilcrowmd.rendering.scrollToDocumentEnd
@@ -119,9 +124,9 @@ fun MarkdownPreview(
     // parses. Null = not ready yet (the reader shows its background, then a progress indicator).
     model: ReaderModel?,
     renderer: MarkwonRenderer,
+    mermaidRenderer: MermaidDiagramRenderer,
     fontScale: Float = 1.0f,
     fontSet: FontSet = FontSets.DEFAULT,
-    mermaidCloudEnabled: Boolean = false,
     wrapCodeLines: Boolean = false,
     scrollPosition: ScrollAnchor = ScrollAnchor(),
     onScrollChanged: (ScrollAnchor) -> Unit = {},
@@ -174,15 +179,23 @@ fun MarkdownPreview(
     val lastCaretRevealSeq = remember { mutableStateOf(0) }
     // Set once the user's finger has dragged this list; the caret reveal then leaves it alone.
     val userDragged = remember { mutableStateOf(false) }
-    // Tracks the font/scale/mermaid config the current adapter was built with, so the adapter
+    // Tracks the font/scale/wrap config the current adapter was built with, so the adapter
     // is rebuilt if a preference loads/changes after the file opened (cold-start race: prefs
     // arrive from DataStore slightly after the auto-reopened file renders).
     val lastConfig = remember { mutableStateOf<String?>(null) }
 
     // M-136: code-colouring jobs run in this scope, so they are cancelled when the Preview leaves composition.
+    // M-70: so do the Mermaid renders.
     val codeHighlightScope = rememberCoroutineScope()
     val codeHighlighting = remember(renderer, codeHighlightScope) {
-        CodeHighlighting(renderer.codeHighlighter, codeHighlightScope)
+        CodeHighlighting(renderer.codeHighlighter, codeHighlightScope, renderer.prism4jHighlighter)
+    }
+    // S8-A7: the drawn diagram open full screen, if any; kept across rotation.
+    var openDiagram by rememberSaveable(stateSaver = MermaidDiagramRequestSaver) {
+        mutableStateOf<MermaidDiagramRequest?>(null)
+    }
+    val mermaidDiagrams = remember(mermaidRenderer, codeHighlightScope) {
+        MermaidDiagrams(mermaidRenderer, codeHighlightScope, onOpen = { openDiagram = it })
     }
 
     // Handle to the RecyclerView so the jump-to-top/bottom controls can scroll it.
@@ -236,12 +249,12 @@ fun MarkdownPreview(
                         renderer.markwonFor(c, fontScale),
                         fontScale,
                         fontSet,
-                        mermaidCloudEnabled,
                         searchHighlight,
                         c,
                         wrapCodeLines,
                         detailsState,
                         codeHighlighting,
+                        mermaidDiagrams,
                         seams = seamState,
                     )
                     addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -343,7 +356,7 @@ fun MarkdownPreview(
                     liveFontScale.value = fontScale
                 }
 
-                // (0) Rebuild the adapter if the font set, scale, mermaid or wrap toggle, or theme changed since it
+                // (0) Rebuild the adapter if the font set, scale, wrap toggle, or theme changed since it
                 // was built (e.g. after file open, user toggled theme, or a pinch moved the live scale).
                 // Font size is baked into each holder at createHolder, so a scale change needs new holders
                 // — i.e. a fresh adapter. To do that WITHOUT a flicker during a live pinch: hand the
@@ -351,7 +364,7 @@ fun MarkdownPreview(
                 // already-populated (swapAdapter keeps the recycled-view pool), then restore the anchor
                 // synchronously so the first layout of the new adapter lands in place — no blank frame,
                 // no reposition flash. A render-mode toggle arrives as a new model instead (path 1).
-                val configKey = "${liveFontScale.value}|${fontSet.id}|$mermaidCloudEnabled|$wrapCodeLines|" +
+                val configKey = "${liveFontScale.value}|${fontSet.id}|$wrapCodeLines|" +
                     "${c.primaryBackground}|$imageAccessKey"
                 if (configKey != lastConfig.value) {
                     // Keep the user's place across the rebuild: the live anchor mid-reading (e.g. the
@@ -371,12 +384,12 @@ fun MarkdownPreview(
                         renderer.markwonFor(c, liveFontScale.value),
                         liveFontScale.value,
                         fontSet,
-                        mermaidCloudEnabled,
                         searchHighlight,
                         c,
                         wrapCodeLines,
                         detailsState,
                         codeHighlighting,
+                        mermaidDiagrams,
                         seams = seamState,
                     )
                     // Populate before attaching → no empty frame.
@@ -504,6 +517,9 @@ fun MarkdownPreview(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
         )
+
+        // S8-A7: the style the entry drew the diagram with (same token object [c]), so the cached picture answers.
+        openDiagram?.let { OpenDiagramViewer(it, mermaidRenderer, MermaidStyle.from(c)) { openDiagram = null } }
     }
 }
 
@@ -572,9 +588,9 @@ internal fun applyPinchTextScale(root: View, factor: Float) {
     fun scale(view: View) {
         // Skip hidden subtrees, and do NOT record a base for them. A GONE TextView's size is not
         // guaranteed to be the committed one: `FencedCodeBlockEntry.bindMermaid` hides `codeScroll`
-        // WITHOUT setting `codeView`'s size, and `fallbackToSource` — which runs from an async image
-        // load-error callback, so it can land mid-gesture — is what makes it visible and sets that
-        // size. Recording a base while it was hidden would capture whatever the holder last carried
+        // WITHOUT setting `codeView`'s size, and the source fallback (which runs when the async
+        // render answers "no picture", so it can land mid-gesture) is what makes it visible and sets
+        // that size. Recording a base while it was hidden would capture whatever the holder last carried
         // and then scale the now-visible block from it. Left untagged instead, it is treated exactly
         // like a holder created mid-gesture: already at the committed scale, so the next frame
         // records the right base. Note the deliberate asymmetry with [clearPinchTextScaleBases],

@@ -19,6 +19,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.testing.readerModelFor
@@ -70,6 +71,7 @@ class MarkdownPreviewCaretRevealTest {
                 MarkdownPreview(
                     model = remember { renderer.readerModelFor(content) },
                     renderer = renderer,
+                    mermaidRenderer = NullMermaidRenderer,
                     scrollPosition = ScrollAnchor(index = ANCHOR_BLOCK, offset = 0),
                     currentMatchIndex = unrelated.value,
                     caretRevealBlock = reveal.value.first,

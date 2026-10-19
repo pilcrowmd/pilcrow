@@ -27,6 +27,29 @@ class CodeScrollView @JvmOverloads constructor(context: Context, attrs: Attribut
             }
         }
 
+    // Issue #17: where a piece of a long block must stand once its width is known.
+    private var pendingScrollX: Int? = null
+
+    /** Pan to [x] after the next layout, when the child's width (and so the furthest pan) is known. */
+    fun scrollToAfterLayout(x: Int) {
+        pendingScrollX = x
+        requestLayout()
+    }
+
+    /** Back to the start, with no pan pending: a reused holder must not open where the last block was. */
+    fun resetScroll() {
+        pendingScrollX = null
+        if (scrollX != 0) scrollTo(0, 0)
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        super.onLayout(changed, l, t, r, b)
+        pendingScrollX?.let { x ->
+            pendingScrollX = null
+            if (scrollX != x) scrollTo(x, 0)
+        }
+    }
+
     override fun measureChildWithMargins(
         child: View,
         parentWidthMeasureSpec: Int,

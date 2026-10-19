@@ -60,6 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -67,9 +69,12 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pilcrowmd.domain.markdown.PlainReason
 import com.pilcrowmd.domain.markdown.ReaderModel
+import com.pilcrowmd.domain.model.EditorSupport
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
+import com.pilcrowmd.domain.model.versionLabel
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.ui.components.AccessibleCodeEditor
 import com.pilcrowmd.ui.components.EditorController
@@ -84,6 +89,8 @@ import com.pilcrowmd.ui.components.PilcrowToolbar
 import com.pilcrowmd.ui.components.SearchBar
 import com.pilcrowmd.ui.components.SettingsScreen
 import com.pilcrowmd.ui.components.WelcomeScreen
+import com.pilcrowmd.ui.components.openStoreListing
+import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSets
 import com.pilcrowmd.ui.theme.LightColorScheme
@@ -94,6 +101,7 @@ import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 import com.pilcrowmd.viewmodel.NEW_DOCUMENT_NAME
 import com.pilcrowmd.viewmodel.ViewMode
+import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
 import kotlinx.coroutines.launch
 
 /**
@@ -109,13 +117,17 @@ import kotlinx.coroutines.launch
  * - SAF file picker launched from welcome screen or toolbar action
  * - Mode toggle switches between READER and EDITOR
  * - Scroll position preserved in ViewModel (previewScroll/editorScroll)
+ * - [prompts] carries the rating cards' state (M-176/M-177), kept apart from the document ViewModel
  */
+@Suppress("LongParameterList") // The screen's dependencies, each handed down from the Activity.
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
     viewModel: MarkdownViewModel,
+    prompts: WelcomePromptsViewModel,
     context: Context,
     renderer: MarkwonRenderer,
+    mermaidRenderer: MermaidDiagramRenderer,
     // M-93: the folder banner and picker for a note's pictures. Null: no banner (tests that do not need it).
     imageFolderViewModel: ImageFolderViewModel? = null,
 ) {
@@ -140,7 +152,6 @@ fun MainScreen(
     val editorFontScale = viewModel.editorFontScale.collectAsStateWithLifecycle()
     val fontSetId = viewModel.fontSetId.collectAsStateWithLifecycle()
     val fontSet = FontSets.byId(fontSetId.value)
-    val mermaidCloudEnabled = viewModel.mermaidCloudEnabled.collectAsStateWithLifecycle()
     val wrapCodeLines = viewModel.wrapCodeLines.collectAsStateWithLifecycle()
     val formattingBarEnabled = viewModel.formattingBarEnabled.collectAsStateWithLifecycle()
     // Theme mode (Dark/Light)
@@ -152,6 +163,11 @@ fun MainScreen(
     val editorCursor = viewModel.editorCursor.collectAsStateWithLifecycle()
     val imageFolder = imageFolderViewModel?.state?.collectAsStateWithLifecycle()
     val recentFiles = viewModel.recentFiles.collectAsStateWithLifecycle()
+    val isPlayInstall = prompts.isPlayInstall.collectAsStateWithLifecycle()
+    val ratingCardVisible = prompts.ratingCardVisible.collectAsStateWithLifecycle()
+    val updateNoteVisible = prompts.updateNoteVisible.collectAsStateWithLifecycle()
+    // M-174: About shows the version with its release month. Both inputs are fixed for the process.
+    val aboutVersion = remember(appInfo) { versionLabel(appInfo.versionName, appInfo.releasePrepMillis) }
 
     // Search state
     val searchQuery = viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -266,9 +282,15 @@ fun MainScreen(
     // bars get the same colour the old setters gave them at every API level. A fixed light/dark
     // style leaves the 3-button nav-bar contrast scrim off, as Play 1.0.11 showed; re-enabling it
     // painted a light band over the TOC drawer's scrim (NEW-37a).
+    val activeColorScheme = when (themeMode.value) {
+        ThemeMode.DARK -> DarkColorScheme
+        ThemeMode.AMOLED -> AmoledColorScheme
+        ThemeMode.LIGHT -> LightColorScheme
+    }
+    // Dark icons only on Light's pale bars; Dark and AMOLED (M-92) keep light icons.
     val lightSystemBars = themeMode.value == ThemeMode.LIGHT
-    val systemBarColor = (if (lightSystemBars) LightColorScheme else DarkColorScheme).primaryBackground
-    androidx.compose.runtime.LaunchedEffect(lightSystemBars) {
+    val systemBarColor = activeColorScheme.primaryBackground
+    androidx.compose.runtime.LaunchedEffect(themeMode.value) {
         val activity = context as? ComponentActivity ?: return@LaunchedEffect
         val scrim = systemBarColor.toArgb()
         val style = if (lightSystemBars) SystemBarStyle.light(scrim, scrim) else SystemBarStyle.dark(scrim)
@@ -565,10 +587,6 @@ fun MainScreen(
     // status bar and above the nav bar (API 35 enforces edge-to-edge — without this the
     // toolbar renders under the system clock/battery and its controls are unreachable).
     // The horizontal display-cutout padding keeps text out of the camera hole in landscape (NEW-37b).
-    val activeColorScheme = when (themeMode.value) {
-        ThemeMode.DARK -> DarkColorScheme
-        ThemeMode.LIGHT -> LightColorScheme
-    }
     ThemedNavigationDrawer(
         colorScheme = activeColorScheme,
         drawerState = drawerState,
@@ -589,6 +607,7 @@ fun MainScreen(
                     viewModel.jumpToHeading(heading)
                     scope.launch { drawerState.close() }
                 },
+                rowsFocusable = { drawerState.targetValue == DrawerValue.Open },
             )
         },
         modifier = modifier.fillMaxSize(),
@@ -706,6 +725,9 @@ fun MainScreen(
                     // rather than let it look like the Markdown was lost.
                     val plainNotice = plainFallbackNoticeText((readerModel.value as? ReaderModel.Plain)?.reason)
                     if (mode.value == ViewMode.READER && plainNotice != null) PlainFallbackNotice(plainNotice)
+                    // M-154: editor mode on a document too large to edit keeps the reader — say why.
+                    val tooLargeToEdit = currentDocument.value?.editorSupport == EditorSupport.READ_ONLY
+                    if (mode.value == ViewMode.EDITOR && tooLargeToEdit) EditorReadOnlyNotice()
 
                     // Conditionally render search bar when visible (works in both Reader and Editor modes)
                     if (searchVisible.value) {
@@ -738,15 +760,15 @@ fun MainScreen(
                         onLineNumbersChanged = { viewModel.setLineNumbersEnabled(it) },
                         openInEditMode = openInEditMode.value,
                         onOpenInEditModeChanged = { viewModel.setOpenInEditMode(it) },
-                        mermaidCloudEnabled = mermaidCloudEnabled.value,
-                        onMermaidCloudChanged = { viewModel.setMermaidCloudEnabled(it) },
                         wrapCodeLines = wrapCodeLines.value,
                         onWrapCodeLinesChanged = { viewModel.setWrapCodeLines(it) },
                         formattingBarEnabled = formattingBarEnabled.value,
                         onFormattingBarChanged = { viewModel.setFormattingBarEnabled(it) },
                         themeMode = themeMode.value,
                         onThemeSelected = { viewModel.setThemeMode(it) },
-                        appVersion = appInfo.versionName,
+                        appVersion = aboutVersion,
+                        showRateCard = isPlayInstall.value,
+                        onRate = { openStoreListing(context) },
                         onClose = { showSettings = false },
                         // Close Settings as we open Licenses — the modal blocks are checked
                         // showSettings-first, so leaving it true would keep Settings on top.
@@ -787,7 +809,14 @@ fun MainScreen(
                     // clipToBounds() is essential: the preview hosts a RecyclerView via AndroidView, and
                     // interop views can paint outside their layout bounds (here, up over the toolbar).
                     // Clipping confines that draw to this box so content never overlaps the toolbar/search bar.
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                    // M-309: with a document open the box is the Reader or Editor pane; with none, Welcome
+                    // names itself.
+                    val paneModifier = currentDocument.value?.let { doc ->
+                        Modifier.semantics {
+                            paneTitle = documentPaneTitle(mode.value, doc.editorSupport, doc.displayName)
+                        }
+                    } ?: Modifier
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().then(paneModifier)) {
                         if (currentDocument.value == null) {
                             // Welcome screen (no file open)
                             WelcomeScreen(
@@ -823,11 +852,21 @@ fun MainScreen(
                                 onRemoveRecent = { uri -> viewModel.removeRecent(uri) },
                                 onClearRecents = { viewModel.clearRecents() },
                                 onOpenSettings = { showSettings = true },
+                                showRatingCard = ratingCardVisible.value,
+                                onRatingNotNow = { prompts.dismissRatingCard() },
+                                showUpdateNote = updateNoteVisible.value,
+                                onDismissUpdateNote = { prompts.dismissUpdateNote() },
+                                onRatingRate = {
+                                    openStoreListing(context)
+                                    prompts.dismissRatingCard()
+                                },
                             )
                         } else {
                             // File is open: show preview or editor based on mode
                             // Scroll position and edits preserved across mode toggles
-                            when (mode.value) {
+                            // M-154: a document too large to edit stays in the reader in editor mode.
+                            val editorSupport = currentDocument.value!!.editorSupport
+                            when (shownViewMode(mode.value, editorSupport)) {
                                 ViewMode.READER -> {
                                     // Preview mode (block-level RecyclerView). Restores scroll
                                     // from previewScroll and reports changes via callback.
@@ -843,7 +882,7 @@ fun MainScreen(
                                         renderer = renderer,
                                         fontScale = previewFontScale.value,
                                         fontSet = fontSet,
-                                        mermaidCloudEnabled = mermaidCloudEnabled.value,
+                                        mermaidRenderer = mermaidRenderer,
                                         wrapCodeLines = wrapCodeLines.value,
                                         scrollPosition = previewScroll.value,
                                         onScrollChanged = { position ->
@@ -910,6 +949,7 @@ fun MainScreen(
                                             onUndo = { soraCodeEditor.undo() },
                                             onRedo = { soraCodeEditor.redo() },
                                             formattingBarEnabled = formattingBarEnabled.value,
+                                            syntaxHighlighting = editorSupport == EditorSupport.HIGHLIGHTED,
                                         )
                                     }
                                 }
@@ -1066,6 +1106,19 @@ private fun TransientBanner(
 private const val TRANSIENT_BANNER_DISABLED_ALPHA = 0.5f
 
 /**
+ * The mode the open document is SHOWN in: a document too large to edit (M-154) stays in the reader
+ * when the mode is Editor.
+ */
+internal fun shownViewMode(mode: ViewMode, editorSupport: EditorSupport): ViewMode =
+    if (editorSupport == EditorSupport.READ_ONLY) ViewMode.READER else mode
+
+/** M-309: the pane title TalkBack speaks as a document opens or switches mode, e.g. "Reader, notes.md". */
+internal fun documentPaneTitle(mode: ViewMode, editorSupport: EditorSupport, displayName: String): String {
+    val shown = if (shownViewMode(mode, editorSupport) == ViewMode.READER) "Reader" else "Editor"
+    return "$shown, $displayName"
+}
+
+/**
  * The notice for a document the reader shows as plain text for [reason] (M-179), or null for none: the
  * user's own plain view, and a document nested too deeply to render (NEW-11, silent as it always was).
  */
@@ -1081,6 +1134,21 @@ private fun PlainFallbackNotice(text: String) {
     val c = mdColors()
     Text(
         text = text,
+        color = c.secondaryText,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(c.secondarySurface)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
+/** Why editor mode shows the reader: the document is too large to edit (M-154). Token colours only. */
+@Composable
+private fun EditorReadOnlyNotice() {
+    val c = mdColors()
+    Text(
+        text = "This file is too large to edit here. You can still read and search it.",
         color = c.secondaryText,
         fontSize = 13.sp,
         modifier = Modifier

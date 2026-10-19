@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.pilcrowmd.domain.markdown.PlainTextChunks
 import com.pilcrowmd.domain.markdown.ReaderModel
 import com.pilcrowmd.domain.model.DocumentKind
+import com.pilcrowmd.domain.model.EditorSupport
 import com.pilcrowmd.domain.model.HeadingNode
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.SearchMatch
@@ -73,10 +74,17 @@ data class Document(
      */
     val notUtf8: Boolean = false,
     /**
-     * Opaque per-instance identity (M-147). Defaulted and LAST so no construction site changes;
-     * `copy()` carries it, so typing never changes identity. See [DocumentId].
+     * Opaque per-instance identity (M-147). Defaulted and after every required field, so no
+     * construction site changes; `copy()` carries it, so typing never changes identity. See [DocumentId].
      */
     val id: DocumentId = DocumentId.mint(),
+    /**
+     * How much editor this document gets (M-154), fixed from its length when it was opened.
+     * `copy()` carries it, so typing never switches the editor's mode under the user's fingers, and
+     * the screen reads it in the same frame the document appears — no window where a large file
+     * reaches the editor before its limit is known.
+     */
+    val editorSupport: EditorSupport = EditorSupport.of(content.length),
 ) {
     /**
      * True when this document has no file on disk yet, so an in-place save is impossible and
@@ -335,10 +343,6 @@ constructor(
     val fontSetId: StateFlow<String> = storage.fontSetId
         .stateIn(viewModelScope, SharingStarted.Eagerly, "source")
 
-    // Opt-in Mermaid cloud rendering (default off).
-    val mermaidCloudEnabled: StateFlow<Boolean> = storage.mermaidCloudEnabled
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
     // Reader code blocks: wrap long lines instead of side-scrolling (default off, M-134).
     val wrapCodeLines: StateFlow<Boolean> = storage.wrapCodeLines
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -402,7 +406,7 @@ constructor(
         viewModelScope.launch {
             restoreJob.cancel()
             if (takePermission) repository.takePersistableUriPermission(uri)
-            loadDocument(uri, claim, policy)
+            loadDocument(uri, claim, policy, countsAsOpen = true)
         }
     }
 
@@ -455,9 +459,9 @@ constructor(
      * all is how a persistence bug stays invisible.
      */
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun loadDocument(uri: Uri, claim: Claim, policy: ReplacePolicy) {
+    private suspend fun loadDocument(uri: Uri, claim: Claim, policy: ReplacePolicy, countsAsOpen: Boolean = false) {
         try {
-            loadDocumentOrThrow(uri, claim, policy)
+            loadDocumentOrThrow(uri, claim, policy, countsAsOpen)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             if (_fileLoadState.value is FileLoadState.Loading) finishLoad(claim, FileLoadState.Idle)
             throw e
@@ -471,7 +475,7 @@ constructor(
         }
     }
 
-    private suspend fun loadDocumentOrThrow(uri: Uri, claim: Claim, policy: ReplacePolicy) {
+    private suspend fun loadDocumentOrThrow(uri: Uri, claim: Claim, policy: ReplacePolicy, countsAsOpen: Boolean) {
         // A new attempt retires the last failure's message (M-126) — one place, because this is
         // the single point every load passes through.
         slot.markLoadFailure(false)
@@ -511,6 +515,12 @@ constructor(
                 // from (M-145).
                 if (slot.isLatestPublished(claim)) storage.saveLastFileUri(uri)
                 storage.addRecent(RecentFile(uri, publication.document.displayName, System.currentTimeMillis()))
+                // M-177: an open the user started counts once THIS load has published. Only [open]
+                // asks, so the startup restore is not a new use; a failed, superseded or refused load
+                // never gets here, not even when another load of the same file has just published.
+                // LAST, so a failed count write (caught and logged by [loadDocument]) cannot cost the
+                // user their last-file pointer or recents entry.
+                if (countsAsOpen) storage.incrementDocumentsOpened()
             }
             PublishOutcome.SUPERSEDED -> finishLoad(claim, FileLoadState.Idle)
             PublishOutcome.REFUSED_DIRTY -> {
@@ -882,11 +892,14 @@ constructor(
                 // literal source, so match over the chunks the reader paints (positions align) —
                 // the model's own when there is one, so a huge file is not chunked a second time.
                 val matches = withContext(cpuDispatcher) {
-                    when {
-                        model is ReaderModel.Plain -> searchUseCase.findPlainSearchMatches(model.chunkLiterals, query)
-                        model == null && prepareReaderModel.showsAsPlain(content, renderMode) ->
-                            searchUseCase.findPlainSearchMatches(PlainTextChunks.split(content), query)
-                        else -> searchUseCase.findSearchMatches(content, query)
+                    scanOrNothing {
+                        when {
+                            model is ReaderModel.Plain ->
+                                searchUseCase.findPlainSearchMatches(model.chunkLiterals, query)
+                            model == null && prepareReaderModel.showsAsPlain(content, renderMode) ->
+                                searchUseCase.findPlainSearchMatches(PlainTextChunks.split(content), query)
+                            else -> searchUseCase.findSearchMatches(content, query)
+                        }
                     }
                 }
                 // No re-check needed here: the scan does not stop when cancelled, but withContext
@@ -898,6 +911,18 @@ constructor(
                 _currentMatchIndex.emit(0)
             }
         }
+    }
+
+    /**
+     * M-401: the last line, not the fix. A search scan that throws anyway finds nothing, so typing a
+     * query can never crash the app. The scan never suspends, so no cancellation passes through here.
+     */
+    @Suppress("TooGenericExceptionCaught") // any scan failure, whatever its type, must stop here
+    private fun scanOrNothing(scan: () -> List<SearchMatch>): List<SearchMatch> = try {
+        scan()
+    } catch (e: RuntimeException) {
+        android.util.Log.e("MarkdownViewModel", "search scan threw", e)
+        emptyList()
     }
 
     fun nextMatch() {
@@ -1284,6 +1309,8 @@ constructor(
             if (slot.publish(claim, publication, ReplacePolicy.IF_CLEAN) == PublishOutcome.PUBLISHED) {
                 loadingClaim = null // a load still running for the restore no longer owns the screen
                 _fileLoadState.value = FileLoadState.Success
+                // M-177: Create counts as an open.
+                storage.incrementDocumentsOpened()
             }
         }
     }
@@ -1298,10 +1325,6 @@ constructor(
 
     fun setFontSet(id: String) {
         viewModelScope.launch { storage.saveFontSetId(id) }
-    }
-
-    fun setMermaidCloudEnabled(enabled: Boolean) {
-        viewModelScope.launch { storage.setMermaidCloudEnabled(enabled) }
     }
 
     fun setWrapCodeLines(enabled: Boolean) {

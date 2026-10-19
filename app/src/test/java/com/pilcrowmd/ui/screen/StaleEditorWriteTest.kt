@@ -13,8 +13,11 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.di.AppInfo
+import com.pilcrowmd.di.Clock
+import com.pilcrowmd.di.InstallSource
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FileText
@@ -22,6 +25,7 @@ import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.viewmodel.FileLoadState
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 import com.pilcrowmd.viewmodel.ViewMode
+import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.text.CharPosition
 import io.github.rosemoe.sora.widget.CodeEditor
@@ -73,6 +77,7 @@ class StaleEditorWriteTest {
     private val bDisk = "bravo from B\n"
 
     private lateinit var storageScope: CoroutineScope
+    private lateinit var storage: LocalStorageManager
 
     @After
     fun tearDown() = storageScope.cancel()
@@ -94,6 +99,19 @@ class StaleEditorWriteTest {
         override suspend fun discardSlot(key: String) = Result.success(Unit)
     }
 
+    /** M-177/M-174: MainScreen's prompts, all hidden — not a Play install, no release date. */
+    private fun prompts() = WelcomePromptsViewModel(
+        storage,
+        object : InstallSource {
+            override fun isPlayInstall() = false
+            override fun firstInstallTimeMillis(): Long? = null
+        },
+        object : AppInfo {
+            override val versionName = "test"
+        },
+        Clock { 0L },
+    )
+
     private fun viewModel(): MarkdownViewModel {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         storageScope = CoroutineScope(Dispatchers.IO + Job())
@@ -101,9 +119,10 @@ class StaleEditorWriteTest {
             tempFolder.newFile("stale_editor_write.preferences_pb")
         }
         val parse = ParseMarkdownHeadingsUseCase()
+        storage = LocalStorageManager(context, ds)
         return MarkdownViewModel(
             repository = repo,
-            storage = LocalStorageManager(context, ds),
+            storage = storage,
             parseHeadingsUseCase = parse,
             searchUseCase = SearchMarkdownUseCase(parse),
             pdfExporter = mockk(relaxed = true),
@@ -133,9 +152,16 @@ class StaleEditorWriteTest {
     fun anEditArrivingBeforeTheSwapRecomposesDoesNotLandOnTheNewDocument() {
         val vm = viewModel()
         val renderer = warmedMarkwonRenderer(compose.activity)
+        val prompts = prompts()
         compose.setContent {
             MaterialTheme {
-                MainScreen(viewModel = vm, context = compose.activity, renderer = renderer)
+                MainScreen(
+                    viewModel = vm,
+                    prompts = prompts,
+                    context = compose.activity,
+                    renderer = renderer,
+                    mermaidRenderer = NullMermaidRenderer,
+                )
             }
         }
         vm.loadFile(aUri)

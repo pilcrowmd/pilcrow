@@ -5,6 +5,7 @@ package com.pilcrowmd.domain.markdown
 
 import org.commonmark.node.AbstractVisitor
 import org.commonmark.node.Code
+import org.commonmark.node.CustomNode
 import org.commonmark.node.Heading
 import org.commonmark.node.Image
 import org.commonmark.node.Node
@@ -38,7 +39,8 @@ object HeadingAnchors {
     /**
      * The text a heading's slug is made from: every text and inline-code literal in its subtree, in
      * document order — including inside emphasis, strong and links, but not an image's alt text.
-     * GitHub slugs the rendered `textContent`, which keeps code spans.
+     * GitHub slugs the rendered `textContent`, which keeps code spans. An emoji shortcode counts as
+     * the name written in the source (`:tada:`), as in GitHub's anchors (M-247).
      */
     fun plainText(heading: Heading): String {
         val sb = StringBuilder()
@@ -53,6 +55,11 @@ object HeadingAnchors {
 
             // An image's alt text is not in GitHub's rendered text, so it is not in the slug.
             override fun visit(image: Image) = Unit
+
+            override fun visit(customNode: CustomNode) {
+                if (customNode is EmojiShortcode) sb.append(':').append(customNode.alias).append(':')
+                super.visit(customNode)
+            }
         })
         return sb.toString()
     }

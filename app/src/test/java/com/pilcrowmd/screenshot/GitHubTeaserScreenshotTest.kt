@@ -17,6 +17,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.components.GitHubIntegrationScreen
 import com.pilcrowmd.ui.components.SettingsScreen
+import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
@@ -34,7 +35,8 @@ import org.robolectric.annotation.GraphicsMode
  *    frame), guarding the Feedback section's "Tell us what to build" card and the Rendering
  *    section label. There is deliberately NO badge on the card: no date, no date-shaped badge;
  *  - `github_integration_screen_*` — the request sub-screen (heading, copy, accent button).
- * Both in Dark + Light. A future change to the card or screen layout fails the verify task.
+ * Both in Dark, AMOLED (M-92) and Light; the Settings golden has the matching theme selected. A
+ * future change to the card or screen layout fails the verify task.
  *
  * NOTE: these are PIXEL goldens and assert nothing textually. Re-recording them is what makes a
  * copy change "pass", so a green verify after a re-record proves nothing on its own — the recorded
@@ -63,11 +65,13 @@ class GitHubTeaserScreenshotTest(private val themeMode: ThemeMode) {
 
     private fun colorScheme() = when (themeMode) {
         ThemeMode.DARK -> DarkColorScheme
+        ThemeMode.AMOLED -> AmoledColorScheme
         ThemeMode.LIGHT -> LightColorScheme
     }
 
     private fun suffix() = when (themeMode) {
         ThemeMode.DARK -> "dark"
+        ThemeMode.AMOLED -> "amoled"
         ThemeMode.LIGHT -> "light"
     }
 
@@ -77,13 +81,59 @@ class GitHubTeaserScreenshotTest(private val themeMode: ThemeMode) {
         composeRule.setContent {
             Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
                 CompositionLocalProvider(LocalMDColors provides scheme) {
-                    SettingsScreen(appVersion = "1.0.0")
+                    SettingsScreen(appVersion = "1.0.0", themeMode = themeMode)
                 }
             }
         }
         drainMainLooper()
         composeRule.onRoot().captureRoboImage(
             filePath = "src/test/screenshots/settings_github_card_${suffix()}.png",
+            roborazziOptions = roborazziOptions,
+        )
+    }
+
+    /**
+     * M-176: the "Rate PilcrowMD" card under "Tell us what to build", as a Play install sees it.
+     * A NEW golden: [settingsGithubCard] renders with the gate at its default (false) and must stay
+     * byte-identical — if it changes, the gate is wrong.
+     */
+    @Test
+    fun settingsRateCard() {
+        val scheme = colorScheme()
+        composeRule.setContent {
+            Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
+                CompositionLocalProvider(LocalMDColors provides scheme) {
+                    SettingsScreen(appVersion = "1.0.0", showRateCard = true)
+                }
+            }
+        }
+        drainMainLooper()
+        composeRule.onRoot().captureRoboImage(
+            filePath = "src/test/screenshots/settings_rate_card_${suffix()}.png",
+            roborazziOptions = roborazziOptions,
+        )
+    }
+
+    /**
+     * M-174: About with the version's release month, the longest label it will carry. A NEW golden;
+     * the value is injected, never the real BuildConfig date, which changes every release. Taken at
+     * 384 dp, the S24+'s width: at the class's 411 dp the title fitted beside the version, and the
+     * wrap it had on the phone never showed here.
+     */
+    @Test
+    @Config(qualifiers = "w384dp-h1600dp-night-xhdpi")
+    fun settingsAboutReleaseMonth() {
+        val scheme = colorScheme()
+        composeRule.setContent {
+            Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
+                CompositionLocalProvider(LocalMDColors provides scheme) {
+                    SettingsScreen(appVersion = "1.0.11 · September 2026")
+                }
+            }
+        }
+        drainMainLooper()
+        composeRule.onRoot().captureRoboImage(
+            filePath = "src/test/screenshots/settings_about_release_month_${suffix()}.png",
             roborazziOptions = roborazziOptions,
         )
     }
@@ -121,6 +171,6 @@ class GitHubTeaserScreenshotTest(private val themeMode: ThemeMode) {
 
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
-        fun themes(): List<ThemeMode> = listOf(ThemeMode.DARK, ThemeMode.LIGHT)
+        fun themes(): List<ThemeMode> = listOf(ThemeMode.DARK, ThemeMode.AMOLED, ThemeMode.LIGHT)
     }
 }

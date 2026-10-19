@@ -5,6 +5,7 @@ package com.pilcrowmd.rendering
 
 import android.util.Log
 import androidx.compose.ui.graphics.Color
+import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.ui.theme.CodeSyntaxColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,11 +19,17 @@ import org.eclipse.tm4e.core.registry.IGrammarSource
 import org.eclipse.tm4e.core.registry.IRegistryOptions
 import org.eclipse.tm4e.core.registry.Registry
 import java.io.InputStream
-import java.time.Duration
 import kotlin.coroutines.coroutineContext
 
-/** A code-token role: which [CodeSyntaxColors] entry colours it. A null colour leaves the run plain. */
-enum class CodeRole(val colorIn: (CodeSyntaxColors) -> Color?) {
+/**
+ * A code-token role: which [CodeSyntaxColors] entry colours it. A null colour leaves the run plain,
+ * except [TEXT], which takes the code text colour: Prism4j paints a token with no role of its own in
+ * that colour, over any token inside it ([Prism4jRoles]). [lineBackgroundIn] is a diff line's tint (M-216).
+ */
+enum class CodeRole(
+    val colorIn: (CodeSyntaxColors) -> Color?,
+    val lineBackgroundIn: (CodeSyntaxColors) -> Color? = { null },
+) {
     KEYWORD(CodeSyntaxColors::keyword),
     STRING(CodeSyntaxColors::string),
     NUMBER(CodeSyntaxColors::number),
@@ -32,21 +39,31 @@ enum class CodeRole(val colorIn: (CodeSyntaxColors) -> Color?) {
     LITERAL(CodeSyntaxColors::literal),
     VARIABLE(CodeSyntaxColors::variable),
     BUILTIN(CodeSyntaxColors::builtin),
+    HEADING(CodeSyntaxColors::heading),
+    EMPHASIS(CodeSyntaxColors::emphasis),
+    LINK(CodeSyntaxColors::link),
+    MARKER(CodeSyntaxColors::marker),
+    INSERTED(CodeSyntaxColors::inserted, CodeSyntaxColors::insertedLineBg),
+    DELETED(CodeSyntaxColors::deleted, CodeSyntaxColors::deletedLineBg),
+    TEXT({ null }),
 }
 
 /** One coloured stretch of a code block's literal: `[start, end)` in the literal's own offsets. */
 data class CodeRun(val start: Int, val end: Int, val role: CodeRole)
 
 /**
- * Colours code blocks in the languages Prism4j has no grammar for (M-136). The reader calls
- * [cachedRuns] on Main at bind time and [tokenizeAsync] off it; the PDF, which has no scope, calls
- * [tokenize] inline. The interface is the test seam: a fake can make [tokenizeAsync] suspend.
+ * Colours a code block as role runs, off the TextView: the TextMate languages (M-136), and the Prism4j
+ * languages where Prism4j does not colour at bind (a long block, issue #17; [Prism4jCodeHighlighter]).
+ * The reader calls [cachedRuns] on Main at bind time and [tokenizeAsync] off it; the PDF, which has no
+ * scope, calls [tokenize] inline. The interface is the test seam: a fake can make [tokenizeAsync] suspend.
+ * A long block is coloured through [tokenizeProgressively], so a highlighter that can colour the front of a
+ * block before the end of it (json, [Prism4jCodeHighlighter]) lets the reader paint the front early.
  */
 interface CodeHighlighter {
     /** Runs already computed for exactly this [code], or null. Cheap: safe on Main. */
     fun cachedRuns(scopeName: String, code: String): List<CodeRun>?
 
-    /** Tokenise [code] within the budget and cache the result. Blocking. Null if it was cancelled. */
+    /** Tokenise the whole of [code] and cache the result. Blocking. Null if it was cancelled. */
     fun tokenize(scopeName: String, code: String, isActive: () -> Boolean = { true }): List<CodeRun>?
 
     /** [tokenize] on [Dispatchers.Default], stopping between lines once the caller is cancelled. */
@@ -54,10 +71,48 @@ interface CodeHighlighter {
         val context = coroutineContext
         tokenize(scopeName, code) { context.isActive }
     }
+
+    /**
+     * [tokenizeAsync], telling the caller about the front of [code] as it is coloured. [onReady] is called,
+     * from the tokenising thread, with all the runs of the first [coveredChars] chars of [code] (offsets in
+     * [code]) once they are final, and again each time more are; a caller that needs to touch the main
+     * thread hops there itself, and the next stretch waits until [onReady] returns. The default colours the
+     * whole of [code] in one go and calls [onReady] once, at the end. Returns all the runs, as
+     * [tokenizeAsync] does, or null if it was cancelled.
+     */
+    suspend fun tokenizeProgressively(
+        scopeName: String,
+        code: String,
+        onReady: suspend (runsSoFar: List<CodeRun>, coveredChars: Int) -> Unit,
+    ): List<CodeRun>? = tokenizeAsync(scopeName, code)?.also { onReady(it, code.length) }
 }
 
-/** The reader's highlighter plus the scope its jobs run in. A null [scope] tokenises inline (the PDF). */
-class CodeHighlighting(val highlighter: CodeHighlighter, val scope: CoroutineScope?)
+/**
+ * The reader's highlighters plus the scope their jobs run in. A null [scope] tokenises inline (the PDF).
+ * [highlighter] takes the TextMate languages; [prism4j] the Prism4j ones Prism4j does not colour at bind
+ * (issue #17); null leaves those plain.
+ */
+class CodeHighlighting(
+    val highlighter: CodeHighlighter,
+    val scope: CoroutineScope?,
+    val prism4j: CodeHighlighter? = null,
+) {
+    /**
+     * The highlighter and scope name that colour a block whose fence reads [info], or null when none
+     * does: the TextMate languages always (M-136); a Prism4j language only where Markwon did not colour
+     * it at bind ([coloursAtBind] false: a piece of a long block, or a block over [MAX_HIGHLIGHT_CHARS]
+     * in the PDF; issue #17).
+     */
+    fun engineFor(info: String?, coloursAtBind: Boolean): Pair<CodeHighlighter, String>? {
+        val textMate = TextMateCodeHighlighter.scopeForFence(info)
+        val language = info?.takeIf { !coloursAtBind && it.isNotBlank() }
+        return when {
+            textMate != null -> highlighter to textMate
+            language != null -> prism4j?.let { it to language }
+            else -> null
+        }
+    }
+}
 
 /**
  * TextMate (tm4e) highlighting for the languages Prism4j has no grammar for, from the unmodified
@@ -69,18 +124,17 @@ class CodeHighlighting(val highlighter: CodeHighlighter, val scope: CoroutineSco
  * shipped scopes: any other scope a grammar embeds (Ruby's heredoc SQL, HTTP's JSON body, Julia's
  * R and Python strings) resolves to null, and tm4e leaves that text unstyled rather than failing.
  *
- * Budget, per block: the first [MAX_LINES] lines, a line longer than [MAX_LINE_CHARS] stays plain, and
- * tokenising stops once [BLOCK_BUDGET_MS] has passed. Past any of them the rest of the block is plain.
+ * The whole block is tokenised, with no line, line-length or time limit (issue #17): it runs off Main
+ * in the reader and on the export's thread in the PDF. The reader's job stops between lines once the
+ * block leaves the screen ([CodePieceViews] for a long block). The price of no limit, accepted: a
+ * line the grammar is very slow on holds this one worker until it is done, and the reader's other
+ * blocks wait their turn behind it; the PDF's inline call is not stopped by cancelling the export.
  * Runs are cached by (scope, text), so a rebind or an adapter swap (theme, pinch) does not tokenise
  * again; the runs carry roles, not colours, so one entry serves every theme.
  *
  * @param openAsset opens an asset path; the app passes `context.assets::open`.
- * @param nanoTime the clock the block budget reads; a test can move it.
  */
-class TextMateCodeHighlighter(
-    private val openAsset: (String) -> InputStream,
-    private val nanoTime: () -> Long = System::nanoTime,
-) : CodeHighlighter {
+class TextMateCodeHighlighter(private val openAsset: (String) -> InputStream) : CodeHighlighter {
 
     // Two locks: Main reads the cache at bind time and must never wait behind a block being tokenised.
     private val cacheLock = Any()
@@ -139,30 +193,17 @@ class TextMateCodeHighlighter(
 
     private fun tokenizeBlock(grammar: IGrammar, code: String, isActive: () -> Boolean): List<CodeRun>? {
         val runs = RunBuilder()
-        val start = nanoTime()
         var state: IStateStack? = null
         var lineStart = 0
-        var lineIndex = 0
-        var stopped = false
-        while (!stopped && lineStart <= code.length && lineIndex < MAX_LINES) {
+        while (lineStart <= code.length) {
             if (!isActive()) return null
-            val left = BLOCK_BUDGET_MS - (nanoTime() - start) / NANOS_PER_MS
             val newline = code.indexOf('\n', lineStart).let { if (it < 0) code.length else it }
             val line = code.substring(lineStart, newline).removeSuffix("\r")
-            when {
-                left <= 0 -> stopped = true
-                // An over-long line stays plain; the lines after it keep the state from the line before.
-                line.length > MAX_LINE_CHARS -> Unit
-                else -> {
-                    val result = grammar.tokenizeLine(line, state, Duration.ofMillis(left))
-                    runs.addLine(lineStart, line.length, result.tokens)
-                    // Stopped mid-line: that line keeps its partial tokens and the rest of the block is plain.
-                    stopped = result.isStoppedEarly
-                    state = result.ruleStack
-                }
-            }
+            // No time limit: a null limit lets tm4e finish the line (issue #17).
+            val result = grammar.tokenizeLine(line, state, null)
+            runs.addLine(lineStart, line.length, result.tokens)
+            state = result.ruleStack
             lineStart = newline + 1
-            lineIndex++
         }
         return runs.build()
     }
@@ -190,48 +231,8 @@ class TextMateCodeHighlighter(
         fun build(): List<CodeRun> = runs
     }
 
-    /**
-     * LRU of computed runs, bounded by [MAX_ENTRIES] and [MAX_CACHED_CHARS] of cached text. The key is
-     * (scope, text hash); an entry counts only if its whole text equals the block's, so a hash
-     * collision can never apply another block's runs.
-     */
-    private class RunCache {
-        private class Entry(val code: String, val runs: List<CodeRun>)
-
-        private val entries = LinkedHashMap<Pair<String, Int>, Entry>(MAX_ENTRIES, LOAD_FACTOR, true)
-        private var chars = 0L
-
-        fun get(scopeName: String, code: String): List<CodeRun>? =
-            entries[scopeName to code.hashCode()]?.takeIf { it.code.length == code.length && it.code == code }?.runs
-
-        fun put(scopeName: String, code: String, runs: List<CodeRun>) {
-            if (code.length > MAX_CACHED_CHARS) return
-            entries.put(scopeName to code.hashCode(), Entry(code, runs))?.let { chars -= it.code.length }
-            chars += code.length
-            val eldest = entries.entries.iterator()
-            while ((entries.size > MAX_ENTRIES || chars > MAX_CACHED_CHARS) && eldest.hasNext()) {
-                chars -= eldest.next().value.code.length
-                eldest.remove()
-            }
-        }
-    }
-
     companion object {
         private const val TAG = "TextMateCodeHighlighter"
-
-        /** Lines coloured per block; the rest stays plain. */
-        const val MAX_LINES = 2_000
-
-        /** A line longer than this stays plain. */
-        const val MAX_LINE_CHARS = 5_000
-
-        /** Time allowed per block before the rest stays plain. */
-        const val BLOCK_BUDGET_MS = 1_000L
-
-        private const val NANOS_PER_MS = 1_000_000L
-        private const val MAX_ENTRIES = 64
-        private const val MAX_CACHED_CHARS = 1_000_000L
-        private const val LOAD_FACTOR = 0.75f
 
         const val SHELL = "source.shell"
         const val TYPESCRIPT = "source.ts"
@@ -415,5 +416,38 @@ class TextMateCodeHighlighter(
             }
             return null
         }
+    }
+}
+
+/**
+ * LRU of computed runs, bounded by [MAX_ENTRIES] and [MAX_CACHED_CHARS] of cached text, one per
+ * highlighter. The key is (scope, text hash); an entry counts only if its whole text equals the
+ * block's, so a hash collision can never apply another block's runs. A block longer than the bound is
+ * never cached. 1,000,000 chars holds a 388 KB block (issue #13's size) and the blocks around it.
+ */
+internal class RunCache {
+    private class Entry(val code: String, val runs: List<CodeRun>)
+
+    private val entries = LinkedHashMap<Pair<String, Int>, Entry>(MAX_ENTRIES, LOAD_FACTOR, true)
+    private var chars = 0L
+
+    fun get(scopeName: String, code: String): List<CodeRun>? =
+        entries[scopeName to code.hashCode()]?.takeIf { it.code.length == code.length && it.code == code }?.runs
+
+    fun put(scopeName: String, code: String, runs: List<CodeRun>) {
+        if (code.length > MAX_CACHED_CHARS) return
+        entries.put(scopeName to code.hashCode(), Entry(code, runs))?.let { chars -= it.code.length }
+        chars += code.length
+        val eldest = entries.entries.iterator()
+        while ((entries.size > MAX_ENTRIES || chars > MAX_CACHED_CHARS) && eldest.hasNext()) {
+            chars -= eldest.next().value.code.length
+            eldest.remove()
+        }
+    }
+
+    private companion object {
+        const val MAX_ENTRIES = 64
+        const val MAX_CACHED_CHARS = 1_000_000L
+        const val LOAD_FACTOR = 0.75f
     }
 }

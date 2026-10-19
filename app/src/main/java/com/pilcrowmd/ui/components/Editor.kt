@@ -93,6 +93,7 @@ fun MarkdownEditor(
     onRedo: () -> Unit = {},
     codeEditorInstance: CodeEditor? = null,
     formattingBarEnabled: Boolean = false,
+    syntaxHighlighting: Boolean = true,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -186,8 +187,11 @@ fun MarkdownEditor(
                 try {
                     // Language BEFORE content: setText on an editor still holding the previous
                     // document's Markdown grammar starts an analysis of the new text, and its
-                    // styles land after the switch to plain text (M-31).
-                    applyEditorLanguage(editor, plainText)
+                    // styles land after the switch to plain text (M-31). M-154: a document too large
+                    // to highlight takes the plain language too, or the analyzer copies and
+                    // tokenizes the large text anyway.
+                    applyEditorLanguage(editor, plainText || !syntaxHighlighting)
+
                     // Set initial content
                     editor.setText(content)
 
@@ -222,12 +226,17 @@ fun MarkdownEditor(
                     }
 
                     // Set TextMate color scheme for syntax highlighting
-                    try {
-                        setupTextMateHighlighting(context, editor, themeMode, c, plainText)
-                    } catch (e: Exception) {
-                        Log.w("MarkdownEditor", "TextMate highlighting setup failed, using default colors", e)
-                        // Fallback: use a plain color scheme without highlighting (Safeguard 3)
+                    if (!syntaxHighlighting) {
+                        // M-154: too large to highlight on a phone — the plain scheme, no analyzer.
                         editor.colorScheme = createFallbackColorScheme(c)
+                    } else {
+                        try {
+                            setupTextMateHighlighting(context, editor, themeMode, c, plainText)
+                        } catch (e: Exception) {
+                            Log.w("MarkdownEditor", "TextMate highlighting setup failed, using default colors", e)
+                            // Fallback: use a plain color scheme without highlighting (Safeguard 3)
+                            editor.colorScheme = createFallbackColorScheme(c)
+                        }
                     }
 
                     // Restore initial cursor position
@@ -312,7 +321,7 @@ fun MarkdownEditor(
 /**
  * Setup TextMate syntax highlighting for markdown.
  * Initializes the TextMate registry, grammar, and theme once per app.
- * Loads md-dark.json or md-light.json based on themeMode.
+ * Loads md-dark.json, md-amoled.json or md-light.json based on themeMode.
  * The colour scheme is installed for every document; [plainText] only picks the language.
  */
 internal fun setupTextMateHighlighting(
@@ -330,10 +339,11 @@ internal fun setupTextMateHighlighting(
         )
         fileProvider.addFileProvider(assetsFileResolver)
 
-        // Load the appropriate TextMate theme (dark or light) based on themeMode
+        // Load the appropriate TextMate theme (dark, AMOLED or light) based on themeMode
         val themeRegistry = io.github.rosemoe.sora.langs.textmate.registry.ThemeRegistry.getInstance()
         val themeName = when (themeMode) {
             ThemeMode.DARK -> "md-dark"
+            ThemeMode.AMOLED -> "md-amoled"
             ThemeMode.LIGHT -> "md-light"
         }
         val themeFileName = "$themeName.json"
@@ -406,7 +416,7 @@ internal fun applyEditorLanguage(editor: CodeEditor, plainText: Boolean) {
  * Gutter polish: a divider colour + a subtle background tint so the line-number column reads
  * as a distinct gutter (Safeguard 4 — colours from the token layer, no hardcoded hex). Only keys
  * NOT driven by the TextMate theme are set here; theme-backed colours (foreground, selection,
- * line-number foreground) live in md-dark.json/md-light.json, since `applyVSCTheme`
+ * line-number foreground) live in md-dark.json/md-amoled.json/md-light.json, since `applyVSCTheme`
  * overwrites any setColor for those.
  *
  * CRITICAL: These setColor calls must happen AFTER the TextMate theme is loaded via
@@ -425,7 +435,7 @@ private fun applyEditorTokenColors(scheme: EditorColorScheme, colorScheme: Pilcr
 
 /**
  * Fallback color scheme for the editor (no syntax highlighting).
- * Used if TextMate setup fails. Colors read from the active colorScheme (Dark or Light).
+ * Used if TextMate setup fails. Colors read from the active colorScheme.
  */
 private fun createFallbackColorScheme(colorScheme: PilcrowColorScheme): EditorColorScheme {
     val scheme = EditorColorScheme()

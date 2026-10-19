@@ -7,6 +7,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-10-19
+
+### Added
+
+- **Mermaid diagrams are drawn on your phone, offline.** The diagram text is no longer sent to a
+  web service, and the app no longer has the internet permission. Diagrams follow your theme and
+  print in PDFs. A diagram that cannot be drawn shows its source instead.
+- **Tap a diagram to see it full screen.** Pinch to zoom, drag to move, double-tap to zoom in or
+  back out.
+- **AMOLED theme**, a pure black theme next to Dark and Light, in Settings > Appearance.
+- **Emoji shortcodes** such as `:smile:` and `:tada:` show as emoji in the reader and in PDFs.
+  Unknown names, times like `10:30`, code and formulas stay as written.
+- **Callouts can have their own title**, as in `> [!NOTE] My title`. The fold signs `[!TIP]-` and
+  `[!TIP]+` are accepted and the callout is shown open. `!!! note` and `:::` blocks from other
+  Markdown tools show as the same boxes.
+- **A card to rate PilcrowMD on Google Play**, in Settings, and once on the welcome screen after
+  you have used the app for a while. It only shows when the app came from Google Play.
+- **A note on the welcome screen when your version is more than two months old**, so you know to
+  look for an update.
+
+### Changed
+
+- **The app is about half the size** (APK 16.5 MB to 7.6 MB).
+- **Search no longer counts text inside Mermaid diagrams**, since a diagram is shown as a picture.
+- **Diagrams in a PDF are at most 60% of the page width** and never taller than a page.
+- **The Mermaid switch and the LaTeX row are gone from Settings.** Diagrams and maths are always
+  drawn.
+- **Better with TalkBack:** buttons read as buttons, Settings section names are headings, each
+  screen says its name when it opens, and the "More actions" menu has a name.
+- **"Tap to show" on a picture that has not loaded is in the normal text colour.**
+- **With a keyboard, the Contents drawer keeps focus** while it is open, and focus goes back where
+  it was when it closes.
+
+### Fixed
+
+- **Tapping Edit on a very large file no longer closes the app.** Over 2 million characters the
+  editor opens without colours; over 10 million the file can be read and searched but not edited.
+- **Search no longer crashes** on some documents with inline code or escaped characters.
+- **Long code blocks are coloured to the last line, and opening one no longer freezes the reader**
+  (#17). A block over 10,000 characters or 2,000 lines shows plain at first and takes its colours a
+  moment later. A reading position saved inside or after such a block moves once after this update.
+
 ## [1.0.14] - 2026-10-12
 
 ### Changed

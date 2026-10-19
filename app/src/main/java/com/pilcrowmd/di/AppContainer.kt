@@ -7,6 +7,7 @@ import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FolderAccessRepository
 import com.pilcrowmd.storage.StorageManager
@@ -33,6 +34,9 @@ interface AppContainer {
     /** Markdown rendering engine (lazy, one instance per process). */
     val markwonRenderer: MarkwonRenderer
 
+    /** M-70: on-device, offline Mermaid diagram drawing (lazy, one hidden WebView per process). */
+    val mermaidRenderer: MermaidDiagramRenderer
+
     /** PDF export engine for off-screen rendering and SAF writing. */
     val pdfExporter: PdfExporter
 
@@ -44,4 +48,10 @@ interface AppContainer {
 
     /** App-level metadata (versionName for About card, etc.). */
     val appInfo: AppInfo
+
+    /** How this copy was installed: Play or not, and when first (M-176, M-177). */
+    val installSource: InstallSource
+
+    /** Wall-clock time for date-gated prompts (M-177, M-174). */
+    val clock: Clock
 }

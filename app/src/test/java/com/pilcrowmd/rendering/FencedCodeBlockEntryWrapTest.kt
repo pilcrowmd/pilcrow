@@ -132,24 +132,25 @@ class FencedCodeBlockEntryWrapTest {
         assertSideScrolls(holder)
     }
 
+    // An entry with no Mermaid renderer shows every diagram as its source fallback (M-70), the same
+    // code path a failed render takes.
     @Test
-    fun `the Mermaid-source lane follows the setting`() {
+    fun `the Mermaid source fallback follows the setting`() {
         val entry = FencedCodeBlockEntry(context, wrapLines = true)
         val holder = holderOf(entry)
-        entry.bindMermaidOff(literalMarkwon(), holder, codeNode("mermaid"))
+        entry.bindMermaid(literalMarkwon(), holder, codeNode("mermaid"))
+        assertEquals("precondition: the fallback shows the source", View.VISIBLE, holder.codeScroll.visibility)
         assertWrapped(holder)
     }
 
     @Test
-    fun `the Mermaid-image lane clears a wrap, so its source fallback side-scrolls`() {
+    fun `the Mermaid source fallback clears a wrap a code block left on the shared holder`() {
         val holder = holderOf(FencedCodeBlockEntry(context))
         FencedCodeBlockEntry(context, wrapLines = true).bindHolder(literalMarkwon(), holder, codeNode())
+        assertWrapped(holder)
 
         FencedCodeBlockEntry(context, wrapLines = false).bindMermaid(literalMarkwon(), holder, codeNode("mermaid"))
-        // A failed fetch lands in fallbackToSource asynchronously, which re-shows the code views
-        // with the source; stand in for it here so the scroller's mode is what gets measured.
-        holder.codeScroll.visibility = View.VISIBLE
-        holder.codeView.text = longLine
+        assertEquals("precondition: the fallback shows the source", View.VISIBLE, holder.codeScroll.visibility)
         assertSideScrolls(holder)
     }
 

@@ -9,7 +9,7 @@ WHY PILCROWMD
 - Never loses your work. Saving writes back exactly what you wrote. No silent reformatting, no half-written files.
 - Read and edit. Switch between the clean reading view and a real source editor with syntax highlighting, line numbers, and undo/redo.
 - Export to PDF. Save any document as a clean, print-ready PDF. Code blocks print on a light panel, in colour.
-- Fast and offline. Native Android, no browser engine, works with no connection. (Optional online rendering for Mermaid diagrams is off by default.)
+- Fast and offline. Native Android, works with no connection. Mermaid diagrams are drawn on your phone, offline, and the app has no internet permission.
 
 EVERYTHING MARKDOWN
 

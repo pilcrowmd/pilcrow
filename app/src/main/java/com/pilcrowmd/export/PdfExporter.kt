@@ -4,9 +4,15 @@
 package com.pilcrowmd.export
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.pdf.PdfDocument
+import android.os.Looper
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidStyle
+import com.pilcrowmd.ui.theme.PrintCodeColorScheme
 import io.noties.markwon.Markwon
+import kotlinx.coroutines.runBlocking
 import kotlin.runCatching
 
 /**
@@ -27,11 +33,34 @@ import kotlin.runCatching
  * - Draw scaling: canvas.scale((72f / densityDpi) × PRINT_SCALE) maps px-measured layout onto pt page
  * - PRINT_SCALE: content is measured narrower (÷PRINT_SCALE) and drawn larger (×PRINT_SCALE)
  *   so body type prints at ~11pt; page geometry and the on-screen reader are unchanged.
+ *
+ * **Mermaid (M-70):** diagrams are drawn by [mermaidRenderer] in the print colours, see [diagram].
  */
-class PdfExporter(private val context: Context, private val markwonRenderer: MarkwonRenderer) {
+class PdfExporter(
+    private val context: Context,
+    private val markwonRenderer: MarkwonRenderer,
+    private val mermaidRenderer: MermaidDiagramRenderer,
+) {
 
     // Builds the off-screen block-view tree (SRP split: layout-building vs pagination/PDF write).
-    private val layoutBuilder = PdfContentLayoutBuilder(context, markwonRenderer.codeHighlighter)
+    // Internal for tests: they check its diagram memo is emptied after each export (M-70).
+    internal val layoutBuilder = PdfContentLayoutBuilder(
+        context,
+        markwonRenderer.codeHighlighter,
+        ::diagram,
+        markwonRenderer.prism4jHighlighter,
+    )
+
+    /**
+     * M-70: draws one diagram for the page, blocking the export thread until the renderer answers
+     * (it is bounded by its own timeout). The renderer works on the main thread, so on the main
+     * thread this answers null at once: waiting there would block it, and could never finish.
+     * The export itself always runs on IO (MarkdownViewModel.exportPdf).
+     */
+    internal fun diagram(source: String, widthPx: Int): Bitmap? {
+        if (Looper.myLooper() == Looper.getMainLooper()) return null
+        return runBlocking { mermaidRenderer.render(source, widthPx, PRINT_DIAGRAM_STYLE) }
+    }
 
     companion object {
         // A4 page dimensions (in points; 1/72 inch per point)
@@ -59,6 +88,9 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
         // 1.44 × 7.65pt ≈ 11pt. Applied at the 3 coordinated px↔pt sites: measure width, draw scale,
         // page content height (all stay consistent, so block-aware pagination is unaffected).
         const val PRINT_SCALE = 1.44f
+
+        // Diagrams print in the light print colours, on the print code-block panel.
+        private val PRINT_DIAGRAM_STYLE = MermaidStyle.from(PrintCodeColorScheme)
     }
 
     /**
@@ -95,7 +127,7 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
         val markwon = markwonRenderer.printMarkwonFor(fontScale)
         val nodes = topLevelBlocksForMode(markwon, content, renderMode)
         layoutBuilder.measureBlockBounds(markwon, nodes, pageContentWidthPx, fontScale)
-    }.getOrThrow()
+    }.also { layoutBuilder.diagrams.clear() }.getOrThrow() // M-70: this singleton keeps no pictures
 
     /**
      * Helper: get the Markwon instance from the renderer singleton.
@@ -224,7 +256,7 @@ class PdfExporter(private val context: Context, private val markwonRenderer: Mar
         }
 
         pdfDocument
-    }.getOrThrow()
+    }.also { layoutBuilder.diagrams.clear() }.getOrThrow() // M-70: success or failure, keep no pictures
 
     /**
      * Block-aware page-start offsets (PURE + unit-testable — no View/Android deps). Given each block's

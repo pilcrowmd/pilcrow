@@ -17,9 +17,13 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import com.pilcrowmd.di.AppInfo
+import com.pilcrowmd.di.Clock
+import com.pilcrowmd.di.InstallSource
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.NullMermaidRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.repository.FolderAccessRepository
@@ -27,6 +31,7 @@ import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.ui.screen.MainScreen
 import com.pilcrowmd.viewmodel.MarkdownViewModel
+import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,12 +79,18 @@ internal class ReaderHarness(
             override val storageManager = storage
             override val folderAccessRepository: FolderAccessRepository = mockk(relaxed = true)
             override val markwonRenderer by lazy { renderer }
+            override val mermaidRenderer: MermaidDiagramRenderer = NullMermaidRenderer
             override val pdfExporter: com.pilcrowmd.export.PdfExporter = mockk(relaxed = true)
             override val parseMarkdownHeadingsUseCase = ParseMarkdownHeadingsUseCase()
             override val searchMarkdownUseCase = SearchMarkdownUseCase(parseMarkdownHeadingsUseCase)
             override val appInfo = object : AppInfo {
                 override val versionName = "test"
             }
+            override val installSource = object : InstallSource {
+                override fun isPlayInstall() = false
+                override fun firstInstallTimeMillis(): Long? = null
+            }
+            override val clock = Clock { 0L }
         }
         this.container = container
         return MarkdownViewModel.provideFactory(container).create(MarkdownViewModel::class.java)
@@ -112,9 +123,27 @@ internal class ReaderHarness(
         )
     }
 
+    private fun prompts() = WelcomePromptsViewModel(
+        storage,
+        object : InstallSource {
+            override fun isPlayInstall() = false
+            override fun firstInstallTimeMillis(): Long? = null
+        },
+        object : AppInfo {
+            override val versionName = "test"
+        },
+        Clock { 0L },
+    )
+
     fun show(vm: MarkdownViewModel) {
         composeRule.setContent {
-            MainScreen(viewModel = vm, context = LocalContext.current, renderer = remember { renderer })
+            MainScreen(
+                viewModel = vm,
+                prompts = remember { prompts() },
+                context = LocalContext.current,
+                renderer = remember { renderer },
+                mermaidRenderer = NullMermaidRenderer,
+            )
         }
     }
 
@@ -136,6 +165,15 @@ internal class ReaderHarness(
             Thread.sleep(POLL_MS)
         }
         throw AssertionError("timed out after $timeoutMs ms waiting for: $what")
+    }
+
+    /** The editor, if it is on screen. */
+    fun editor(): io.github.rosemoe.sora.widget.CodeEditor? = findEditor(composeRule.activity.window.decorView)
+
+    private fun findEditor(view: View): io.github.rosemoe.sora.widget.CodeEditor? = when (view) {
+        is io.github.rosemoe.sora.widget.CodeEditor -> view
+        is ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { findEditor(view.getChildAt(it)) }
+        else -> null
     }
 
     /** True once the reader list shows at least one block. */

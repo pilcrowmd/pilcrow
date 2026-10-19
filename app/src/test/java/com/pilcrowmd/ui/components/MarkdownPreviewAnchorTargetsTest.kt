@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
 import com.pilcrowmd.rendering.AnchorTargets
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.testing.readerModelFor
 import org.junit.Assert.assertEquals
@@ -58,6 +59,7 @@ class MarkdownPreviewAnchorTargetsTest {
             MarkdownPreview(
                 model = remember(content.value) { renderer.readerModelFor(content.value) },
                 renderer = renderer,
+                mermaidRenderer = NullMermaidRenderer,
             )
         }
         drain()

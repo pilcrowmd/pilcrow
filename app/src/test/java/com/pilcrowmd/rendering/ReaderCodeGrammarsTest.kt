@@ -37,9 +37,7 @@ class ReaderCodeGrammarsTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
-    // A clock that never moves: the 1 s block budget can never decide these tests, however slow the
-    // machine, so the 2,050-line test is decided by the line limit alone.
-    private val highlighter = TextMateCodeHighlighter(context.assets::open, nanoTime = { 0L })
+    private val highlighter = TextMateCodeHighlighter(context.assets::open)
 
     /** keyword, string and comment probes per fence. */
     private class Probe(
@@ -127,17 +125,15 @@ class ReaderCodeGrammarsTest {
     }
 
     @Test
-    fun `a block past the line limit renders whole, head coloured and tail plain`() {
-        val code = (1..TextMateCodeHighlighter.MAX_LINES + 50).joinToString("\n") { "echo \"line $it\"" }
+    fun `the last of 2,050 lines is coloured`() {
+        // Issue #17: no line, line-length or time limit any more; the old limit was 2,000 lines.
+        val lines = 2_050
+        val code = (1..lines).joinToString("\n") { "echo \"line $it\"" }
         val text = bindInline(DarkColorScheme, node("bash", code)).text as Spanned
-        val lastLine = "echo \"line ${TextMateCodeHighlighter.MAX_LINES + 50}\""
+        val lastLine = "echo \"line $lines\""
         assertTrue("the whole block is shown", text.toString().contains(lastLine))
         assertEquals(DarkColorScheme.codeSyntax.function.toArgb(), colourAt(text, "echo \"line 1\""))
-        val tail = text.indexOf("echo \"line ${TextMateCodeHighlighter.MAX_LINES + 1}\"")
-        assertTrue(
-            "the tail has no token colour",
-            text.getSpans(tail, text.length, ForegroundColorSpan::class.java).none { text.getSpanEnd(it) > tail },
-        )
+        assertEquals("the last line", DarkColorScheme.codeSyntax.function.toArgb(), colourAt(text, lastLine))
     }
 
     @Test

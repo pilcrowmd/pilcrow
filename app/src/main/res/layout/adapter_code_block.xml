@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Code block: horizontally scrollable code with a Copy button pinned top-right OUTSIDE the
      scroll region so it stays reachable while long lines pan. Wrapped in a vertical
-     LinearLayout so an optional caption (the Mermaid-off hint) can sit BELOW the block. -->
+     LinearLayout so an optional caption (the Mermaid fallback note) can sit BELOW the block. -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -34,11 +34,11 @@
                 android:paddingBottom="8dp" />
         </com.pilcrowmd.rendering.CodeScrollView>
 
-        <!-- Mermaid diagram: shown instead of code_scroll when a ```mermaid block
-             renders via the opt-in cloud renderer; gone for normal code/yaml blocks. Fills the card
-             width: the PNG is requested from mermaid.ink pre-sized to the card width (crisp, no
-             upscale blur), and drawn at match_parent + fitCenter so it fills the width and grows tall
-             (scrolls) rather than being capped/shrunk. minHeight is a stable load placeholder. -->
+        <!-- Mermaid diagram (M-70): shown instead of code_scroll while a ```mermaid block is drawn
+             on the device, and once it is; gone for normal code/yaml blocks. Fills the card width:
+             the picture is drawn exactly the card's content width (crisp, no upscale blur), and
+             shown at match_parent + fitCenter so it fills the width and grows tall (scrolls) rather
+             than being capped/shrunk. minHeight is the empty panel shown while the render runs. -->
         <ImageView
             android:id="@+id/mermaid_image"
             android:layout_width="match_parent"
@@ -64,9 +64,9 @@
             android:textSize="12sp" />
     </FrameLayout>
 
-    <!-- Mermaid-off hint. Shown (text + token color set in code) ONLY when a ```mermaid
-         block is displayed as raw source because cloud rendering is OFF; GONE for every other
-         block and in the PDF export. Small + subtle. -->
+    <!-- Mermaid fallback note. Shown (text + token color set in code) ONLY when a ```mermaid
+         block is displayed as its source because the diagram could not be drawn; GONE for every
+         other block and in the PDF export. Small + subtle. -->
     <TextView
         android:id="@+id/mermaid_caption"
         android:layout_width="match_parent"

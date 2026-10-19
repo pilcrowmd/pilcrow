@@ -30,10 +30,10 @@
 The web is full of Markdown – LLM answers, READMEs, notes, technical docs – and most Android apps
 render it in a WebView wrapped in ads and trackers. PilcrowMD takes the opposite approach.
 
-PilcrowMD renders Markdown **natively** – no WebView, no JavaScript runtime, no network calls to read
-your files. The result is fast, typographically careful rendering of full GitHub-Flavored Markdown
-(tables, code, math, task lists, frontmatter) with a reading experience that looks designed rather
-than dumped.
+PilcrowMD renders Markdown **natively** – no WebView for your text, no network calls to read your
+files, and no internet permission at all. The result is fast, typographically careful rendering of
+full GitHub-Flavored Markdown (tables, code, math, task lists, frontmatter) with a reading experience
+that looks designed rather than dumped.
 
 - **Beautiful.** Serif body type, real syntax highlighting, rendered LaTeX, and a calm dark theme
   (with a warm-cream light theme) built from an exact design-token system.
@@ -42,7 +42,8 @@ than dumped.
   its dominant style), and a renderer that degrades gracefully instead of crashing on syntax it
   doesn't support.
 - **Private.** Files are read through Android's Storage Access Framework and stay on your device.
-  No accounts, no ads, no analytics, no telemetry, no crash reporting, no network in the reading path. Free software under the GPL.
+  No accounts, no ads, no analytics, no telemetry, no crash reporting, and no internet permission:
+  the app cannot connect to the internet. Free software under the GPL.
 
 ## Features
 
@@ -57,12 +58,14 @@ than dumped.
 - **Table of contents** drawer generated from your headings, with tap-to-jump.
 - **YAML frontmatter** rendered as a tidy metadata card.
 - **Export to PDF** – paginated and print-styled, on white pages.
-- **Two themes** – a default dark theme and a warm-cream light theme.
+- **Three themes** – a default dark theme, a true-black AMOLED theme and a warm-cream light theme.
 - **Per-file memory** – reopens your last file at the position you left it; keeps a recents list.
 - **Adjustable type** – independent font scaling for reader and editor.
-- **Graceful by design** – diagrams and unsupported syntax degrade to readable code blocks rather
-  than breaking the page (Mermaid can optionally render via the cloud, off by default).
-- **Offline & ad-free** – minimum Android 8.0, no required network permission for reading.
+- **Mermaid diagrams, offline** – drawn on the phone, following the app's theme, and in
+  PDF exports too. Nothing is sent anywhere. See [why there is a WebView](#why-there-is-a-webview-and-only-one).
+- **Graceful by design** – unsupported syntax, and any diagram that cannot be drawn, degrade to
+  readable code blocks rather than breaking the page.
+- **Offline & ad-free** – minimum Android 8.0, no internet permission.
 
 ## Screenshots
 
@@ -78,7 +81,7 @@ than dumped.
   <tr>
     <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/05-editor-dark.png" width="190" alt="Source editor with line numbers"><br><sub>Source editor with line numbers</sub></td>
     <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/06-pdf-export.png" width="190" alt="Exporting the document to PDF"><br><sub>Exporting the document to PDF</sub></td>
-    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/07-mermaid-dark.png" width="190" alt="Mermaid diagrams (optional cloud rendering)"><br><sub>Mermaid diagrams (optional cloud rendering)</sub></td>
+    <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/07-mermaid-dark.png" width="190" alt="Mermaid diagrams, drawn offline"><br><sub>Mermaid diagrams, drawn offline</sub></td>
     <td align="center" width="25%"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/08-welcome.png" width="190" alt="Home screen with recent files"><br><sub>Home screen with recent files</sub></td>
   </tr>
 </table>
@@ -99,10 +102,43 @@ unidirectional data flow and strict layer boundaries:
 
 Dependencies are wired through a single hand-written composition root (a manual `AppContainer`), and
 Markdown is rendered to native views with [Markwon](https://github.com/noties/Markwon) – **never a
-WebView**. The four Essential Safeguards (no data loss, round-trip fidelity, crash-free rendering,
-design-token fidelity) are enforced in code and protected by tests.
+WebView**. The one exception is the Mermaid diagram engine, below. The four Essential Safeguards (no
+data loss, round-trip fidelity, crash-free rendering, design-token fidelity) are enforced in code and
+protected by tests.
 
 **→ Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).**
+
+### Why there is a WebView (and only one)
+
+Mermaid diagrams need a real browser layout engine to measure text and place shapes. No native
+Android Mermaid engine covers its ~20 diagram types, and porting one would be a permanent chase. So
+PilcrowMD runs the official Mermaid library (mermaid.js 11.17.2, MIT licence), bundled inside the
+app, in a hidden WebView (Android's built-in browser component). It is used only to turn the text of
+a ```` ```mermaid ```` block into a picture. The picture is shown in the normal native reader. The
+WebView is never shown on screen, and you never see, scroll or touch it. Everything else is native,
+and the editor is untouched.
+
+What that WebView can do: run the bundled Mermaid script on the diagram text from the open document,
+and return a picture. Nothing else.
+
+What it cannot do:
+
+- **No network.** Network loads are blocked, every request other than the drawing page and its bundled
+  Mermaid script (both served from inside the app) is refused, and the app has no INTERNET permission at all, so Android itself refuses any connection.
+- **No files.** No file access, no `content://` access, no access to other documents or app storage.
+- **No way into the app.** There is no JavaScript bridge; the page cannot call any app code. The app
+  only reads back the finished picture.
+- **No navigation and no pop-up windows.** Mermaid runs in its "strict" security mode (labels
+  sanitised, click handlers off).
+
+Each diagram has an 8-second time limit. A diagram that is broken, unsupported or too slow is shown
+as its source in a normal code block, with the caption "Diagram could not be drawn. Showing its
+source." If the device's WebView is missing or disabled, every diagram shows as source. The app never
+crashes on a diagram.
+
+The Mermaid script is not stored in this repository. The build downloads the exact npm package
+`mermaid@11.17.2` and refuses it unless its SHA-256 matches a pinned value (see `app/build.gradle.kts`,
+section "Offline Mermaid"). It adds about 1 MB to the download.
 
 ## Build & run
 
@@ -145,8 +181,8 @@ full gate from a clean build:
   (`MarkdownViewModelLineEndingTest`), and a ~5,000-line document renders without crashing
   (`MarkwonRendererLargeFileTest`).
 - **Visual-regression goldens** via [Roborazzi](https://github.com/takahirom/roborazzi) – every
-  Markdown sample × 3 font scales × 2 themes, plus the Welcome, search, and GitHub-teaser screens,
-  rendered under Robolectric and pinned to a fixed device config. Any layout or typography drift
+  Markdown sample × 3 font scales × Dark and Light, each sample in AMOLED, plus the Welcome, search
+  and GitHub-teaser screens, rendered under Robolectric and pinned to a fixed device config. Any layout or typography drift
   fails the build.
 - **Static analysis & style** – [ktlint](https://github.com/JLLeitschuh/ktlint-gradle) and
   [detekt](https://github.com/detekt/detekt), both baselined and run in the gate.
@@ -178,7 +214,6 @@ Directions under consideration for future releases:
 
 - Document collections / multi-file libraries.
 - Additional export targets and richer print options.
-- Optional offline diagram rendering.
 - Wider syntax coverage (footnotes, definition lists).
 
 Nothing here is a commitment; the v1 safeguards and native-only constraint always come first.

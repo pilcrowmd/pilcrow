@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.testing.readerModelFor
 import com.pilcrowmd.ui.theme.DarkColorScheme
@@ -145,7 +146,11 @@ class JumpControlsVisibilityTest {
             val context = LocalContext.current
             val renderer = remember { warmedMarkwonRenderer(context) }
             CompositionLocalProvider(LocalMDColors provides DarkColorScheme) {
-                MarkdownPreview(model = remember { renderer.readerModelFor(longDocument) }, renderer = renderer)
+                MarkdownPreview(
+                    model = remember { renderer.readerModelFor(longDocument) },
+                    renderer = renderer,
+                    mermaidRenderer = NullMermaidRenderer,
+                )
             }
         }
         settle()

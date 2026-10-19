@@ -147,15 +147,6 @@ interface StorageManager {
     suspend fun saveFontSetId(id: String)
 
     /**
-     * Flow of the Mermaid cloud-rendering opt-in. Default: false (offline).
-     * When true, ```mermaid blocks render via the external mermaid.ink service.
-     */
-    val mermaidCloudEnabled: Flow<Boolean>
-
-    /** Persist the Mermaid cloud-rendering opt-in. */
-    suspend fun setMermaidCloudEnabled(enabled: Boolean)
-
-    /**
      * Flow of the reader's "Wrap long lines in code blocks" setting. Default: false — long lines
      * side-scroll, as they always have (M-134; the default is a public commitment on issue #8).
      */
@@ -189,6 +180,28 @@ interface StorageManager {
 
     /** Remember or forget a "Not now" for [folderKey]. */
     suspend fun setImageFolderDismissed(folderKey: String, dismissed: Boolean)
+
+    /**
+     * Documents the user has opened (M-177): every open they start that reaches a loaded document —
+     * picker, "Open with", recents, Create. Re-opening a file counts again; a failed load and the
+     * cold-start restore do not. Starts at 0, including for users upgrading to 1.0.13.
+     */
+    val documentsOpened: Flow<Int>
+
+    /** Add one to [documentsOpened]. */
+    suspend fun incrementDocumentsOpened()
+
+    /** True once either button on the welcome-screen rating card was tapped; it never shows again (M-177). */
+    val ratingCardDismissed: Flow<Boolean>
+
+    /** Hide the welcome-screen rating card for good. */
+    suspend fun dismissRatingCard()
+
+    /** When the M-174 update note was last dismissed (epoch millis), or null if never. */
+    val updateNoteDismissedAt: Flow<Long?>
+
+    /** Record that the update note was dismissed at [atMillis]; it snoozes from then. */
+    suspend fun dismissUpdateNote(atMillis: Long)
 
     // vNext hooks (not implemented in v1):
     // suspend fun syncPreferences(destination: SyncBackend): Result<Unit>

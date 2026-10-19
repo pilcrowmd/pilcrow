@@ -175,7 +175,7 @@ class DeepNestingReaderTest {
     @Test
     fun `the PDF export prints a too-deep document as plain text`() {
         val renderer = warmedMarkwonRenderer(activity)
-        val exporter = PdfExporter(activity, renderer)
+        val exporter = PdfExporter(activity, renderer, NullMermaidRenderer)
         val markdown = ">".repeat(100_000) + " deep"
 
         val blocks = topLevelBlocksForMode(renderer.printMarkwonFor(1f), markdown, RenderMode.MARKDOWN)

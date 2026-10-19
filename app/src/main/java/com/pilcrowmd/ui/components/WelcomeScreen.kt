@@ -32,13 +32,18 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.outlined.Update
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,19 +56,25 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -91,6 +102,10 @@ private const val PILCROW = "¶"
  * image either. A semantics tag is what is left to assert its placement from.
  */
 const val WELCOME_WATERMARK_TEST_TAG = "welcome-watermark"
+
+/** M-174: the update note's copy, store-neutral on purpose. */
+internal const val UPDATE_NOTE_TEXT =
+    "This version is over 2 months old. A newer one with fixes is probably available where you installed the app."
 
 /**
  * The share of its line the "PilcrowMD" lockup may occupy before it is scaled down to fit.
@@ -220,6 +235,15 @@ private fun PilcrowInkMark(fontSize: Dp, color: Color, modifier: Modifier = Modi
     }
 }
 
+/** M-307: moves focus to [target] when this enters composition, in keyboard mode only. */
+@Composable
+private fun FocusOnEntryInKeyboardMode(target: FocusRequester) {
+    val inputMode = LocalInputModeManager.current
+    LaunchedEffect(Unit) {
+        if (inputMode.inputMode == InputMode.Keyboard) target.requestFocus()
+    }
+}
+
 @Composable
 @Suppress("LongParameterList") // A leaf composable's callbacks; one more than the threshold.
 fun WelcomeScreen(
@@ -256,6 +280,19 @@ fun WelcomeScreen(
     onRemoveRecent: (Uri) -> Unit = {},
     onClearRecents: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    /**
+     * M-177: the one-time rating card. Decided in the ViewModel; false by default, so every
+     * existing call site and golden renders exactly as before.
+     */
+    showRatingCard: Boolean = false,
+    onRatingNotNow: () -> Unit = {},
+    onRatingRate: () -> Unit = {},
+    /**
+     * M-174: the "this version is over 2 months old" note, in the rating card's slot. The ViewModel
+     * never has both due at once — the note wins. False by default, like the card.
+     */
+    showUpdateNote: Boolean = false,
+    onDismissUpdateNote: () -> Unit = {},
 ) {
     val c = mdColors()
     // Guard the destructive "Clear recents" with a confirm dialog (QA #5). rememberSaveable so the
@@ -279,11 +316,17 @@ fun WelcomeScreen(
     // welcome block's wordmark never starts above it, whatever the font scale.
     var gearButtonBottomInRoot by remember { mutableFloatStateOf(Float.NaN) }
     val wordmarkFontSize = with(LocalDensity.current) { WORDMARK_SIZE.toSp() }
+    // M-307: with a hardware keyboard the screen opens with the gear focused (Close file, Back from
+    // Settings), not with focus nowhere. Touch mode and TalkBack are left alone.
+    val gearFocus = remember { FocusRequester() }
+    FocusOnEntryInKeyboardMode(gearFocus)
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(c.primaryBackground)
-            .onGloballyPositioned { boxTopInRoot = it.positionInRoot().y },
+            .onGloballyPositioned { boxTopInRoot = it.positionInRoot().y }
+            // M-309: TalkBack speaks the pane title when the screen appears.
+            .semantics { paneTitle = "PilcrowMD" },
     ) {
         // Large faint ¶ mark behind the wordmark. It is BACKGROUND TEXTURE, not a frame: its ink
         // is narrower than the wordmark and the word overhangs it, which is intentional.
@@ -429,6 +472,15 @@ fun WelcomeScreen(
                                             textAlign = TextAlign.Center,
                                         )
                                     }
+                                    // M-177/M-174: between the fallback link and RECENT. In the slot below
+                                    // the block, like the recents, so it cannot move the block (M-196).
+                                    PromptSlot(
+                                        showUpdateNote = showUpdateNote,
+                                        showRatingCard = showRatingCard,
+                                        onDismissUpdateNote = onDismissUpdateNote,
+                                        onRatingNotNow = onRatingNotNow,
+                                        onRatingRate = onRatingRate,
+                                    )
                                     RecentsSection(recentFiles, onOpenRecent, onRemoveRecent, isLoading) {
                                         showClearConfirm = true
                                     }
@@ -661,7 +713,8 @@ fun WelcomeScreen(
             onClick = onOpenSettings,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(4.dp),
+                .padding(4.dp)
+                .focusRequester(gearFocus),
         ) {
             Icon(
                 imageVector = Icons.Outlined.Settings,
@@ -705,6 +758,119 @@ fun WelcomeScreen(
                         Text("Cancel", color = c.secondaryText)
                     }
                 },
+            )
+        }
+    }
+}
+
+/**
+ * M-177: "Enjoying PilcrowMD?" — a card in the page, never a dialog. Both buttons hide it for good.
+ * Colours from the token layer only (Safeguard 4).
+ */
+@Composable
+private fun RatingCard(onNotNow: () -> Unit, onRate: () -> Unit) {
+    val c = mdColors()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(c.secondarySurface)
+            .border(1.dp, c.toolbarBorder, RoundedCornerShape(16.dp))
+            .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 10.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(
+                imageVector = Icons.Outlined.StarOutline,
+                contentDescription = null,
+                tint = c.accent,
+                modifier = Modifier.padding(top = 2.dp).size(18.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Enjoying PilcrowMD?",
+                    color = c.primaryText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(text = RATING_ASK, color = c.secondaryText, fontSize = 13.sp)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onNotNow) {
+                Text("Not now", color = c.secondaryText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.width(4.dp))
+            Button(
+                onClick = onRate,
+                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+            ) {
+                Text("Rate on Play", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/**
+ * The one slot the welcome prompts share. The ViewModel never has both due at once; if a caller
+ * passed both, the note still wins, as M-177 rules.
+ */
+@Composable
+private fun PromptSlot(
+    showUpdateNote: Boolean,
+    showRatingCard: Boolean,
+    onDismissUpdateNote: () -> Unit,
+    onRatingNotNow: () -> Unit,
+    onRatingRate: () -> Unit,
+) {
+    if (!showUpdateNote && !showRatingCard) return
+    Spacer(Modifier.height(20.dp))
+    if (showUpdateNote) {
+        UpdateNote(onDismiss = onDismissUpdateNote)
+    } else {
+        RatingCard(onNotNow = onRatingNotNow, onRate = onRatingRate)
+    }
+}
+
+/**
+ * M-174: an inline note, never a dialog, and store-neutral — it reads correctly for Play, F-Droid
+ * and GitHub installs, and links nowhere. × snoozes it. Colours from the token layer only.
+ */
+@Composable
+private fun UpdateNote(onDismiss: () -> Unit) {
+    val c = mdColors()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(c.secondarySurface)
+            .border(1.dp, c.toolbarBorder, RoundedCornerShape(16.dp))
+            .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Update,
+            contentDescription = null,
+            tint = c.accent,
+            modifier = Modifier.padding(top = 12.dp).size(18.dp),
+        )
+        Text(
+            text = UPDATE_NOTE_TEXT,
+            color = c.secondaryText,
+            fontSize = 13.sp,
+            modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+        )
+        IconButton(onClick = onDismiss) {
+            Icon(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = "Dismiss update note",
+                tint = c.secondaryText,
+                modifier = Modifier.size(18.dp),
             )
         }
     }

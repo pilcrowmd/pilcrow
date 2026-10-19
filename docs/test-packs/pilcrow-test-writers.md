@@ -16,21 +16,20 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 - **Edit and save.** Switch to Edit, change a word, save, and reopen: the file must come back
   exactly as you left it, with nothing reflowed or reformatted.
 
-**Known gaps in version 1.0.14** – we know about these, no need to report them:
+**Known gaps in version 1.0.15** – we know about these, no need to report them:
 
 - A picture in a table cell is dropped.
 - A link to another note (`./notes.md`) does nothing when tapped.
-- Callouts with a custom title, a fold marker (`> [!TIP]-`) or inside a list show as plain quotes
-  with the marker visible.
-- `!!! note` and `::: warning` boxes (from other Markdown tools) show as plain text.
+- A callout inside a list shows as a plain quote with the marker visible.
+- A callout marked as folded (`> [!TIP]-`) is always shown open.
 - `==highlight==`, `~subscript~` and `^superscript^` show as typed.
-- Emoji codes like `:smile:` stay as text (real emoji work).
+- Emoji codes like `:smile:` stay as text in the Contents list, and on phones too old to draw that
+  emoji.
 - Definition lists (a term, then a line starting with `:`) are not styled.
 - A heading with `{#my-id}` after it shows that text.
 - Wiki links `[[Page]]` and review marks like `{++added++}` show as typed.
 - Footnotes written inline (`^[note]`) are not supported. A footnote used twice links back to its
   first use only.
-- In a right-to-left list, the bullet stays on the left.
 
 Found something not on this list? Please open an issue at
 <https://github.com/pilcrowmd/pilcrow/issues> and say which pack and which part.
@@ -213,7 +212,9 @@ A picture from the web (PilcrowMD never downloads pictures, so you will see a pl
 
 ## Part G – Known gaps, side by side
 
-Each line below is one of the known gaps listed at the top, so you can see what it looks like.
+Each item below was a known gap at one time, so you can see what it looks like. Some now work:
+formatting in a table cell, a callout with its own title, the boxes from other tools and the emoji
+code. The rest are in the list at the top.
 
 Formatting in a table cell:
 

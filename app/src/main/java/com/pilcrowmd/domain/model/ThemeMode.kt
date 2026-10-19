@@ -5,5 +5,6 @@ package com.pilcrowmd.domain.model
 
 enum class ThemeMode {
     DARK,
+    AMOLED, // M-92: a true-black page for OLED screens. Persisted by name, like the others.
     LIGHT,
 }

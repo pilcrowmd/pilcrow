@@ -7,8 +7,9 @@ import org.commonmark.node.Node
 
 /**
  * The post-parse passes every reader parse site applies (the renderer, the PDF export, search and
- * the headings drawer), so all four walk the same tree and adapter positions stay 1:1. The one
- * exception is the long-paragraph split, which the PDF skips (M-328; see [transform]).
+ * the headings drawer), so all four walk the same tree and adapter positions stay 1:1. The
+ * exceptions are the long-paragraph and long-code-block splits, which the PDF skips (M-328, issue
+ * #17; see [transform]).
  */
 object ReaderDocument {
     /**
@@ -17,9 +18,21 @@ object ReaderDocument {
      * reader binds, lays out and records a bounded block per frame (M-328). It runs first, because
      * [Footnotes.transform] numbers the blocks. The PDF export passes false: it lays its pages out
      * off the main thread and prints the paragraph whole.
+     *
+     * [splitLongCodeBlocks]: a top-level code block longer than [CodeBlockSplitter.LONG_BLOCK_CHARS]
+     * or [CodeBlockSplitter.LONG_BLOCK_LINES] becomes several [CodeBlockPiece]s, for the same reason
+     * (issue #17). It follows [splitLongParagraphs] unless told otherwise: the PDF skips both.
+     *
+     * [inlineSource]: see [Callouts.transform]; the renderer passes its maths source.
      */
-    fun transform(document: Node, splitLongParagraphs: Boolean = true): Node {
+    fun transform(
+        document: Node,
+        splitLongParagraphs: Boolean = true,
+        inlineSource: (Node) -> String? = { null },
+        splitLongCodeBlocks: Boolean = splitLongParagraphs,
+    ): Node {
         if (splitLongParagraphs) ParagraphSplitter.split(document)
-        return Callouts.transform(Footnotes.transform(document))
+        if (splitLongCodeBlocks) CodeBlockSplitter.split(document)
+        return Callouts.transform(Footnotes.transform(document), inlineSource)
     }
 }

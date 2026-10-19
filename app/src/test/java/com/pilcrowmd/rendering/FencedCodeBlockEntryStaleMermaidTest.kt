@@ -3,93 +3,92 @@
 
 package com.pilcrowmd.rendering
 
-import android.app.Activity
 import android.content.Context
-import android.net.Uri
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.os.Looper
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.FrameLayout
 import android.widget.TextView
-import coil.Coil
-import coil.EventListener
-import coil.ImageLoader
-import coil.fetch.FetchResult
-import coil.fetch.Fetcher
-import coil.request.ErrorResult
-import coil.request.ImageRequest
-import coil.request.Options
-import coil.request.SuccessResult
+import androidx.compose.ui.graphics.toArgb
+import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidStyle
+import com.pilcrowmd.ui.theme.DarkColorScheme
 import io.mockk.every
 import io.mockk.mockk
 import io.noties.markwon.Markwon
+import io.noties.markwon.recycler.MarkwonAdapter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.commonmark.node.FencedCodeBlock
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Guards **M-222**: a code block must never show the source of a Mermaid diagram that failed to load.
+ * M-70: the reader's Mermaid lane, against a renderer that really SUSPENDS until the test answers it,
+ * so every assertion about a result runs after that result has gone through the main dispatcher, and
+ * every "pending" assertion runs while the render is provably still waiting (a test that cannot fail is not a test).
  *
- * Code, YAML and Mermaid blocks share one recycled holder. A Mermaid bind starts a Coil request whose
- * error path writes the diagram's source into `codeView`. Seen on the S24+ (stress test v1.1): the
- * request outlived the bind, the holder was reused for a code block or the front-matter card, and the
- * late failure overwrote that block's text with the Mermaid source.
+ * Code, YAML and Mermaid blocks share one recycled holder, so a render that outlives its bind must
+ * never draw over the block the holder shows next (M-222's class). Two things stop it: the router's one
+ * reset cancels the render on every rebind (M-256), and the holder's key refuses whatever still lands.
+ * Each case is built so that only the guard it names can decide it: the stale-key cases bind through the
+ * entry directly, where no router reset runs, so the key check is the only thing left to refuse the
+ * answer; the router cases bind through the reader's adapter.
  *
- * The request here is real Coil, with a fetcher that fails only when the test says so, AFTER the holder
- * has been rebound. The holder sits in an attached activity window, as a list item does. Each case
- * waits for the fetch to START before rebinding and for the request to END (error or cancel) before
- * asserting, so it cannot pass by asserting before the late result arrives. Seen failing without the
- * fix: both rebind cases showed the Mermaid source.
+ * Seen failing without each fix: with the key check removed, both stale-key cases applied the old
+ * answer; with `resetMermaid()` removed from the router, the front-matter card kept the caption (M-120)
+ * and the pending render was never cancelled (M-256).
  */
 @RunWith(RobolectricTestRunner::class)
 class FencedCodeBlockEntryStaleMermaidTest {
 
-    private lateinit var context: Context
-    private lateinit var activity: Activity
-    private val release = CompletableDeferred<Unit>()
-    private val fetchStarted = AtomicBoolean(false)
-    private val requestEnded = AtomicBoolean(false)
+    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    /** A fetcher for every URI that waits for [release], then fails as mermaid.ink does on bad syntax. */
-    private inner class FailingFetcher : Fetcher {
-        override suspend fun fetch(): FetchResult {
-            fetchStarted.set(true)
-            release.await()
-            throw IOException("mermaid.ink rejected the diagram")
+    /** Each source waits on its own answer from the test; records starts and cancellations. */
+    private class GatedRenderer : MermaidDiagramRenderer {
+        val started = mutableListOf<String>()
+        val cancelled = mutableListOf<String>()
+        private val answers = mutableMapOf<String, CompletableDeferred<Bitmap?>>()
+
+        override suspend fun render(source: String, widthPx: Int, style: MermaidStyle): Bitmap? {
+            started += source
+            try {
+                return answers.getOrPut(source) { CompletableDeferred() }.await()
+            } catch (e: CancellationException) {
+                cancelled += source
+                throw e
+            }
         }
+
+        fun answer(source: String, bitmap: Bitmap?) = answers.getValue(source).complete(bitmap)
     }
 
-    @Before
-    fun setUp() {
-        activity = Robolectric.buildActivity(Activity::class.java).setup().get()
-        context = activity
-        val ended = object : EventListener {
-            override fun onError(request: ImageRequest, result: ErrorResult) = requestEnded.set(true)
-            override fun onCancel(request: ImageRequest) = requestEnded.set(true)
-            override fun onSuccess(request: ImageRequest, result: SuccessResult) = requestEnded.set(true)
-        }
-        Coil.setImageLoader(
-            ImageLoader.Builder(context)
-                .components {
-                    add(Fetcher.Factory<Uri> { _: Uri, _: Options, _: ImageLoader -> FailingFetcher() })
-                }
-                .eventListener(ended)
-                .build(),
-        )
-    }
+    private val renderer = GatedRenderer()
 
     @After
-    fun tearDown() {
-        release.complete(Unit)
-        Coil.reset()
-    }
+    fun tearDown() = scope.cancel()
+
+    private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+
+    private fun bitmap(): Bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+
+    private fun shownBitmap(holder: FencedCodeBlockEntry.Holder): Bitmap? =
+        (holder.mermaidImage.drawable as? BitmapDrawable)?.bitmap
 
     /** A Markwon that renders the node's literal as plain text. */
     private fun literalMarkwon(): Markwon = mockk<Markwon>(relaxed = true).also { m ->
@@ -97,103 +96,189 @@ class FencedCodeBlockEntryStaleMermaidTest {
         every { m.setParsedMarkdown(any(), any()) } answers { firstArg<TextView>().text = secondArg() }
     }
 
-    private fun node(info: String, literal: String) = FencedCodeBlock().apply {
-        this.info = info
+    private fun mermaidNode(literal: String) = FencedCodeBlock().apply {
+        info = "mermaid"
         this.literal = literal
     }
 
-    private fun attachedHolder(entry: FencedCodeBlockEntry): FencedCodeBlockEntry.Holder {
-        val parent = android.widget.FrameLayout(context)
-        activity.setContentView(parent)
-        val holder = entry.createHolder(android.view.LayoutInflater.from(context), parent)
-        parent.addView(holder.itemView)
+    private val first = mermaidNode("flowchart TD\n  A --> B\n")
+    private val second = mermaidNode("flowchart TD\n  C --> D\n")
+
+    private val entry = FencedCodeBlockEntry(context, mermaid = MermaidDiagrams(renderer, scope))
+
+    private fun entryHolder() = entry.createHolder(LayoutInflater.from(context), FrameLayout(context))
+
+    /** Binds [first], and checks the render is really waiting with the empty panel showing. */
+    private fun bindPending(holder: FencedCodeBlockEntry.Holder, node: FencedCodeBlock = first) {
+        entry.bindMermaid(literalMarkwon(), holder, node)
         idle()
-        return holder
+        assertEquals("precondition: the render started", node.literal, renderer.started.last())
+        assertEquals("pending: the panel shows", View.VISIBLE, holder.mermaidImage.visibility)
+        assertNull("pending: the panel is empty", holder.mermaidImage.drawable)
+        assertEquals("pending: no code", View.GONE, holder.codeScroll.visibility)
+        assertEquals("pending: no caption", View.GONE, holder.mermaidCaption.visibility)
     }
 
-    private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+    // ---- M-228: a broken diagram's source is not a search match ----
 
-    /** Idle the main looper until [flag] is set; Coil hops to a worker thread and back. */
-    private fun awaitFlag(flag: AtomicBoolean, what: String) {
-        val deadline = System.currentTimeMillis() + TIMEOUT_MS
-        while (!flag.get()) {
-            assertTrue("timed out waiting for $what", System.currentTimeMillis() < deadline)
-            idle()
-            Thread.sleep(POLL_MS)
+    /**
+     * Search does not count text inside a Mermaid fence (the diagram is a picture), so the source a
+     * broken diagram falls back to must not paint matches either, or the screen would show matches the
+     * counter skips. The ordinary fence is the control: the same query is painted there.
+     */
+    @Test
+    fun `a broken diagram's source paints no search matches, an ordinary fence does`() {
+        val search =
+            SearchHighlight(query = "flowchart", otherColor = 0xFF00FF00.toInt(), focusedColor = 0xFF00FF00.toInt())
+        val searching =
+            FencedCodeBlockEntry(context, searchHighlight = search, mermaid = MermaidDiagrams(renderer, scope))
+        val holder = searching.createHolder(LayoutInflater.from(context), FrameLayout(context))
+
+        searching.bindMermaid(literalMarkwon(), holder, first)
+        idle()
+        renderer.answer(first.literal, null)
+        idle()
+        assertEquals("precondition: the source shows", View.VISIBLE, holder.codeScroll.visibility)
+        assertEquals("the fallback paints no match", 0, highlights(holder.codeView))
+
+        val plain = FencedCodeBlock().apply {
+            info = "text"
+            literal = first.literal
         }
-        idle()
+        searching.bindHolder(literalMarkwon(), holder, plain)
+        assertTrue("control: an ordinary fence paints the match", highlights(holder.codeView) > 0)
     }
 
-    private val mermaid = node("mermaid", "flowchart TD\n  A[Valid start] --> B{{Broken syntax")
+    private fun highlights(view: TextView): Int = (view.text as? android.text.Spanned)
+        ?.getSpans(0, view.text.length, android.text.style.BackgroundColorSpan::class.java)?.size ?: 0
+
+    // ---- (b) and (c): what an answer shows ----
 
     @Test
-    fun `a failed Mermaid fetch does not overwrite the code block the holder shows next`() {
-        val entry = FencedCodeBlockEntry(context)
-        val markwon = literalMarkwon()
-        val holder = attachedHolder(entry)
+    fun `no picture shows the source as a code block with the caption`() {
+        val holder = entryHolder()
+        bindPending(holder)
 
-        entry.bindMermaid(markwon, holder, mermaid)
-        awaitFlag(fetchStarted, "the Mermaid fetch to start")
-
-        val python = node("python", "def f():\n    return 42")
-        entry.bindHolder(markwon, holder, python)
+        renderer.answer(first.literal, null)
         idle()
-        assertEquals("precondition: the rebind shows the code block", python.literal, holder.codeView.text.toString())
 
-        release.complete(Unit)
-        awaitFlag(requestEnded, "the Mermaid request to end")
-
-        assertEquals(
-            "the late Mermaid failure must not replace the code block's text",
-            python.literal,
-            holder.codeView.text.toString(),
-        )
+        assertEquals(View.GONE, holder.mermaidImage.visibility)
+        assertEquals(View.VISIBLE, holder.codeScroll.visibility)
+        assertEquals(View.VISIBLE, holder.copyButton.visibility)
+        assertEquals("Safeguard 3: an undrawn diagram shows its source", first.literal, holder.codeView.text.toString())
+        assertEquals(View.VISIBLE, holder.mermaidCaption.visibility)
+        assertEquals("Diagram could not be drawn. Showing its source.", holder.mermaidCaption.text.toString())
+        assertEquals(DarkColorScheme.secondaryText.toArgb(), holder.mermaidCaption.currentTextColor)
     }
 
     @Test
-    fun `a failed Mermaid fetch does not overwrite the front-matter card the holder shows next`() {
-        val entry = FencedCodeBlockEntry(context)
-        val yamlEntry = FrontmatterBlockEntry(context)
-        val markwon = literalMarkwon()
-        val holder = attachedHolder(entry)
+    fun `a picture is shown in place of the code, with no caption`() {
+        val holder = entryHolder()
+        bindPending(holder)
+        val picture = bitmap()
 
-        entry.bindMermaid(markwon, holder, mermaid)
-        awaitFlag(fetchStarted, "the Mermaid fetch to start")
-
-        yamlEntry.bindHolder(markwon, holder, node("yaml", "title: Stress test\nauthor: fixture"))
+        renderer.answer(first.literal, picture)
         idle()
-        val card = holder.codeView.text.toString()
-        assertTrue("precondition: the card shows the front matter", card.contains("Stress test"))
 
-        release.complete(Unit)
-        awaitFlag(requestEnded, "the Mermaid request to end")
+        assertSame(picture, shownBitmap(holder))
+        assertEquals(View.VISIBLE, holder.mermaidImage.visibility)
+        assertEquals(View.GONE, holder.codeScroll.visibility)
+        assertEquals(View.GONE, holder.copyButton.visibility)
+        assertEquals(View.GONE, holder.mermaidCaption.visibility)
+    }
 
-        assertEquals(
-            "the late Mermaid failure must not replace the front-matter card",
-            card,
-            holder.codeView.text.toString(),
-        )
+    // ---- (a): the key refuses a stale answer ----
+
+    @Test
+    fun `a picture for the diagram the holder showed before is not drawn`() {
+        val holder = entryHolder()
+        bindPending(holder, first)
+        bindPending(holder, second)
+
+        renderer.answer(first.literal, bitmap())
+        idle()
+        assertNull("the old diagram's picture must not land on the new one", holder.mermaidImage.drawable)
+
+        val picture = bitmap()
+        renderer.answer(second.literal, picture)
+        idle()
+        assertSame("control: the current diagram's own picture lands", picture, shownBitmap(holder))
     }
 
     @Test
-    fun `a Mermaid fetch that fails while its own block is shown still falls back to the source`() {
-        val entry = FencedCodeBlockEntry(context)
-        val holder = attachedHolder(entry)
+    fun `no picture for the diagram the holder showed before does not show its source`() {
+        val holder = entryHolder()
+        bindPending(holder, first)
+        bindPending(holder, second)
 
-        entry.bindMermaid(literalMarkwon(), holder, mermaid)
-        awaitFlag(fetchStarted, "the Mermaid fetch to start")
-        release.complete(Unit)
-        awaitFlag(requestEnded, "the Mermaid request to end")
+        renderer.answer(first.literal, null)
+        idle()
 
-        assertEquals(
-            "Safeguard 3: an unrendered diagram shows its source",
-            mermaid.literal,
-            holder.codeView.text.toString(),
-        )
+        assertEquals("the old diagram's fallback must not show", View.GONE, holder.codeScroll.visibility)
+        assertEquals(View.GONE, holder.mermaidCaption.visibility)
+        assertEquals(View.VISIBLE, holder.mermaidImage.visibility)
+    }
+
+    // ---- (d) and (e): the router's one reset ----
+
+    // Front matter must open the document; the diagram and a code block follow it.
+    private val markdown = listOf(
+        "---\ntitle: Stress test\n---",
+        "```mermaid\nflowchart TD\n  A --> B{{Broken\n```",
+        "```python\ndef f():\n    return 42\n```",
+    ).joinToString("\n\n")
+
+    private fun readerAdapter(): MarkwonAdapter {
+        val markwon = buildPilcrowMarkwon(context, DarkColorScheme)
+        return RecyclerAdapterEntries.buildMarkdownAdapter(
+            context,
+            markwon,
+            mermaid = MermaidDiagrams(renderer, scope),
+        ).also { it.setMarkdown(markwon, markdown) }
+    }
+
+    private fun MarkwonAdapter.holder(): FencedCodeBlockEntry.Holder =
+        onCreateViewHolder(FrameLayout(context), getItemViewType(MERMAID)) as FencedCodeBlockEntry.Holder
+
+    @Test
+    fun `M-120 - front matter bound after a Mermaid fallback has no caption`() {
+        val adapter = readerAdapter()
+        val holder = adapter.holder()
+        adapter.onBindViewHolder(holder, MERMAID)
+        idle()
+        renderer.answer(renderer.started.single(), null)
+        idle()
+        assertEquals("precondition: the fallback caption shows", View.VISIBLE, holder.mermaidCaption.visibility)
+
+        adapter.onBindViewHolder(holder, FRONT_MATTER)
+        idle()
+
+        assertTrue("precondition: the card shows", holder.codeView.text.contains("Stress test"))
+        assertEquals("the front-matter card must not keep the caption", View.GONE, holder.mermaidCaption.visibility)
+    }
+
+    @Test
+    fun `M-256 - a pending render is cancelled when the holder is rebound to a code block`() {
+        val adapter = readerAdapter()
+        val holder = adapter.holder()
+        adapter.onBindViewHolder(holder, MERMAID)
+        idle()
+        val source = renderer.started.single()
+
+        adapter.onBindViewHolder(holder, CODE)
+        idle()
+
+        assertEquals("the old render is cancelled", listOf(source), renderer.cancelled)
+        renderer.answer(source, null)
+        idle()
+        assertTrue("the code block keeps its text", holder.codeView.text.contains("return 42"))
+        assertEquals(View.GONE, holder.mermaidImage.visibility)
+        assertEquals(View.GONE, holder.mermaidCaption.visibility)
     }
 
     private companion object {
-        const val TIMEOUT_MS = 10_000L
-        const val POLL_MS = 10L
+        const val FRONT_MATTER = 0
+        const val MERMAID = 1
+        const val CODE = 2
     }
 }

@@ -4,6 +4,7 @@
 package com.pilcrowmd
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import com.pilcrowmd.di.AppContainer
 import com.pilcrowmd.di.DefaultAppContainer
 import kotlinx.coroutines.CoroutineScope
@@ -24,5 +25,12 @@ class PilcrowApplication : Application() {
         applicationScope.launch {
             container.fileRepository.recoverPendingSaves()
         }
+    }
+
+    // M-70: once the app's UI is in the background, drop the cached diagrams and the hidden WebView
+    // that draws them; the next diagram on screen builds them again.
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) container.mermaidRenderer.trim()
     }
 }

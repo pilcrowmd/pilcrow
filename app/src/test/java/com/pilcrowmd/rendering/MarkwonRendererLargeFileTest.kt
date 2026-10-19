@@ -62,6 +62,7 @@ class MarkwonRendererLargeFileTest {
                 MarkdownPreview(
                     model = remember { renderer.readerModelFor(largeMarkdown) },
                     renderer = renderer,
+                    mermaidRenderer = NullMermaidRenderer,
                     fontScale = 1.0f,
                 )
             }

@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pilcrowmd.ui.screen.MainScreen
 import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
+import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
 
 /** Bounded minimum the branded splash stays up so its lines→¶ morph plays. */
 private const val SPLASH_MIN_DISPLAY_MS = 900L
@@ -183,6 +184,9 @@ fun PilcrowApp(
         val viewModel: MarkdownViewModel = viewModel(
             factory = MarkdownViewModel.provideFactory(container),
         )
+        val prompts: WelcomePromptsViewModel = viewModel(
+            factory = WelcomePromptsViewModel.provideFactory(container),
+        )
 
         // Evaluate stranded WAL slots once per process start. Detection always
         // runs; the dialog auto-pops only on a launcher start with slots — never on a file open.
@@ -211,8 +215,10 @@ fun PilcrowApp(
         // Thread the MarkwonRenderer to MainScreen so it doesn't construct one in the UI layer.
         MainScreen(
             viewModel = viewModel,
+            prompts = prompts,
             context = context,
             renderer = container.markwonRenderer,
+            mermaidRenderer = container.mermaidRenderer,
             // M-93: the banner and folder picker for a note's pictures.
             imageFolderViewModel = viewModel(factory = ImageFolderViewModel.provideFactory(container)),
         )

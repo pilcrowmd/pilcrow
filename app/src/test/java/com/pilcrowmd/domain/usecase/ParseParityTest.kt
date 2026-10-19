@@ -3,13 +3,22 @@
 
 package com.pilcrowmd.domain.usecase
 
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.AdapterBlocks
+import com.pilcrowmd.domain.markdown.CodeBlockPiece
+import com.pilcrowmd.domain.markdown.EmojiShortcodes
 import com.pilcrowmd.domain.markdown.ReaderDocument
+import com.pilcrowmd.domain.markdown.ReaderModel
+import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.buildPilcrowMarkwon
+import com.pilcrowmd.repository.AssetEmojiTable
 import com.pilcrowmd.screenshot.MarkdownSampleProvider
 import com.pilcrowmd.testing.bigParagraph
+import com.pilcrowmd.testing.fencedCode
 import com.pilcrowmd.testing.hardInlineParagraph
+import com.pilcrowmd.testing.readerModelFor
+import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonReducer
 import org.commonmark.node.Node
 import org.junit.Assert.assertEquals
@@ -67,7 +76,7 @@ class ParseParityTest {
     private fun normalize(types: List<String>): List<String> =
         types.map { if (it == "JLatexMathBlock") "Paragraph" else it }
 
-    private fun assertParity(name: String, markdown: String) {
+    private fun assertParity(name: String, markdown: String, markwon: Markwon = this.markwon) {
         val render = topLevelTypes(ReaderDocument.transform(markwon.parse(markdown)))
         val search = topLevelTypes(parity.parseDocument(markdown)!!)
         assertEquals(
@@ -113,6 +122,45 @@ class ParseParityTest {
         assertEquals(listOf("Heading") + List(render.size - 2) { "Paragraph" } + "Heading", render)
     }
 
+    /**
+     * Issue #17: a long code block is cut by every parse the reader's numbering rests on, in the same
+     * pieces: the render parse and the parity parse (types and count), and the model the ViewModel
+     * prepares for the reader (blocks), which cuts it itself, not through the default transform.
+     */
+    @Test
+    fun aLongCodeBlockSplitsIntoTheSamePiecesInEveryParser() {
+        val md =
+            "# Head\n\n" + fencedCode(250, width = 60) + "\n## Tail\n\n" + fencedCode(60, info = "kotlin") + "\nEnd.\n"
+        assertParity("long code block", md)
+
+        val render = ReaderDocument.transform(markwon.parse(md))
+        val search = AdapterBlocks.of(parity.parseDocument(md)!!)
+        val reader = (
+            MarkwonRenderer(ApplicationProvider.getApplicationContext()).readerModelFor(md) as ReaderModel.Markdown
+            ).blocks
+        val pieces = { blocks: List<Node> -> blocks.filterIsInstance<CodeBlockPiece>().map { it.literal } }
+
+        assertEquals("same number of items", search.size, reader.size)
+        assertEquals("same item types", search.map { it.javaClass.simpleName }, reader.map { it.javaClass.simpleName })
+        assertEquals("same piece literals", pieces(search), pieces(reader))
+        assertEquals("same piece literals from the render parse", pieces(search), pieces(AdapterBlocks.of(render)))
+        assertEquals("250 lines in pieces of 100, 100 and 50", 3, pieces(reader).size)
+        assertEquals(
+            "the short block after the heading is one block",
+            1,
+            reader.count {
+                it is org.commonmark.node.FencedCodeBlock &&
+                    it !is CodeBlockPiece
+            },
+        )
+        // The pieces carry the whole block, so Copy and the colours see the same text in every tree.
+        val groups = { blocks: List<Node> ->
+            blocks.filterIsInstance<CodeBlockPiece>().map { it.group.literal }.distinct()
+        }
+        assertEquals(groups(search), groups(reader))
+        assertEquals(1, groups(reader).size)
+    }
+
     private fun paragraphChildClasses(document: Node): List<String> = buildList {
         var block = document.firstChild
         while (block != null) {
@@ -149,6 +197,48 @@ class ParseParityTest {
             search,
         )
         assertTrue("the paragraph was split: ${render.size} top-level blocks", render.size > 3)
+    }
+
+    /**
+     * M-247: a shortcode is inline, so it must never change the block sequence, including where a
+     * `:name:` sits next to block syntax (a heading, a table cell, a list item, a footnote).
+     */
+    @Test
+    fun emojiShortcodesStayInBlockParity() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val table = AssetEmojiTable({ context.assets.open(AssetEmojiTable.ASSET_PATH) }, canDraw = { true })
+        val emoji = buildPilcrowMarkwon(context, emoji = EmojiShortcodes(table))
+        assertParity("heading with a shortcode", "# Done :tada:\n\nbody :smile:", emoji)
+        assertParity("table cell", "| a :+1: | b |\n|---|---|\n| :-1: | 2 |\n\nafter", emoji)
+        assertParity("list and quote", "- :smile:\n- b\n\n> :tada: q\n", emoji)
+        assertParity("footnote", "See[^1] :smile:\n\n[^1]: note :tada:\n", emoji)
+        MarkdownSampleProvider().values.forEach { assertParity(it.name, it.markdown, emoji) }
+    }
+
+    @Test
+    fun admonitionsParseToTheSameBlockSequence() {
+        // M-251: the admonition block parser is registered on BOTH parsers (CalloutPlugin and the
+        // parity parser). Registered on one side only, the other sees a paragraph or code block.
+        val cases = mapOf(
+            "python-markdown admonition" to
+                "Before\n\n!!! info \"Title\"\n    One.\n\n    - a\n\n    Two.\n\nAfter",
+            "admonition interrupting a paragraph" to "Before\n!!! note\n    Body\n\nAfter",
+            "collapsible admonition" to "???+ tip\n    Body\n\nAfter",
+            "fenced admonition" to "::: warning Title\nBody\n\n- a\n:::\nAfter",
+            "fenced admonition after a stray opener" to ":::: note\nStray\n\n# Heading\n\n::: tip\nT\n:::\nLast",
+            "fenced admonition holding a fence in code" to "::: note\n```\n:::\n```\n:::\nAfter",
+            "github alert with title and fold sign" to "> [!TIP]- Title\n> Body\n\nAfter",
+            "unknown admonition types beside known ones" to
+                "!!! foo\n    Body\n\n!!! note\n    Body\n\n::: foo\nBody\n:::\n\n::: tip\nBody\n:::",
+        )
+        cases.forEach { (name, markdown) ->
+            assertParity(name, markdown)
+            assertAdapterParity(name, markdown)
+            assertTrue(
+                "\"$name\" must actually parse to a callout, or the parity above is vacuous",
+                topLevelTypes(parity.parseDocument(markdown)!!).contains("CalloutBlock"),
+            )
+        }
     }
 
     private fun assertAdapterParity(name: String, markdown: String) {

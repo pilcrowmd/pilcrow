@@ -105,7 +105,9 @@ unidirectional data flow** and strict layer boundaries:
 - **Data** hides file I/O and persistence behind interfaces (`FileRepository` over the Storage
   Access Framework; `StorageManager` over Jetpack DataStore).
 - Dependencies are wired through a single hand-written composition root (a manual `AppContainer`),
-  and Markdown is rendered to native views – **never a WebView**.
+  and Markdown is rendered to native views – **never a WebView**. The single exception is the
+  Mermaid diagram compiler, a hidden, sandboxed WebView that only turns diagrams into pictures (see
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#mermaid-diagrams-the-one-webview)).
 
 **Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making structural changes.**
 

@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.model.RenderMode
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import org.commonmark.node.FencedCodeBlock
 import org.junit.Assert.assertEquals
@@ -34,7 +35,7 @@ class PdfFrontmatterRoutingTest {
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
         val renderer = warmedMarkwonRenderer(context)
-        exporter = PdfExporter(context, renderer)
+        exporter = PdfExporter(context, renderer, NullMermaidRenderer)
     }
 
     /** The printed text of every fenced block, in document order, through the export's own dispatch. */

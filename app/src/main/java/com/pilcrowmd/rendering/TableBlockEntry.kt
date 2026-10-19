@@ -23,6 +23,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.res.ResourcesCompat
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.markdown.EmojiShortcode
 import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
@@ -323,6 +324,8 @@ class TableBlockEntry(
                     is HtmlInline -> sb.append(c.literal)
                     // A resolved marker paints its ordinal — the string search models for it.
                     is FootnoteReference -> sb.append(c.ordinal)
+                    // M-247: a shortcode paints its emoji, the string search models for it.
+                    is EmojiShortcode -> sb.append(c.emoji)
                     is SoftLineBreak -> sb.append(' ')
                     is HardLineBreak -> sb.append('\n')
                     is Image -> Unit

@@ -1,6 +1,14 @@
 import java.io.FileInputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.time.Duration
+import java.time.LocalDate
 import java.util.Properties
+import javax.inject.Inject
 
 plugins {
     id("com.android.application")
@@ -36,8 +44,14 @@ android {
         applicationId = "com.pilcrowmd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.0.14"
+        versionCode = 16
+        versionName = "1.0.15"
+        // M-174: the release-prep date, bumped in the same edit as versionName (docs/PUBLISHING.md
+        // step 1). File content, never the build clock or git, so every builder produces the same
+        // bytes (F-Droid). ReleasePrepDateTest fails if it is not later than the previous release.
+        val releasePrepDate = "2026-10-19"
+        LocalDate.parse(releasePrepDate) // a malformed date fails the build
+        buildConfigField("String", "RELEASE_PREP_DATE", "\"$releasePrepDate\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -60,11 +74,9 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
-            // R8 runs in NO-OP mode (proguard-rules.pro: -dontshrink -dontobfuscate -dontoptimize):
-            // code is byte-identical to minify-off, but R8 emits the mapping file into the AAB's
-            // BUNDLE-METADATA so Play Vitals stack traces stay symbolicated and the Console
-            // "no deobfuscation file" warning goes away. Real shrinking is a deliberate,
-            // separately-UAT'd future change — do not flip these flags casually.
+            // R8 shrinks, optimises and obfuscates release code. The keep rules it needs, and
+            // why, are in proguard-rules.pro. The mapping file lands in the AAB's
+            // BUNDLE-METADATA, so Play Vitals stack traces are deobfuscated automatically.
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -219,15 +231,15 @@ dependencies {
     implementation("io.github.rosemoe:editor")
     implementation("io.github.rosemoe:language-textmate")
 
-    // Coil — async image loading for the opt-in Mermaid cloud renderer.
-    // Used only when the user enables "Render Mermaid via cloud"; loads the PNG
-    // returned by mermaid.ink into a native ImageView. Apache-2.0.
+    // Coil: async image loading for a note's local pictures (M-93, MarkdownImageLoader). It loads
+    // nothing from the network: the app has no INTERNET permission (M-70). Apache-2.0.
     implementation("io.coil-kt:coil:2.7.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.5.0")
     androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
     // Robolectric 4.16.x: improved GraphicsMode.NATIVE rendering for Compose (req. by Roborazzi).
     testImplementation("org.robolectric:robolectric:4.16.1")
 
@@ -385,6 +397,166 @@ tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
 
 // Mutation testing (PIT). Inert unless `-Pmutation` is passed; see app/mutation.gradle.kts.
 if (providers.gradleProperty("mutation").isPresent) apply(from = "mutation.gradle.kts")
+
+// Offline Mermaid (M-70): mermaid.min.js fetched at build time, SHA-256 pinned, merged into assets.
+// ---------------------------------------------------------------------------
+// Offline Mermaid (M-70): the diagram compiler the app bundles, fetched AT BUILD TIME and pinned by
+// hash (security lock 5). The script is never committed to the repository; this section is the
+// only record of which one ships.
+//
+// What it does, per variant: download the npm tarball once into the Gradle user home (outside
+// build/, so `./gradlew clean` does not force a re-download), check its SHA-256 against the pin
+// below, and extract two files into a generated assets directory that AGP merges into the APK:
+//
+//   package/dist/mermaid.min.js  ->  assets/mermaid/mermaid.min.js
+//   package/LICENSE              ->  assets/licenses/MIT-Mermaid.txt
+//
+// A file whose hash does not match is never used. With no verified copy in the cache and no
+// network, the build fails with a message saying so.
+//
+// HOW TO BUMP: change MERMAID_VERSION and MERMAID_SHA256 together. Get the hash from the tarball
+// itself (`curl -sL <url> | shasum -a 256`) and cross-check it against npm's published integrity
+// (`npm view mermaid@<version> dist.integrity`, a base64 SHA-512). Then read the new tree's licence
+// (and its bundled dependencies' notices in dist/) before shipping it: the app ships it verbatim.
+// ---------------------------------------------------------------------------
+
+val mermaidVersion = "11.17.2"
+val mermaidUrl = "https://registry.npmjs.org/mermaid/-/mermaid-$mermaidVersion.tgz"
+
+// SHA-256 of the tarball. npm's own integrity for the same file, for cross-checking:
+// sha512-V6K3C8EBdEsPFZXSKMJe6ppQOENxuHARr9GvHX4hh47lAbhMRD9qf4oEK7LoaRQxULMa80/qt5gHO73aCleBBg==
+val mermaidSha256 = "6ad2f42c3fc26bbf9e45cbb6d11898972573ea52b33a5f4ff51952899f950ffd"
+
+@CacheableTask
+abstract class FetchMermaidAssetsTask : DefaultTask() {
+    @get:Input
+    abstract val version: Property<String>
+
+    @get:Input
+    abstract val url: Property<String>
+
+    @get:Input
+    abstract val sha256: Property<String>
+
+    /** The verified tarball, shared by every variant and every clean build. Not an output. */
+    @get:Internal
+    abstract val cachedTarball: RegularFileProperty
+
+    @get:Internal
+    abstract val offline: Property<Boolean>
+
+    /** Set by AGP's `addGeneratedSourceDirectory`, which picks the directory under build/generated. */
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @get:Inject
+    abstract val archives: ArchiveOperations
+
+    @get:Inject
+    abstract val fileSystem: FileSystemOperations
+
+    @TaskAction
+    fun fetch() {
+        val tarball = cachedTarball.get().asFile
+        if (!tarball.isFile || sha256Of(tarball) != sha256.get()) download(tarball)
+
+        val renames = mapOf(
+            "package/dist/mermaid.min.js" to RelativePath(true, "mermaid", "mermaid.min.js"),
+            "package/LICENSE" to RelativePath(true, "licenses", "MIT-Mermaid.txt"),
+        )
+        fileSystem.sync {
+            from(archives.tarTree(archives.gzip(tarball))) {
+                include(renames.keys)
+                eachFile { relativePath = renames.getValue(path) }
+                includeEmptyDirs = false
+            }
+            into(outputDir)
+        }
+        renames.values.forEach { target ->
+            val extracted = outputDir.file(target.pathString).get().asFile
+            check(extracted.isFile && extracted.length() > 0) {
+                "mermaid ${version.get()}: ${target.pathString} is missing from the tarball; " +
+                    "the package layout changed, so update this section with the bump."
+            }
+        }
+    }
+
+    /** Downloads to a temporary file, and moves it into place only once its hash matches. */
+    private fun download(target: File) {
+        check(!offline.get()) {
+            "mermaid ${version.get()}: no verified copy at $target and Gradle is --offline. " +
+                "Run once with network access to fetch ${url.get()}."
+        }
+        target.parentFile.mkdirs()
+        val partial = File.createTempFile(target.name, ".part", target.parentFile)
+        try {
+            val connection = URI(url.get()).toURL().openConnection() as HttpURLConnection
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.inputStream.use { input -> partial.outputStream().use { input.copyTo(it) } }
+        } catch (e: IOException) {
+            partial.delete()
+            throw GradleException(
+                "mermaid ${version.get()}: could not download ${url.get()} and no verified copy is " +
+                    "cached at $target. Connect to the network and build again. (${e.message})",
+                e,
+            )
+        }
+        val actual = sha256Of(partial)
+        if (actual != sha256.get()) {
+            partial.delete()
+            throw GradleException(
+                "mermaid ${version.get()}: SHA-256 MISMATCH for ${url.get()}\n" +
+                    "  expected ${sha256.get()}\n  actual   $actual\n" +
+                    "The download was discarded. Do not change the pin unless the version changed too.",
+            )
+        }
+        Files.move(
+            partial.toPath(),
+            target.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+        logger.lifecycle("mermaid ${version.get()}: downloaded and verified ($actual)")
+    }
+
+    private fun sha256Of(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(BUFFER_BYTES)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private companion object {
+        const val TIMEOUT_MS = 30_000
+        const val BUFFER_BYTES = 64 * 1024
+    }
+}
+
+val mermaidCache = File(gradle.gradleUserHomeDir, "caches/pilcrow-mermaid/mermaid-$mermaidVersion.tgz")
+val gradleOffline = gradle.startParameter.isOffline
+
+// One task per variant: AGP gives each generated source directory its own location, so a single
+// task shared by variants would have its output directory overwritten by the last variant wired.
+androidComponents.onVariants { variant ->
+    val taskName = "fetchMermaidAssets" + variant.name.replaceFirstChar { it.uppercase() }
+    val fetch = tasks.register(taskName, FetchMermaidAssetsTask::class.java) {
+        group = "build"
+        description = "Fetches mermaid $mermaidVersion (SHA-256 pinned) into the ${variant.name} assets."
+        version.set(mermaidVersion)
+        url.set(mermaidUrl)
+        sha256.set(mermaidSha256)
+        cachedTarball.set(mermaidCache)
+        offline.set(gradleOffline)
+    }
+    variant.sources.assets?.addGeneratedSourceDirectory(fetch, FetchMermaidAssetsTask::outputDir)
+}
 
 val testMainDispatcherDebug by tasks.registering(Test::class) {
     group = "verification"

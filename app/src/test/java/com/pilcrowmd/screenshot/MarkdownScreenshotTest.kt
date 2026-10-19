@@ -18,9 +18,11 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.rendering.MathSourceSpan
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.testing.readerModelFor
 import com.pilcrowmd.ui.components.MarkdownPreview
+import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
@@ -43,6 +45,7 @@ data class ScreenshotCase(val sample: MarkdownSample, val fontScale: Float, val 
     val scalePct: Int get() = (fontScale * 100).roundToInt()
     val themeSuffix: String get() = when (themeMode) {
         ThemeMode.DARK -> "dark"
+        ThemeMode.AMOLED -> "amoled"
         ThemeMode.LIGHT -> "light"
     }
     override fun toString(): String = "${sample.name}@${scalePct}_$themeSuffix"
@@ -56,8 +59,9 @@ data class ScreenshotCase(val sample: MarkdownSample, val fontScale: Float, val 
  * font scale (0.85–1.6) and per theme (Dark, Light), so text-clipping and line-height regressions
  * at min/default/max zoom and across both themes are caught. Any future change to padding,
  * typography, or line-height that shifts the rendered layout fails the verify task with a pixel diff.
+ * AMOLED (M-92) changes colours only, not layout, so it is captured at 100% alone.
  *
- * Total cases: 18 samples × 3 scales × 2 themes = 108 test cases.
+ * Total cases: samples × (3 scales × 2 themes + 1 AMOLED).
  *
  *   Record baseline:  ./gradlew recordRoborazziDebug
  *   Verify (gate):    ./gradlew verifyRoborazziDebug
@@ -112,6 +116,7 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
             // Select color scheme based on theme
             val colorScheme = when (case.themeMode) {
                 ThemeMode.DARK -> DarkColorScheme
+                ThemeMode.AMOLED -> AmoledColorScheme
                 ThemeMode.LIGHT -> LightColorScheme
             }
 
@@ -124,6 +129,7 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
                     MarkdownPreview(
                         model = remember { renderer.readerModelFor(case.sample.markdown, case.sample.renderMode) },
                         renderer = renderer,
+                        mermaidRenderer = NullMermaidRenderer,
                         fontScale = case.fontScale,
                     )
                 }
@@ -216,7 +222,7 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
         // never occur on device. Each sample is captured at all three.
         private val FONT_SCALES = listOf(0.85f, 1.0f, 1.6f)
 
-        // Both themes are captured: Dark + Light. Total cases = samples × scales × themes.
+        // Both themes are captured at every scale: Dark + Light.
         private val THEMES = listOf(ThemeMode.DARK, ThemeMode.LIGHT)
 
         @JvmStatic
@@ -228,7 +234,7 @@ class MarkdownScreenshotTest(private val case: ScreenshotCase) {
                     THEMES.map { theme ->
                         ScreenshotCase(sample, scale, theme)
                     }
-                }
+                } + ScreenshotCase(sample, 1.0f, ThemeMode.AMOLED)
             }
         }
     }

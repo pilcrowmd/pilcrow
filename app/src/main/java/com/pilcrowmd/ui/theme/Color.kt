@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * Swappable color scheme for Pilcrow. Contains all 21 color tokens.
- * Dark and Light schemes available.
+ * Dark, AMOLED and Light schemes available on screen; Print for the PDF.
  */
 data class PilcrowColorScheme(
     // Primary backgrounds and surfaces
@@ -214,6 +214,42 @@ val DarkColorScheme = PilcrowColorScheme(
         warning = Color(0xFFD4A248),
         caution = Color(0xFFE0685E),
     ),
+)
+
+/**
+ * AMOLED color scheme (M-92) — Dark's layout on a true-black page, with warm off-white text. Every
+ * foreground reaches 7:1 on every surface it can appear on, except the accent on the code-block
+ * surface (6.81:1), so the accent never paints inside a code block (`AmoledContrastTest`).
+ */
+val AmoledColorScheme = PilcrowColorScheme(
+    primaryBackground = Color(0xFF000000), // M-92: true black, pixels off on OLED
+    secondarySurface = Color(0xFF0A0A0B), // M-92: near-black card; the border does the separating
+    border = Color(0xFF343231), // M-92: card border
+    lightBorder = DarkColorScheme.lightBorder,
+    primaryText = Color(0xFFD0CBC4), // M-92: warm off-white, 13.02:1 on the page
+    secondaryText = Color(0xFFB8B4AF), // M-92: 10.19:1 on the page
+    editorText = Color(0xFFC5C1BC), // M-92: code / monospace text, 10.16:1 on the code surface
+    lineNumbers = Color(0xFFA8A5A1), // M-92: the disabled-text role, 8.07:1 on the gutter
+    gutterBg = Color(0xFF0A0A0B), // M-92: the card surface, so the gutter reads as a strip
+    inlineCodeBg = Color(0xFF171515), // M-92: inline code shares the code-block surface, as in Dark
+    inlineCodeText = DarkColorScheme.inlineCodeText,
+    inlineCodeBorder = Color(0xFF4A4545), // M-92: the code-block border
+    codeBlockBg = Color(0xFF171515), // M-92: code-block surface
+    codeBlockBorder = Color(0xFF4A4545), // M-92: code-block border
+    toolbarBorder = Color(0xFF343231), // M-92: the card border
+    searchHighlight = DarkColorScheme.searchHighlight,
+    searchHighlightFocused = DarkColorScheme.searchHighlightFocused,
+    accent = Color(0xFFA78FF3), // M-92: 7.87:1 on the page, 7.41:1 on the card; never inside code
+    onAccent = Color(0xFF000000), // M-92: 7.87:1 on the accent
+    error = DarkColorScheme.error,
+    onError = DarkColorScheme.onError,
+    creamButton = Color(0xFFD0CBC4), // M-92: the primary text colour
+    onCreamButton = Color(0xFF000000), // M-92: the page colour
+    scrimOverlay = DarkColorScheme.scrimOverlay,
+    codeSyntax = OneDarkCodeSyntax,
+    footnoteMarker = Color(0xFFA78FF3), // M-92: the accent, which reaches 7:1 here (not in code)
+    link = DarkColorScheme.link,
+    callouts = DarkColorScheme.callouts,
 )
 
 /** Light's callout colours (M-161); Print reuses them, since both sit on a pale page. */

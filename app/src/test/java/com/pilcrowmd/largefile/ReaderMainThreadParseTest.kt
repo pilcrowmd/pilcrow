@@ -77,7 +77,7 @@ class ReaderMainThreadParseTest {
     fun setUp() {
         harness = ReaderHarness(composeRule, tempFolder)
         mockkObject(ReaderDocument)
-        every { ReaderDocument.transform(any(), any()) } answers {
+        every { ReaderDocument.transform(any(), any(), any(), any()) } answers {
             parsedOnMain += Looper.myLooper() == Looper.getMainLooper()
             callOriginal()
         }

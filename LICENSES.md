@@ -25,7 +25,7 @@
 | STRONG COPYLEFT | 1 |
 | UNKNOWN / UNDECLARED | 0 |
 
-Plus, from manual inventory (not visible to the Gradle plugin): **6 bundled font families (12 files), all OFL-1.1 → PERMISSIVE**, **21 vendored source files (TextMate grammars): 20 → PERMISSIVE (13 MIT, 1 Apache-2.0, 6 MIT AND TextMate Bundle License), 1 → WEAK COPYLEFT (TOML, MIT AND MPL-2.0, see §3)**, and a **native in-app Open-source Licenses screen** (displays all deps + license texts). See §3–§4a.
+Plus, from manual inventory (not visible to the Gradle plugin): **6 bundled font families (12 files), all OFL-1.1 → PERMISSIVE**, **21 vendored source files (TextMate grammars): 20 → PERMISSIVE (13 MIT, 1 Apache-2.0, 6 MIT AND TextMate Bundle License), 1 → WEAK COPYLEFT (TOML, MIT AND MPL-2.0, see §3)**, **1 build-time bundled script (Mermaid `mermaid.min.js`, MIT, with permissive inlined dependencies) → PERMISSIVE**, and a **native in-app Open-source Licenses screen** (displays all deps + license texts). See §3–§4a.
 
 ### Compatibility notes
 
@@ -109,7 +109,12 @@ Font binaries live in `app/src/main/res/font/`, except the formula text fonts (l
 | `app/src/main/assets/textmate/lua/lua.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/lua/syntaxes/`; converted from `sumneko/lua.tmbundle` `b295d83` (MIT), a continuation of `textmate/lua.tmbundle` `8ae5641` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `lua` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-Lua-Grammar.txt` (VS Code, sumneko/lua.tmbundle, textmate/lua.tmbundle). |
 | `app/src/main/assets/textmate/perl/perl.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/perl/syntaxes/`; converted from `textmate/perl.tmbundle` `a85927a` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `perl`/`pl` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-Perl-Grammar.txt` (VS Code, perl.tmbundle). |
 | `app/src/main/assets/textmate/jsonc/JSONC.tmLanguage.json` | `microsoft/vscode` `21232ac`, `extensions/json/syntaxes/`; converted from `microsoft/vscode-JSON.tmLanguage` `9bd83f1` (MIT), which builds on `textmate/json.tmbundle` | MIT AND TextMate Bundle License | PERMISSIVE | Reader colours for `jsonc` fences (NEW-35). Unmodified. The TextMate bundles publish no copyright line; the notice uses the `<bundle> project authors` form VS Code's notices use. License text: ✅ `app/src/main/assets/licenses/MIT-TMBundle-JSONC-Grammar.txt` (VS Code, vscode-JSON.tmLanguage, json.tmbundle). |
+| `assets/mermaid/mermaid.min.js` (generated at build time, not in the repo) | npm `mermaid@11.17.2`, tarball SHA-256 `6ad2f42c3fc26bbf9e45cbb6d11898972573ea52b33a5f4ff51952899f950ffd`, fetched and checked by `app/build.gradle.kts` (section "Offline Mermaid") | MIT | PERMISSIVE | The Mermaid diagram engine, run in the app's one hidden WebView to draw diagrams offline (M-70). Shipped unmodified. Inlined dependencies, all permissive: MIT (most, e.g. cytoscape, dagre-d3-es, dayjs, marked, khroma, roughjs, stylis, uuid, katex, langium, lodash-es, @braintree/sanitize-url, es-toolkit), ISC (d3 modules), BSD-3-Clause (d3-sankey and the older d3-array 2, d3-path 1 and d3-shape 1 it pulls in, d3-ease, rw), Apache-2.0 (chevrotain), MPL-2.0 OR Apache-2.0 (DOMPurify; Apache-2.0 elected), Unlicense (robust-predicates). License text: ✅ `assets/licenses/MIT-Mermaid.txt` (the package's own LICENSE, extracted at build time); licence texts of every inlined library: ✅ `app/src/main/assets/licenses/Mermaid-Bundled-Notices.txt` (generated from the npm trees of mermaid 11.17.2 and of langium 4.2.1 / chevrotain 11.1.2, which @mermaid-js/parser pre-bundles). Bumping: change version and hash together, then re-check these licences. |
+| `app/src/main/assets/emoji/shortcodes.tsv` | `github/gemoji` `v4.1.0` (`5476a66`), `db/emoji.json` | MIT | PERMISSIVE | The reader's `:shortcode:` names (M-247). Converted, not copied: every alias with its emoji, one per line, by `docs/tools/gemoji-to-shortcodes.py`; the header line records the tag and commit. License text: ✅ `app/src/main/assets/licenses/MIT-Gemoji.txt`. |
 | `app/src/main/assets/textmate/md-dark.json` | Own work (`"name": "Pilcrow Dark"`) | n/a (first-party) | – | Editor color theme authored for this project; no third-party obligation. |
+| `app/src/main/assets/textmate/md-amoled.json` | Own work (`"name": "PilcrowMD AMOLED"`) | n/a (first-party) | – | Editor color theme for the AMOLED theme (M-92): `md-dark.json` with a black background and warm off-white text; no third-party obligation. |
+
+The Mermaid row is the one entry not copied into the repository: the build downloads it and refuses it unless the hash matches, so `app/build.gradle.kts` is the record of which file ships.
 
 No vendored Kotlin/Java source was found – `app/src/main/java/**` is first-party (no copied-in third-party files, no foreign license headers). The Prism syntax grammars are generated at build time by `io.noties:prism4j-bundler` (kapt) and derive from PrismJS (MIT); the shipped runtime artifact is `io.noties:prism4j` (Apache-2.0, in §5).
 
@@ -119,17 +124,19 @@ No vendored Kotlin/Java source was found – `app/src/main/java/**` is first-par
 
 ## 4a. In-app Open-source Licenses screen
 
-**Purpose:** Native Compose modal accessible from Settings → About → "Open source licenses ›" row. Displays all 121 runtime dependencies from the bundled JSON report, plus 26 curated entries (6 fonts, 20 vendored-grammar notices). Each entry is tappable to view full license text.
+**Purpose:** Native Compose modal accessible from Settings → About → "Open source licenses ›" row. Displays all 121 runtime dependencies from the bundled JSON report, plus 28 curated entries (6 fonts, 20 vendored-grammar notices, Mermaid, 1 emoji-data notice). Each entry is tappable to view full license text.
 
 **Implementation:**
 - **Screen file:** `app/src/main/java/com/pilcrowmd/ui/components/LicensesScreen.kt` (native Compose, zero WebView)
 - **JSON source:** `app/src/main/assets/open_source_licenses.json` (bundled by license plugin task dependency: `licenseDebugReport → mergeDebugAssets`, `licenseReleaseReport → mergeReleaseAssets`)
-- **Bundled license texts:** `app/src/main/assets/licenses/{OFL-1.1,Apache-2.0,MIT,LGPL-2.1,GPL-2.0-Classpath-Exception}.txt`; the reader grammars' own notices, `MIT-{Shell,TypeScript,Rust,Ruby}-Grammar.txt` (M-136), the nine M-243 notices and the six NEW-35 notices listed in §3; the formula text fonts' notice, `OFL-PilcrowMathText.txt` (M-197)
+- **Bundled license texts:** `app/src/main/assets/licenses/{OFL-1.1,Apache-2.0,MIT,LGPL-2.1,GPL-2.0-Classpath-Exception}.txt`; the reader grammars' own notices, `MIT-{Shell,TypeScript,Rust,Ruby}-Grammar.txt` (M-136), the nine M-243 notices and the six NEW-35 notices listed in §3; the formula text fonts' notice, `OFL-PilcrowMathText.txt` (M-197); Mermaid's `MIT-Mermaid.txt` (generated at build time from the npm package) and `Mermaid-Bundled-Notices.txt` (M-70); the gemoji notice, `MIT-Gemoji.txt` (M-247)
 - **Curated entries (always shown, never skipped):**
   - 6 fonts (all OFL-1.1): Source Serif 4, JetBrains Mono, IBM Plex Mono, Merriweather, Atkinson Hyperlegible, Pilcrow Math Text Greek and Cyrillic (subset of CMU Serif, M-197)
   - 5 grammars (MIT): VSCode Markdown TextMate Grammar; the Shell, TypeScript, Rust and Ruby TextMate grammars (M-136)
   - 9 grammar notices (M-243): PowerShell, Batch File, Julia, GraphQL, HTTP, CSV and TSV, Regular Expression (MIT); Dockerfile (Apache-2.0 AND MIT); TOML (MIT AND MPL-2.0)
   - 6 grammar notices (NEW-35, MIT AND TextMate Bundle License): R, PHP, INI, Lua, Perl, JSON with Comments
+  - 1 Mermaid (MIT, M-70): its detail view shows `licenses/MIT-Mermaid.txt`, then the licence text of every library inlined in `mermaid.min.js` from `licenses/Mermaid-Bundled-Notices.txt` (read off the main thread, shown as a lazy list)
+  - 1 data notice (M-247, MIT): Emoji shortcode names (gemoji)
 - **Special notes displayed in detail view:**
   - **jlatexmath:** "Note: This library is licensed under GPLv2 with the Classpath Exception, which permits linking into other applications. See the full license text for details."
   - **Sora Editor:** "Note: Sora Editor is licensed under LGPL-2.1 and used as an unmodified binary dependency. The app's full source code and the exact dependency version are published, so users may rebuild the app with a modified editor if they wish."

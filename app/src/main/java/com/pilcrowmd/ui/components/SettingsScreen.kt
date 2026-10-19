@@ -8,14 +8,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,14 +38,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Nightlight
+import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -58,13 +64,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -96,8 +107,6 @@ fun SettingsScreen(
     onLineNumbersChanged: (Boolean) -> Unit = {},
     openInEditMode: Boolean = false,
     onOpenInEditModeChanged: (Boolean) -> Unit = {},
-    mermaidCloudEnabled: Boolean = false,
-    onMermaidCloudChanged: (Boolean) -> Unit = {},
     wrapCodeLines: Boolean = false,
     onWrapCodeLinesChanged: (Boolean) -> Unit = {},
     formattingBarEnabled: Boolean = true,
@@ -105,6 +114,9 @@ fun SettingsScreen(
     themeMode: ThemeMode = ThemeMode.DARK,
     onThemeSelected: (ThemeMode) -> Unit = {},
     appVersion: String = "",
+    /** M-176: Google Play installed the app. False by default, so every existing golden is unchanged. */
+    showRateCard: Boolean = false,
+    onRate: () -> Unit = {},
     onClose: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     onOpenGitHub: () -> Unit = {},
@@ -114,6 +126,8 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(c.primaryBackground)
+            // M-309: TalkBack speaks the pane title when the screen appears.
+            .semantics { paneTitle = "Settings" }
             .systemBarsPadding()
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
@@ -142,7 +156,8 @@ fun SettingsScreen(
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(c.secondarySurface)
-                    .clickable { onClose() },
+                    // M-307: without a role TalkBack reads "Close Settings" and nothing to say it acts.
+                    .clickable(role = Role.Button) { onClose() },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -162,20 +177,7 @@ fun SettingsScreen(
         SettingsCard {
             CardTitle("Theme")
             Spacer(Modifier.height(8.dp))
-            Row(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThemeOption(
-                    icon = Icons.Outlined.DarkMode,
-                    label = "Dark",
-                    selected = themeMode == ThemeMode.DARK,
-                    onClick = { onThemeSelected(ThemeMode.DARK) },
-                )
-                ThemeOption(
-                    icon = Icons.Outlined.LightMode,
-                    label = "Light",
-                    selected = themeMode == ThemeMode.LIGHT,
-                    onClick = { onThemeSelected(ThemeMode.LIGHT) },
-                )
-            }
+            ThemeOptionGroup(themeMode = themeMode, onThemeSelected = onThemeSelected)
         }
 
         CardGap()
@@ -339,23 +341,32 @@ fun SettingsScreen(
                 )
             },
         )
+        // M-176: Play installs only (the gate is decided on the device, never in the build — the
+        // Play, F-Droid and GitHub builds are the same bytes). Opens the store listing; no network.
+        if (showRateCard) {
+            CardGap()
+            InfoCard(
+                leadingIcon = Icons.Outlined.StarOutline,
+                title = "Rate PilcrowMD",
+                subtitle = RATING_ASK,
+                onClick = onRate,
+                trailing = {
+                    Icon(
+                        imageVector = Icons.Outlined.OpenInNew,
+                        contentDescription = null,
+                        tint = c.secondaryText,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+            )
+        }
 
         Spacer(Modifier.height(18.dp))
 
         // ───────────── RENDERING ─────────────
         SectionLabel("Rendering")
-        // LaTeX already renders natively/offline — show it as a built-in feature.
-        RenderingFeatureCard(
-            glyph = "{x}",
-            title = "LaTeX Math",
-            subtitle = "Render beautiful math equations.",
-        )
-        CardGap()
-        // Mermaid — opt-in cloud rendering, OFF by default.
-        MermaidToggleCard(checked = mermaidCloudEnabled, onCheckedChange = onMermaidCloudChanged)
         // M-134: a setting, default OFF, because issue #8 asked for both behaviours — wrapping, and
         // keeping side-scroll. The default was promised in public; it is not a tuning knob.
-        CardGap()
         SettingsCard {
             Row(
                 modifier = Modifier
@@ -407,7 +418,9 @@ private fun SectionLabel(text: String) {
         fontSize = 11.sp,
         fontWeight = FontWeight.SemiBold,
         letterSpacing = 1.sp,
-        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+        modifier = Modifier
+            .padding(start = 4.dp, bottom = 6.dp)
+            .semantics { heading() },
     )
 }
 
@@ -439,16 +452,72 @@ private fun CardTitle(text: String) {
     )
 }
 
+private class ThemeChoice(val icon: ImageVector, val label: String, val mode: ThemeMode)
+
+private val THEME_CHOICES = listOf(
+    ThemeChoice(Icons.Outlined.DarkMode, "Dark", ThemeMode.DARK),
+    ThemeChoice(Icons.Outlined.Nightlight, "AMOLED", ThemeMode.AMOLED),
+    ThemeChoice(Icons.Outlined.LightMode, "Light", ThemeMode.LIGHT),
+)
+
+/**
+ * M-92: the theme options sit in one row. When a label would not fit beside its icon in a third of the row
+ * (large system font, narrow screen) they stack one per line instead, so no label breaks mid-word.
+ */
+@Composable
+private fun ThemeOptionGroup(themeMode: ThemeMode, onThemeSelected: (ThemeMode) -> Unit) {
+    val measurer = rememberTextMeasurer()
+    val labelStyle = LocalTextStyle.current.merge(TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium))
+    val density = LocalDensity.current
+    BoxWithConstraints {
+        val widestLabelPx = THEME_CHOICES.maxOf { measurer.measure(it.label, labelStyle).size.width }
+        // Everything ThemeOption puts around the label: icon, icon-to-label gap, side padding, border.
+        val chromePx = with(density) { (16 + 8 + 2 * 12 + 2 * 1).dp.toPx() }
+        val gapsPx = with(density) { (2 * 8).dp.toPx() }
+        val fitsInRow = widestLabelPx + chromePx <= (constraints.maxWidth - gapsPx) / THEME_CHOICES.size
+        if (fitsInRow) {
+            // The options share the tallest one's height, so a label that wraps does not leave one taller.
+            Row(
+                modifier = Modifier.height(IntrinsicSize.Min).selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                THEME_CHOICES.forEach { choice ->
+                    ThemeOption(
+                        icon = choice.icon,
+                        label = choice.label,
+                        selected = themeMode == choice.mode,
+                        onClick = { onThemeSelected(choice.mode) },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
+            }
+        } else {
+            Column(modifier = Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                THEME_CHOICES.forEach { choice ->
+                    ThemeOption(
+                        icon = choice.icon,
+                        label = choice.label,
+                        selected = themeMode == choice.mode,
+                        onClick = { onThemeSelected(choice.mode) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** A theme choice card (icon + label, optional "coming soon" subtitle). */
 @Suppress("LongParameterList")
 @Composable
-private fun RowScope.ThemeOption(
+private fun ThemeOption(
     icon: ImageVector,
     label: String,
     selected: Boolean,
     enabled: Boolean = true,
     subtitle: String? = null,
     onClick: () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
     val c = mdColors()
     val contentColor = when {
@@ -458,9 +527,10 @@ private fun RowScope.ThemeOption(
     }
     val borderColor = if (selected) c.accent else c.border
     Row(
-        modifier = Modifier
-            .weight(1f)
-            .height(40.dp)
+        modifier = modifier
+            // M-92: a minimum, not a fixed height, so a label that wraps at a large font size
+            // grows the option instead of being cut off.
+            .heightIn(min = 40.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(
                 if (selected) c.accent.copy(alpha = 0.12f) else c.primaryBackground,
@@ -632,7 +702,7 @@ private fun InfoCard(
             .clip(RoundedCornerShape(12.dp))
             .background(c.secondarySurface)
             .border(1.dp, c.toolbarBorder, RoundedCornerShape(12.dp))
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button) { onClick() } else Modifier)
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -648,106 +718,6 @@ private fun InfoCard(
             Text(text = subtitle, color = c.secondaryText, fontSize = 12.sp)
         }
         if (trailing != null) trailing()
-    }
-}
-
-/**
- * A rendering-feature row: leading glyph/icon, title, subtitle, and a "Built-in" badge.
- *
- * Every feature listed here ships in the app and is on by default or user-toggleable, so there is
- * no locked/"Coming soon" variant — the card cannot express one, and that is deliberate.
- */
-@Composable
-private fun RenderingFeatureCard(
-    title: String,
-    subtitle: String,
-    glyph: String? = null,
-    leadingIcon: ImageVector? = null,
-) {
-    val c = mdColors()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(c.secondarySurface)
-            .border(1.dp, c.toolbarBorder, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-            if (glyph != null) {
-                Text(
-                    text = glyph,
-                    color = c.accent,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                )
-            } else if (leadingIcon != null) {
-                Icon(
-                    imageVector = leadingIcon,
-                    contentDescription = null,
-                    tint = c.accent,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            CardTitle(title)
-            Text(text = subtitle, color = c.secondaryText, fontSize = 12.sp)
-        }
-        Text(
-            text = "Built-in",
-            color = c.accent,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-/** Mermaid opt-in cloud-render toggle. Off by default; explains the network use. */
-@Composable
-private fun MermaidToggleCard(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    val c = mdColors()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(c.secondarySurface)
-            .border(1.dp, c.toolbarBorder, RoundedCornerShape(12.dp))
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.AccountTree,
-            contentDescription = null,
-            tint = c.accent,
-            modifier = Modifier.size(20.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            CardTitle("Mermaid Diagrams")
-            Text(
-                text = "Off by default. Turning this on sends each diagram's source text over the internet " +
-                    "to mermaid.ink — a third-party service — which renders it as an image. The app makes no " +
-                    "other network connections.",
-                color = c.secondaryText,
-                fontSize = 12.sp,
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = null,
-            modifier = Modifier.scale(0.8f),
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = c.primaryText,
-                checkedTrackColor = c.accent,
-                uncheckedThumbColor = c.secondaryText,
-                uncheckedTrackColor = c.secondarySurface,
-            ),
-        )
     }
 }
 
@@ -776,18 +746,23 @@ private fun AboutCard(appVersion: String, onOpenLicenses: () -> Unit = {}) {
                 tint = c.accent,
                 modifier = Modifier.size(20.dp),
             )
-            Text(
-                text = "About PilcrowMD",
-                color = c.primaryText,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = if (appVersion.isNotEmpty()) "v$appVersion" else "",
-                color = c.secondaryText,
-                fontSize = 12.sp,
-            )
+            // The version sits under the title, not beside it: with the release month it no longer
+            // fitted beside it at the phone's width, and the title wrapped (M-174).
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "About PilcrowMD",
+                    color = c.primaryText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                if (appVersion.isNotEmpty()) {
+                    Text(
+                        text = "v$appVersion",
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
             Icon(
                 imageVector = Icons.Outlined.ChevronRight,
                 contentDescription = null,
@@ -829,7 +804,7 @@ private fun AboutCard(appVersion: String, onOpenLicenses: () -> Unit = {}) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { onOpenLicenses() }
+                    .clickable(role = Role.Button) { onOpenLicenses() }
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,

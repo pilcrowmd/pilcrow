@@ -14,6 +14,7 @@ import com.pilcrowmd.domain.markdown.ReaderModel
 import com.pilcrowmd.domain.markdown.TooDeepDocument
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.rendering.PlainTextBlocks
+import com.pilcrowmd.rendering.calloutTitleSource
 import org.commonmark.node.Node
 
 /**
@@ -71,7 +72,15 @@ class PrepareReaderModelUseCase(
         // M-328: the reader runs the split itself to keep the seams; search and the headings drawer
         // take the same split through ReaderDocument.transform's default, so positions agree.
         val seams = ParagraphSplitter.split(parsed)
-        val document = ReaderDocument.transform(parsed, splitLongParagraphs = false)
+        // M-227: a callout's title reads a formula or emoji as its source, as the PDF does (ReaderTree),
+        // so the title painted here is the text search finds in it.
+        // Issue #17: long code blocks are cut here too, by the same default search and the drawer take.
+        val document = ReaderDocument.transform(
+            parsed,
+            splitLongParagraphs = false,
+            inlineSource = ::calloutTitleSource,
+            splitLongCodeBlocks = true,
+        )
         // Everything that walks the tree runs before [detach] unlinks its blocks.
         val details = Details.sections(document)
         val anchors = HeadingAnchors.targets(document)

@@ -5,9 +5,8 @@
     <!-- No storage permissions: all document access is SAF (per-URI content grants) and the
          crash-recovery WAL lives in internal noBackupFilesDir — neither needs READ/WRITE_EXTERNAL_STORAGE
          at any API level (SAF is permission-free; WRITE_EXTERNAL_STORAGE is a modern no-op). -->
-    <!-- Used only by the opt-in Mermaid cloud renderer (default OFF). No other
-         feature performs network I/O — the reader/editor are fully offline. -->
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- M-70, security lock 1: no network, ever. Strips INTERNET even if a library manifest adds it. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 
     <application
         android:name=".PilcrowApplication"

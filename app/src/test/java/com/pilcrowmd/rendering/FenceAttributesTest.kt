@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.export.PdfContentLayoutBuilder
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.PrintColorScheme
@@ -77,7 +78,7 @@ class FenceAttributesTest {
 
     @Test
     fun `the TextMate path colours a fence with attributes`() {
-        val highlighter = TextMateCodeHighlighter(context.assets::open, nanoTime = { 0L })
+        val highlighter = TextMateCodeHighlighter(context.assets::open)
         val entry = FencedCodeBlockEntry(
             context,
             colorScheme = DarkColorScheme,
@@ -100,7 +101,7 @@ class FenceAttributesTest {
     /** The holder the reader's adapter binds the first block of [markdown] into. */
     private fun readerHolder(markdown: String): FencedCodeBlockEntry.Holder {
         val markwon = buildPilcrowMarkwon(context, DarkColorScheme)
-        val adapter = RecyclerAdapterEntries.buildMarkdownAdapter(context, markwon, mermaidCloudEnabled = false)
+        val adapter = RecyclerAdapterEntries.buildMarkdownAdapter(context, markwon, mermaid = null)
         adapter.setMarkdown(markwon, markdown)
         val holder = adapter.onCreateViewHolder(FrameLayout(context), adapter.getItemViewType(0))
         adapter.onBindViewHolder(holder, 0)

@@ -9,19 +9,24 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.di.AppInfo
+import com.pilcrowmd.di.Clock
+import com.pilcrowmd.di.InstallSource
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FileText
 import com.pilcrowmd.storage.LocalStorageManager
 import com.pilcrowmd.viewmodel.FileLoadState
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 import com.pilcrowmd.viewmodel.ViewMode
+import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
@@ -61,6 +66,7 @@ class EditorHeadingJumpAckTest {
     private val docText = "# One\n\nText.\n\n# Two\n\nMore.\n"
 
     private lateinit var storageScope: CoroutineScope
+    private lateinit var storage: LocalStorageManager
 
     @After
     fun tearDown() = storageScope.cancel()
@@ -78,6 +84,18 @@ class EditorHeadingJumpAckTest {
         override suspend fun discardSlot(key: String) = Result.success(Unit)
     }
 
+    private fun prompts() = WelcomePromptsViewModel(
+        storage,
+        object : InstallSource {
+            override fun isPlayInstall() = false
+            override fun firstInstallTimeMillis(): Long? = null
+        },
+        object : AppInfo {
+            override val versionName = "test"
+        },
+        Clock { 0L },
+    )
+
     private fun viewModel(): MarkdownViewModel {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         storageScope = CoroutineScope(Dispatchers.IO + Job())
@@ -85,9 +103,10 @@ class EditorHeadingJumpAckTest {
             tempFolder.newFile("editor_heading_jump_ack.preferences_pb")
         }
         val parse = ParseMarkdownHeadingsUseCase()
+        storage = LocalStorageManager(context, ds)
         return MarkdownViewModel(
             repository = repo,
-            storage = LocalStorageManager(context, ds),
+            storage = storage,
             parseHeadingsUseCase = parse,
             searchUseCase = SearchMarkdownUseCase(parse),
             pdfExporter = mockk(relaxed = true),
@@ -119,7 +138,13 @@ class EditorHeadingJumpAckTest {
         val vm = viewModel()
         compose.setContent {
             MaterialTheme {
-                MainScreen(viewModel = vm, context = compose.activity, renderer = MarkwonRenderer(compose.activity))
+                MainScreen(
+                    viewModel = vm,
+                    prompts = remember { prompts() },
+                    context = compose.activity,
+                    renderer = MarkwonRenderer(compose.activity),
+                    mermaidRenderer = NullMermaidRenderer,
+                )
             }
         }
         vm.loadFile(docUri)

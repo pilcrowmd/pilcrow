@@ -17,6 +17,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.components.WelcomeScreen
+import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
@@ -125,6 +126,47 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
         captureWelcome(suffix = themeSuffix() + "_loading_recents", recentFiles = sampleRecents(), isLoading = true)
 
     /**
+     * M-177: the one-time rating card, between "Browse all files" and RECENT, with the recents
+     * list full. New goldens; every existing one must stay byte-identical, because the card
+     * defaults to hidden. The row asks what the card costs RECENT on screen — this is the picture.
+     */
+    @Test
+    fun goldenRatingCardWithRecents() = captureWelcome(
+        suffix = themeSuffix() + "_rating_recents",
+        recentFiles = sampleRecents(),
+        showRatingCard = true,
+    )
+
+    /** M-177 in the S24+'s landscape viewport, where recents already sit below the fold (M-81). */
+    @Test
+    @Config(qualifiers = LANDSCAPE_S24_PLUS)
+    fun goldenLandscapeRatingCardWithRecents() = captureWelcome(
+        suffix = themeSuffix() + "_landscape_rating_recents",
+        recentFiles = sampleRecents(),
+        showRatingCard = true,
+    )
+
+    /**
+     * M-174: the update note in the rating card's slot, with the recents list full. New goldens;
+     * every existing one must stay byte-identical, because the note defaults to hidden.
+     */
+    @Test
+    fun goldenUpdateNoteWithRecents() = captureWelcome(
+        suffix = themeSuffix() + "_update_note_recents",
+        recentFiles = sampleRecents(),
+        showUpdateNote = true,
+    )
+
+    /** M-174 in the S24+'s landscape viewport. */
+    @Test
+    @Config(qualifiers = LANDSCAPE_S24_PLUS)
+    fun goldenLandscapeUpdateNoteWithRecents() = captureWelcome(
+        suffix = themeSuffix() + "_landscape_update_note_recents",
+        recentFiles = sampleRecents(),
+        showUpdateNote = true,
+    )
+
+    /**
      * Same composition under the short landscape viewport. Method-level [Config] overrides only the
      * size qualifiers; everything else is inherited from the class.
      */
@@ -139,6 +181,7 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
 
     private fun themeSuffix(): String = when (themeMode) {
         ThemeMode.DARK -> "dark"
+        ThemeMode.AMOLED -> "amoled"
         ThemeMode.LIGHT -> "light"
     }
 
@@ -165,9 +208,12 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
         suffix: String,
         recentFiles: List<RecentFileUi> = emptyList(),
         isLoading: Boolean = false,
+        showRatingCard: Boolean = false,
+        showUpdateNote: Boolean = false,
     ) {
         val colorScheme = when (themeMode) {
             ThemeMode.DARK -> DarkColorScheme
+            ThemeMode.AMOLED -> AmoledColorScheme
             ThemeMode.LIGHT -> LightColorScheme
         }
 
@@ -178,7 +224,12 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
                     .background(colorScheme.primaryBackground),
             ) {
                 CompositionLocalProvider(LocalMDColors provides colorScheme) {
-                    WelcomeScreen(recentFiles = recentFiles, isLoading = isLoading)
+                    WelcomeScreen(
+                        recentFiles = recentFiles,
+                        isLoading = isLoading,
+                        showRatingCard = showRatingCard,
+                        showUpdateNote = showUpdateNote,
+                    )
                 }
             }
         }

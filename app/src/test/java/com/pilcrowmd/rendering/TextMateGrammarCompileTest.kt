@@ -32,7 +32,7 @@ class TextMateGrammarCompileTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
-    private val highlighter = TextMateCodeHighlighter(context.assets::open, nanoTime = { 0L })
+    private val highlighter = TextMateCodeHighlighter(context.assets::open)
 
     @Test
     fun `every pattern of every shipped grammar compiles under joni`() {

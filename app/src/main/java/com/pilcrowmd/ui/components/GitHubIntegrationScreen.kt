@@ -34,6 +34,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -62,6 +65,8 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
     Column(
         modifier = modifier
             .fillMaxSize()
+            // M-309: TalkBack speaks the pane title when the screen appears.
+            .semantics { paneTitle = "Tell us what to build" }
             .systemBarsPadding()
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
@@ -149,7 +154,7 @@ private fun RequestFeatureButton(onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(c.accent)
-            .clickable { onClick() }
+            .clickable(role = Role.Button) { onClick() }
             .padding(vertical = 12.dp),
     )
 }

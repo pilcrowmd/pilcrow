@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.testing.readerModelFor
 import org.junit.Assert.assertEquals
@@ -51,6 +52,7 @@ class MarkdownPreviewDetailsTest {
             MarkdownPreview(
                 model = remember { renderer.readerModelFor(content) },
                 renderer = renderer,
+                mermaidRenderer = NullMermaidRenderer,
                 searchMatches = matches,
                 jumpPosition = jumpPosition,
                 jumpSeq = jumpSeq,

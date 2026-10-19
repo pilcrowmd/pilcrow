@@ -4,15 +4,19 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
+import com.pilcrowmd.rendering.mermaid.MermaidStyle
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import io.noties.markwon.recycler.MarkwonAdapter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -26,8 +30,9 @@ import kotlin.coroutines.suspendCoroutine
 
 /**
  * M-136 — a colouring job that finishes after its holder was rebound must not colour what the holder
- * shows now. All fenced blocks share one holder type, and the front-matter and Mermaid-cloud routes never pass
- * through FencedCodeBlockEntry.bindHolder, so each route is covered.
+ * shows now. All fenced blocks share one holder type, and the front-matter and Mermaid-diagram routes never pass
+ * through FencedCodeBlockEntry.bindHolder, so each route is covered. The Mermaid renderer here never answers,
+ * so the diagram route stays on its picture and never reaches the source fallback (which does pass through it).
  *
  * The fake tokeniser really suspends, and does NOT stop when cancelled (tm4e cannot be interrupted
  * mid-line), so the late result always arrives: only the holder's key can stop it landing. Every block
@@ -60,6 +65,11 @@ class ReaderCodeHighlightStaleTest {
 
     private val highlighter = GatedHighlighter()
 
+    /** A Mermaid render that never answers, so the diagram route never falls back to the source. */
+    private object NeverDrawing : MermaidDiagramRenderer {
+        override suspend fun render(source: String, widthPx: Int, style: MermaidStyle): Bitmap? = awaitCancellation()
+    }
+
     // Front matter must open the document, so the first code block is at position 1. Only `---` front
     // matter takes the metadata card; a ```yaml fence is an ordinary code block (NEW-32).
     private val markdown = listOf(
@@ -74,9 +84,9 @@ class ReaderCodeHighlightStaleTest {
         return RecyclerAdapterEntries.buildMarkdownAdapter(
             context,
             markwon,
-            mermaidCloudEnabled = true,
             searchHighlight = search,
             codeHighlighting = CodeHighlighting(highlighter, scope),
+            mermaid = MermaidDiagrams(NeverDrawing, scope),
         ).also { it.setMarkdown(markwon, markdown) }
     }
 
@@ -120,7 +130,7 @@ class ReaderCodeHighlightStaleTest {
     fun `code to front matter - the old block's colours never land`() = assertRebindDropsTheLateResult(0)
 
     @Test
-    fun `code to Mermaid cloud - the old block's colours never land`() = assertRebindDropsTheLateResult(2)
+    fun `code to Mermaid diagram - the old block's colours never land`() = assertRebindDropsTheLateResult(2)
 
     @Test
     fun `a late result keeps the search highlight`() {

@@ -243,6 +243,7 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
             awaitMathRender = true,
         ),
         // M-161: the five GitHub alert types, and an unknown one that must stay a plain quote.
+        // M-227 / M-251: a custom title, a fold sign, and the `!!!` and `:::` admonition forms.
         MarkdownSample(
             name = "callouts",
             markdown = """
@@ -263,6 +264,19 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
 
                 > [!FOO]
                 > An unknown type stays an ordinary quote.
+
+                > [!NOTE] Custom callout title
+                > M-227: a title of its own.
+
+                > [!TIP]- Collapsible callout
+                > Shown open; the fold sign is not painted.
+
+                !!! info "Fieldwork note (Python-Markdown)"
+                    Rainfall was measured at 07:00 local time each day.
+
+                ::: warning
+                This fenced admonition is supported by some Markdown systems, but not by CommonMark.
+                :::
             """.trimIndent(),
         ),
         // M-161: a closed section, one marked `open`, and the one-line form. Closed is the default.

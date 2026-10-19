@@ -71,8 +71,8 @@ class FrontmatterBlockEntry(
 
     override fun bindHolder(markwon: Markwon, holder: FencedCodeBlockEntry.Holder, node: FencedCodeBlock) {
         // Shared holder may have last shown a code block or mermaid diagram — restore the text view
-        // and drop the code-only chrome (Copy button) so the card is clean.
-        holder.cancelPendingMermaid()
+        // and drop the code-only chrome (Copy button) so the card is clean. The Mermaid caption and any
+        // pending render are the reader router's to reset (FencedCodeBlockEntry.Holder.resetMermaid, M-120).
         holder.codeScroll.visibility = View.VISIBLE
         holder.copyButton.visibility = View.GONE
         // The metadata card is not a code block: it keeps side-scroll whatever the M-134 wrap setting

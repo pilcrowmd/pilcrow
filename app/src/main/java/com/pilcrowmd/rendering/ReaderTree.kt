@@ -21,6 +21,6 @@ object ReaderTree {
         if (plain) return PlainTextBlocks.build(content)
         val parsed = markwon.parse(content)
         if (parsed is TooDeepDocument) return PlainTextBlocks.build(content)
-        return ReaderDocument.transform(parsed, splitLongParagraphs = false)
+        return ReaderDocument.transform(parsed, splitLongParagraphs = false, inlineSource = ::calloutTitleSource)
     }
 }

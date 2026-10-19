@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 pleree
 
-package com.pilcrowmd.rendering
+package com.pilcrowmd.domain.markdown
 
 private val WHITESPACE = Regex("\\s+")
 
@@ -12,3 +12,6 @@ private val WHITESPACE = Regex("\\s+")
  */
 fun fenceLanguage(info: String?): String = info.orEmpty().trim().split(WHITESPACE, limit = 2)[0]
     .substringBefore('{').lowercase()
+
+/** The fence language drawn as a diagram picture instead of shown as code (M-70). */
+const val MERMAID_LANGUAGE = "mermaid"

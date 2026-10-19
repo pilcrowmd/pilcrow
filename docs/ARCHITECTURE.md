@@ -1,7 +1,9 @@
 # Architecture – Pilcrow
 
 Pilcrow is a native Android Markdown reader and editor built with Kotlin and Jetpack Compose. It
-renders Markdown to native views – **no WebView anywhere in the rendering path** – and is organized
+renders Markdown to native views – **no WebView in the Markdown rendering path** (the one scoped
+exception, a hidden WebView that only turns Mermaid diagrams into pictures, is described under
+[Mermaid diagrams: the one WebView](#mermaid-diagrams-the-one-webview)) – and is organized
 around Clean Architecture, MVVM, and unidirectional data flow (UDF) with strict layer boundaries.
 The central thesis: high-fidelity, reliable, private reading of Markdown is best served by a fully
 native pipeline you can measure, test, and control pixel-for-pixel – not an embedded browser.
@@ -47,8 +49,11 @@ interfaces.
 rather than HTML in a WebView buys: predictable performance with no JS runtime, a smaller and
 safer attack surface, exact design control over typography and color, fully offline rendering, and
 the ability to keep rendered blocks aligned with editor character offsets for search and
-navigation. Math renders as native JLatexMath bitmaps; unsupported diagram syntax degrades to a
-code block by default.
+navigation. Math renders as native JLatexMath bitmaps. Mermaid diagrams are the one scoped
+exception: Mermaid's layout needs a real browser engine, so a hidden, sandboxed WebView compiles each
+diagram into a picture that the native reader shows (see
+[Mermaid diagrams: the one WebView](#mermaid-diagrams-the-one-webview)). The rule stays for Markdown
+rendering.
 
 **3. Simplicity within strict boundaries.** Each layer is small and cohesive. A Composable never
 parses Markdown or reads a file. The ViewModel never inflates a view or blocks on disk. A Domain
@@ -89,7 +94,7 @@ Representative state: the open document (URI, content, display name, **dirty** f
 comparison against the loaded baseline, not a manual toggle), reader/editor `mode`, detected
 line-ending format, per-file scroll/cursor anchors, search query/matches/index, extracted headings,
 PDF export state, and persisted preferences (theme, separate preview/editor font scales, font set,
-line numbers, opt-in cloud diagram rendering).
+line numbers).
 
 The ViewModel **never** parses Markdown itself (it calls the use cases), **never** touches the
 filesystem directly (it calls `FileRepository`), and **never** inflates views.
@@ -123,9 +128,8 @@ no emulator.
 - **`StorageManager`** ([interface](../app/src/main/java/com/pilcrowmd/storage/StorageManager.kt),
   [`LocalStorageManager`](../app/src/main/java/com/pilcrowmd/storage/LocalStorageManager.kt)) –
   Jetpack **Preferences DataStore**, held as a process-level singleton so Activity recreation never
-  spawns a duplicate store. Persists theme, font scales, the line-numbers flag, the cloud-diagram
-  toggle, the recent-files list, and per-file scroll anchors (block index + intra-block offset for
-  font-scale-stable restore).
+  spawns a duplicate store. Persists theme, font scales, the line-numbers flag, the recent-files
+  list, and per-file scroll anchors (block index + intra-block offset for font-scale-stable restore).
 - **`MarkwonRenderer`** ([MarkwonRenderer.kt](../app/src/main/java/com/pilcrowmd/rendering/MarkwonRenderer.kt))
   – a single configured Markwon instance reused across the reader, search highlighting, and PDF
   export. See the rendering pipeline below.
@@ -187,7 +191,8 @@ Block rendering is handled by per-type entries registered in
 [`ProseBlockEntry`](../app/src/main/java/com/pilcrowmd/rendering/ProseBlockEntry.kt) (paragraphs,
 lists, blockquotes, headings),
 [`FencedCodeBlockEntry`](../app/src/main/java/com/pilcrowmd/rendering/FencedCodeBlockEntry.kt) (code
-with syntax highlighting, a copy button, and opt-in cloud diagram rendering),
+with syntax highlighting and a copy button; a ```` ```mermaid ```` fence is drawn as a picture, see
+below),
 [`TableBlockEntry`](../app/src/main/java/com/pilcrowmd/rendering/TableBlockEntry.kt),
 [`LatexBlockEntry`](../app/src/main/java/com/pilcrowmd/rendering/LatexBlockEntry.kt), and
 [`FrontmatterBlockEntry`](../app/src/main/java/com/pilcrowmd/rendering/FrontmatterBlockEntry.kt).
@@ -201,6 +206,75 @@ code editor) with TextMate Markdown highlighting, an optional line-number gutter
 native undo/redo. The reader and editor each preserve their own scroll position – and the editor
 its caret offset – across mode toggles, so returning to a mode restores where you left it. Position
 is not translated between modes (the reader uses a block-level anchor; the editor a pixel offset).
+
+### Mermaid diagrams: the one WebView
+
+**Purpose.** A ```` ```mermaid ```` fence is drawn as a picture, on the device and offline (M-70).
+Mermaid's layout needs a real browser layout engine to measure text and place shapes; no native
+Android Mermaid engine covers its ~20 diagram types, and porting it would be a permanent chase. So the
+app runs the official Mermaid library (mermaid.js 11.17.2, MIT), bundled in the APK, inside a hidden
+WebView used **only as a compiler**: diagram text in, PNG bitmap out. The bitmap is shown by the
+normal native reader. The WebView is never shown on screen and never attached to a window; the user
+never sees, scrolls or touches it. All other Markdown still renders natively through Markwon, and the
+editor is untouched. This is a scoped exception to "no WebView in the rendering path": the rule stays
+for Markdown rendering.
+
+**Code.** `com.pilcrowmd.rendering.mermaid`:
+[`MermaidDiagramRenderer`](../app/src/main/java/com/pilcrowmd/rendering/mermaid/MermaidDiagramRenderer.kt) (the contract: source in, `Bitmap?` out,
+never throws, never hangs),
+[`WebViewMermaidRenderer`](../app/src/main/java/com/pilcrowmd/rendering/mermaid/WebViewMermaidRenderer.kt) (the WebView-backed implementation),
+[`MermaidPage`](../app/src/main/java/com/pilcrowmd/rendering/mermaid/MermaidPage.kt) (the compiler page and its render script),
+[`MermaidStyle`](../app/src/main/java/com/pilcrowmd/rendering/mermaid/MermaidStyle.kt) (diagram colours from the theme tokens), and
+[`MermaidWebViewClient`](../app/src/main/java/com/pilcrowmd/rendering/mermaid/MermaidWebViewClient.kt) (the page's only door to the outside).
+
+**Isolation contract.** The WebView can run the bundled Mermaid script on the diagram text from the
+open document and return a picture. Nothing else:
+
+- **No network.** `blockNetworkLoads = true`. `MermaidWebViewClient.shouldInterceptRequest` answers
+  exactly two internal URLs on the virtual `appassets.androidplatform.net` origin, the page itself
+  (`index.html`, from `MermaidPage.html`) and the bundled `mermaid/mermaid.min.js` asset, and every
+  other request with an empty 404. The app also has no `INTERNET` permission, so Android itself refuses any connection.
+- **No file or content access.** `allowFileAccess`, `allowContentAccess`,
+  `allowFileAccessFromFileURLs` and `allowUniversalAccessFromFileURLs` are all `false`: no other
+  documents, no `content://` URIs, no app storage.
+- **No bridge into the app.** There is no `addJavascriptInterface`; the page cannot call app code.
+  Results come back only through `evaluateJavascript` callbacks, which the app reads.
+- **No navigation, no pop-up windows.** `shouldOverrideUrlLoading` refuses every navigation.
+- **Mermaid in "strict" mode** (`securityLevel: 'strict'`): labels sanitised, click handlers off.
+- **Bounded lifetime.** The WebView is built from the application context only, lazily on the first
+  diagram. Renders are serialized with a `Mutex`, one at a time. Each has an 8 s timeout; a render
+  that runs out of time destroys the WebView (a hostile script may still be spinning in it) and the
+  next render builds a fresh one. A renderer process that dies is handled the same way.
+- **Memory.** Finished pictures sit in an LRU cache keyed by source, width and style (failures are
+  cached too, so a broken diagram is not compiled again on every scroll). `trim()`, called on memory
+  trim, drops the cache and destroys the WebView; renders keep working after.
+
+**Failure lattice.** Every failure has the same outcome: no picture, and the fence is shown as its
+source in a normal code block with the caption "Diagram could not be drawn. Showing its source." That
+covers source that does not parse, an unsupported diagram, a render that runs out of time, an engine
+that fails, and a device whose WebView is missing or disabled (then every diagram shows as source).
+The app never crashes on a diagram (Safeguard 3).
+
+**Theme.** `MermaidStyle` builds Mermaid's theme variables from the active scheme's tokens (Mermaid's
+`dark` theme for a dark scheme, `default` otherwise), so diagrams follow the app's Dark or Light
+theme. The style is part of the cache key, so a theme change draws afresh. This fixes diagrams that
+were always dark-themed (M-192).
+
+**PDF.** PDF export draws the diagrams too, with the print colours.
+
+**Supply chain.** `mermaid.min.js` is **not** in the repository. At build time
+`app/build.gradle.kts` (section "Offline Mermaid") downloads the exact npm package `mermaid@11.17.2`
+and refuses it unless its SHA-256 matches the pinned
+`6ad2f42c3fc26bbf9e45cbb6d11898972573ea52b33a5f4ff51952899f950ffd`; it then extracts the script into
+`assets/mermaid/` and the package's LICENSE into `assets/licenses/MIT-Mermaid.txt`. Bumping means
+changing the version and the hash together and re-checking the licences (see
+[LICENSES.md](../LICENSES.md), section 4). The script adds about 1 MB to the download.
+
+**No INTERNET permission.** The app does not hold `android.permission.INTERNET`, so it cannot connect
+to the internet at all. The manifest strips the permission even if a library adds it, and a test fails
+if it ever comes back. (Local pictures, M-93, are read from the device only.) The old "Mermaid
+Diagrams" setting, a cloud opt-in that sent diagram source to mermaid.ink, is removed: diagrams are
+always drawn, like LaTeX math.
 
 ---
 
@@ -264,8 +338,9 @@ Unsupported or malformed syntax degrades; it never throws or mangles surrounding
 - The JLatexMath plugin's error handler returns `null` on a parse failure, falling back to the raw
   source text instead of crashing.
 - Block entries wrap binding in `try/catch` and fall back to a plain representation on error.
-- Diagrams (Mermaid) render as a code block unless the user opts into cloud rendering; a network
-  failure there falls back to the code block too.
+- Diagrams (Mermaid) are drawn on the device; a diagram that is broken, unsupported, too slow, or
+  that makes the engine fail is shown as its source in a code block with the caption "Diagram could
+  not be drawn. Showing its source." A device with no working WebView shows every diagram as source.
 - Unknown node types fall through to the default prose entry.
 
 **Verified by**
@@ -278,14 +353,15 @@ Unsupported or malformed syntax degrades; it never throws or mangles surrounding
 
 Color comes exclusively from the token system; no hardcoded hex appears in composables or block
 entries. [`ui/theme/Color.kt`](../app/src/main/java/com/pilcrowmd/ui/theme/Color.kt) defines a
-`PilcrowColorScheme` (~21 tokens) with three instances – `DarkColorScheme` (the v1 default),
-`LightColorScheme` (a warm-cream palette), and `PrintColorScheme` (white page, dark text, for PDF).
+`PilcrowColorScheme` (~21 tokens) with four instances – `DarkColorScheme` (the v1 default),
+`AmoledColorScheme` (a true-black page), `LightColorScheme` (a warm-cream palette), and
+`PrintColorScheme` (white page, dark text, for PDF).
 The active scheme is published through a `CompositionLocal` (`LocalMDColors`) and read with
 `mdColors()` in Compose; block entries receive the scheme as a parameter. Switching theme is a
 token swap with no layout change.
 
-**Verified by** the Roborazzi visual-regression suite below, which captures every sample in both
-Dark and Light.
+**Verified by** the Roborazzi visual-regression suite below, which captures every sample in Dark,
+AMOLED and Light.
 
 ---
 
@@ -376,13 +452,14 @@ com.pilcrowmd/
 ├── storage/                       persistence behind an interface
 │   ├── StorageManager.kt
 │   └── LocalStorageManager.kt     Preferences DataStore
-├── rendering/                     native Markdown rendering (no WebView)
+├── rendering/                     native Markdown rendering (no WebView, except mermaid/)
 │   ├── MarkwonRenderer.kt         plugin config; shared instance
 │   ├── RecyclerAdapterEntries.kt  block-type → entry registry
 │   ├── ProseBlockEntry.kt         FencedCodeBlockEntry.kt  TableBlockEntry.kt
 │   ├── LatexBlockEntry.kt         FrontmatterBlockEntry.kt FrontmatterPlugin.kt
 │   ├── HorizontalScrollSupport.kt SearchHighlighter.kt
-│   └── GrammarBundle.kt           Prism4jTheme.kt
+│   ├── GrammarBundle.kt           Prism4jTheme.kt
+│   └── mermaid/                   diagrams to pictures in a hidden, sandboxed WebView (M-70)
 ├── export/                        PDF rendering
 │   ├── PdfExporter.kt             pagination + atomic write
 │   └── PdfContentLayoutBuilder.kt off-screen block layout

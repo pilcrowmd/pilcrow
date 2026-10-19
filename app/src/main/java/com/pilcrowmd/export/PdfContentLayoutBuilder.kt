@@ -4,14 +4,26 @@
 package com.pilcrowmd.export
 
 import android.content.Context
+import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.text.Spanned
+import android.util.Size
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
+import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.domain.markdown.isFrontmatter
 import com.pilcrowmd.rendering.CodeHighlighter
 import com.pilcrowmd.rendering.CodeHighlighting
@@ -26,6 +38,7 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
 import io.noties.markwon.recycler.MarkwonAdapter
 import org.commonmark.node.FencedCodeBlock
+import kotlin.reflect.KClass
 
 /**
  * Parse [content] ONCE and return its top-level Markdown blocks as standalone (unlinked) nodes.
@@ -88,18 +101,26 @@ internal fun topLevelBlocksForMode(
  * the content in two passes: Pass 1 (measureBlockBounds) computes block bounds, Pass 2 (forEachBlock
  * during draw) re-binds only blocks visible on that page. This bounds peak memory to a small constant
  * regardless of document size.
+ *
+ * **Mermaid (M-70):** a ```mermaid block prints as the picture [diagram] draws for it, at the width
+ * of the panel it sits in, or as its source with the reader's caption when [diagram] gives none.
  */
 internal class PdfContentLayoutBuilder(
     private val context: Context,
     // M-136: the PDF has no scope, so the four TextMate languages are tokenised inline (export runs on IO).
     private val codeHighlighter: CodeHighlighter? = null,
+    // M-70: draws a diagram synchronously, or null when it cannot. The default draws none.
+    private val diagram: (source: String, widthPx: Int) -> Bitmap? = { _, _ -> null },
+    // Issue #17: colours a Prism4j block over MAX_HIGHLIGHT_CHARS in full, inline like the TextMate ones.
+    private val prism4jHighlighter: CodeHighlighter? = null,
 ) {
 
     /**
      * Pool of reusable holders keyed by block type. Reusing holders (rebind per node) instead of
      * re-inflating cuts GC churn and keeps peak memory O(types), typically 3-4 types.
+     * Keyed on the class itself, not its name: R8 gives unrelated classes the same short name (M-175).
      */
-    private val holderPool = mutableMapOf<String, io.noties.markwon.recycler.MarkwonAdapter.Holder>()
+    private val holderPool = mutableMapOf<KClass<out org.commonmark.node.Node>, MarkwonAdapter.Holder>()
 
     /**
      * Test visibility: track the peak number of concurrently-live block views.
@@ -108,6 +129,16 @@ internal class PdfContentLayoutBuilder(
      */
     private var currentLiveBlockViews = 0
     private var peakLiveBlockViews = 0
+
+    /**
+     * M-70: what this export decided for each diagram, by source and width: the picture's size as the
+     * image view sees it, or `null` for "print the source". Every block is bound once to measure and
+     * again to draw, and both binds must take the same height, or the block draws at a height the page
+     * did not leave for it. Only the decision is kept, never the picture: a document's diagrams can be
+     * tens of megabytes each, and Pass 1 meets all of them before Pass 2 draws any.
+     * Cleared when Pass 1 starts, so each export asks afresh, and by [PdfExporter] when an export ends.
+     */
+    internal val diagrams = HashMap<Pair<String, Int>, Size?>()
 
     /** Expose the peak for testing. */
     fun getPeakLiveBlockViews(): Int = peakLiveBlockViews
@@ -202,7 +233,8 @@ internal class PdfContentLayoutBuilder(
                 FontSets.DEFAULT,
                 PrintColorScheme,
             )
-            is org.commonmark.node.FencedCodeBlock -> fencedCodeEntry(context, node, fontScale, codeHighlighter)
+            is org.commonmark.node.FencedCodeBlock ->
+                fencedCodeEntry(context, node, fontScale, codeHighlighter, prism4jHighlighter)
             is com.pilcrowmd.rendering.PlainTextChunk ->
                 // Plain-text chunk: literal verbatim, prose typography, print colors.
                 plainTextEntry(context, fontScale)
@@ -231,6 +263,7 @@ internal class PdfContentLayoutBuilder(
         markwon: Markwon,
         holder: io.noties.markwon.recycler.MarkwonAdapter.Holder,
         fontScale: Float,
+        pageContentWidthPx: Int,
     ) {
         when (node) {
             is org.commonmark.ext.gfm.tables.TableBlock -> {
@@ -246,12 +279,27 @@ internal class PdfContentLayoutBuilder(
                     node,
                 )
             }
-            is org.commonmark.node.FencedCodeBlock ->
-                fencedCodeEntry(context, node, fontScale, codeHighlighter).bindHolder(
-                    markwon,
-                    holder as com.pilcrowmd.rendering.FencedCodeBlockEntry.Holder,
-                    node,
-                )
+            is org.commonmark.node.FencedCodeBlock -> {
+                val fenced = holder as FencedCodeBlockEntry.Holder
+                // The pooled holder may have printed a diagram or its caption last, and the front-matter
+                // card hides neither itself: reset first, as the reader's router does (M-120).
+                fenced.resetMermaid()
+                val entry = fencedCodeEntry(context, node, fontScale, codeHighlighter, prism4jHighlighter)
+                if (entry is FencedCodeBlockEntry && fenceLanguage(node.info) == MERMAID_LANGUAGE) {
+                    // The block is measured at the full content width (its layout margins only space it
+                    // from its neighbours), but the panel is only DIAGRAM_MAX_WIDTH_FRACTION of that, so the
+                    // picture is drawn for the panel's width less the image's padding (M-70).
+                    val insetPx = DIAGRAM_PADDING_DP * context.resources.displayMetrics.density
+                    val panelMaxWidthPx = (pageContentWidthPx * DIAGRAM_MAX_WIDTH_FRACTION).toInt()
+                    val key = node.literal.orEmpty() to (panelMaxWidthPx - 2 * insetPx).toInt()
+                    val picture = diagrams.printedDiagram(key, context.resources, diagram)
+                    entry.bindDiagram(markwon, fenced, node, picture)
+                    // No picture: the source prints and the image stays gone, so there is no panel to fit.
+                    if (picture != null) fenced.fitDiagramPanel(panelMaxWidthPx, pageContentWidthPx)
+                } else {
+                    entry.bindHolder(markwon, fenced, node)
+                }
+            }
             is com.pilcrowmd.rendering.PlainTextChunk -> plainTextEntry(context, fontScale).bindHolder(
                 markwon,
                 holder as com.pilcrowmd.rendering.PlainTextBlockEntry.Holder,
@@ -298,6 +346,7 @@ internal class PdfContentLayoutBuilder(
     ): List<Pair<Int, Int>> {
         val bounds = mutableListOf<Pair<Int, Int>>()
         var currentY = 0
+        diagrams.clear() // A new export: Pass 1 always runs first.
 
         // Replicate vertical LinearLayout stacking: each child's top/bottom includes its layout
         // margins (LinearLayout does not collapse margins). Omitting them would lose the inter-block
@@ -376,7 +425,7 @@ internal class PdfContentLayoutBuilder(
         peakLiveBlockViews = maxOf(peakLiveBlockViews, currentLiveBlockViews)
 
         // Create or reuse a holder for this block type
-        val typeKey = node::class.simpleName ?: "unknown"
+        val typeKey = node::class
         val holder = if (holderPool.containsKey(typeKey)) {
             holderPool[typeKey]!!
         } else {
@@ -394,7 +443,7 @@ internal class PdfContentLayoutBuilder(
         }
 
         // Bind the node to the holder
-        runCatching { bindHolderForNode(node, markwon, holder, fontScale) }
+        runCatching { bindHolderForNode(node, markwon, holder, fontScale, pageContentWidthPx) }
             .onFailure { e -> android.util.Log.w("PdfExporter", "Failed to bind block: ${e.message}") }
 
         // Apply print fixups and resolve LaTeX
@@ -420,7 +469,7 @@ internal class PdfContentLayoutBuilder(
      */
     private fun releaseBlockView(node: org.commonmark.node.Node) {
         currentLiveBlockViews--
-        val typeKey = node::class.simpleName ?: "unknown"
+        val typeKey = node::class
         holderPool[typeKey]?.let { holder ->
             (holder.itemView.parent as? ViewGroup)?.removeView(holder.itemView)
         }
@@ -430,12 +479,18 @@ internal class PdfContentLayoutBuilder(
         // Horizontal margin of the code block layout (adapter_code_block.xml), used to bound the
         // printable code-text width for line wrapping.
         private const val CODE_BLOCK_HORIZONTAL_MARGIN_DP = 20f
+
+        // Padding of the Mermaid image inside the panel (adapter_code_block.xml `mermaid_image`).
+        private const val DIAGRAM_PADDING_DP = 12f
+
+        // A printed diagram is at most this share of the text width (a full-width one looks oversized).
+        private const val DIAGRAM_MAX_WIDTH_FRACTION = 0.6f
     }
 }
 
 /**
  * Print-styled entry for a fenced block: YAML frontmatter → the metadata card, everything else →
- * a normal code block (mermaid included — there is no synchronous cloud render for print). Both
+ * a code block entry, which the builder binds as a diagram for a ```mermaid block (M-70). Both
  * extend `MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder>`, mirroring the live
  * preview's ConditionalCodeBlockEntry.
  *
@@ -447,6 +502,7 @@ private fun fencedCodeEntry(
     node: FencedCodeBlock,
     fontScale: Float,
     codeHighlighter: CodeHighlighter?,
+    prism4jHighlighter: CodeHighlighter?,
 ): MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder> {
     return if (node.isFrontmatter()) {
         FrontmatterBlockEntry(context, fontScale, FontSets.DEFAULT, PrintColorScheme)
@@ -456,9 +512,63 @@ private fun fencedCodeEntry(
             fontScale,
             FontSets.DEFAULT,
             PrintCodeColorScheme,
-            highlighting = codeHighlighter?.let { CodeHighlighting(it, scope = null) },
+            highlighting = codeHighlighter?.let { CodeHighlighting(it, scope = null, prism4jHighlighter) },
         )
     }
+}
+
+/**
+ * M-70: the picture to print for the diagram [key], or `null` to print its source. The first ask of an
+ * export (Pass 1) draws it with [diagram] and records only the decision in this memo: the picture's
+ * size as the image view sees it, or `null`. A later ask follows that decision: the source again, or
+ * the picture drawn again (the renderer's cache usually has it, and Mermaid draws the same source the
+ * same way). If it cannot be had a second time, an empty picture of the recorded size stands in, never
+ * the source, whose height differs: the block keeps the height the page left for it.
+ *
+ * Top-level, as [footnoteEntry] is, so the builder class does not trip detekt's TooManyFunctions.
+ */
+private fun MutableMap<Pair<String, Int>, Size?>.printedDiagram(
+    key: Pair<String, Int>,
+    resources: Resources,
+    diagram: (source: String, widthPx: Int) -> Bitmap?,
+): Drawable? {
+    if (key !in this) {
+        val picture = diagram(key.first, key.second)?.let { BitmapDrawable(resources, it) }
+        this[key] = picture?.let { Size(it.intrinsicWidth, it.intrinsicHeight) }
+        return picture
+    }
+    val size = this[key] ?: return null
+    return diagram(key.first, key.second)?.let { BitmapDrawable(resources, it) }
+        ?: GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            setSize(size.width, size.height)
+        }
+}
+
+/**
+ * M-70, PDF only: sizes the diagram panel (the image with its padding) to its picture, centred in the
+ * card, never wider than [maxWidthPx] nor so tall that the block (with its own margins) outgrows one
+ * page's text height, with the aspect ratio kept and no upscaling. The reader's layout (match_parent,
+ * full width) is untouched; the params are set on every diagram bind, so a pooled holder carries nothing
+ * over. Top-level, as [footnoteEntry] is, so the builder class does not trip detekt's TooManyFunctions.
+ */
+private fun FencedCodeBlockEntry.Holder.fitDiagramPanel(maxWidthPx: Int, pageContentWidthPx: Int) {
+    val lp = itemView.layoutParams as? ViewGroup.MarginLayoutParams
+    val blockMarginsPx = (lp?.topMargin ?: 0) + (lp?.bottomMargin ?: 0)
+    // The page's text height from the exporter's own page constants, as its width is.
+    val pageTextHeightPx = pageContentWidthPx * PdfExporter.PAGE_CONTENT_HEIGHT_PT / PdfExporter.PAGE_CONTENT_WIDTH_PT
+    mermaidImage.fitImage(maxWidthPx, pageTextHeightPx - blockMarginsPx)
+}
+
+private fun ImageView.fitImage(maxWidthPx: Int, maxHeightPx: Int) {
+    layoutParams = FrameLayout.LayoutParams(
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+        Gravity.CENTER_HORIZONTAL,
+    )
+    adjustViewBounds = true
+    maxWidth = maxWidthPx
+    maxHeight = maxHeightPx
 }
 
 /**

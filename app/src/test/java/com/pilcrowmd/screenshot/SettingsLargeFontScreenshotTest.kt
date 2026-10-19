@@ -16,6 +16,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.components.SettingsScreen
+import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
@@ -29,8 +30,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Visual-regression goldens for the whole Settings screen at the system's largest font scale
- * (2.0), in Dark + Light. They guard the large-text layout: the size readouts stay on one line and
- * the reading-font pills grow to show their whole label. The 1.0 look is guarded separately by
+ * (2.0), in Dark, AMOLED and Light, each with its own theme selected. They guard the large-text
+ * layout: the size readouts stay on one line, the reading-font pills grow to show their whole label,
+ * and the three theme options fit their row. The 1.0 look is guarded separately by
  * `settings_github_card_*` in [GitHubTeaserScreenshotTest].
  *
  * PIXEL goldens: a re-record makes any change "pass", so re-recorded PNGs must be looked at.
@@ -54,12 +56,13 @@ class SettingsLargeFontScreenshotTest(private val themeMode: ThemeMode) {
     fun settingsAtFontScale200() {
         val (scheme, suffix) = when (themeMode) {
             ThemeMode.DARK -> DarkColorScheme to "dark"
+            ThemeMode.AMOLED -> AmoledColorScheme to "amoled"
             ThemeMode.LIGHT -> LightColorScheme to "light"
         }
         composeRule.setContent {
             Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
                 CompositionLocalProvider(LocalMDColors provides scheme) {
-                    SettingsScreen(appVersion = "1.0.0")
+                    SettingsScreen(appVersion = "1.0.0", themeMode = themeMode)
                 }
             }
         }
@@ -86,6 +89,6 @@ class SettingsLargeFontScreenshotTest(private val themeMode: ThemeMode) {
 
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
-        fun themes(): List<ThemeMode> = listOf(ThemeMode.DARK, ThemeMode.LIGHT)
+        fun themes(): List<ThemeMode> = listOf(ThemeMode.DARK, ThemeMode.AMOLED, ThemeMode.LIGHT)
     }
 }

@@ -69,7 +69,10 @@ internal class ImagePlaceholderDrawable(
         textSize = labelSizePx
         color = colorScheme.secondaryText.toArgb()
     }
-    private val actionPaint = TextPaint(textPaint).apply { color = colorScheme.accent.toArgb() }
+
+    // M-92: primary text, not the accent. The box is the code-block surface, where
+    // AMOLED's accent is below its 7:1 floor; the same colour in every theme.
+    private val actionPaint = TextPaint(textPaint).apply { color = colorScheme.primaryText.toArgb() }
     private val action = actionLabel?.let { "$ACTION_SEPARATOR$it" }.orEmpty()
 
     private val padding = PADDING_DP * density

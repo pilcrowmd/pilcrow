@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.rendering
 
+import com.pilcrowmd.domain.markdown.fenceLanguage
 import io.noties.prism4j.GrammarLocator
 import io.noties.prism4j.Prism4j
 import java.util.regex.Pattern

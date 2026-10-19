@@ -1,0 +1,7 @@
+- Mermaid diagrams are drawn on your phone, offline. Tap one to see it full screen.
+- New AMOLED theme, pure black.
+- Emoji shortcodes such as :smile: show as emoji.
+- Callouts can have their own title; !!! and ::: blocks work too.
+- Very large files no longer close the app in the editor.
+- Long code blocks are coloured to the last line.
+- A smaller app, better TalkBack, and a search crash fixed.

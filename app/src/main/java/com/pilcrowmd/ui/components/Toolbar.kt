@@ -3,6 +3,8 @@
 
 package com.pilcrowmd.ui.components
 
+import android.content.Context
+import android.view.WindowManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +37,7 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,7 +46,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.pilcrowmd.R
 import com.pilcrowmd.ui.theme.PilcrowSpacing
@@ -276,6 +282,21 @@ private fun PdfExportActionIcon(onClick: () -> Unit, enabled: Boolean = true) {
 }
 
 /**
+ * M-308: names the popup's own WINDOW. TalkBack reads the window title, not a pane title inside it,
+ * and Compose's default for a popup is "Pop-Up Window".
+ */
+@Composable
+private fun PopupWindowTitle(title: String) {
+    val view = LocalView.current
+    LaunchedEffect(title) {
+        val root = view.rootView
+        val params = root.layoutParams as? WindowManager.LayoutParams ?: return@LaunchedEffect
+        params.title = title
+        (view.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(root, params)
+    }
+}
+
+/**
  * Toolbar overflow (⋮) menu. Owns its own expanded state; hosts "Save a copy" (Save-As) and — for
  * `.txt` documents only ([plainToggleLabel] non-null) — the quiet render-mode toggle
  * ("View as Markdown" ⇄ "View as plain text"). A 42dp target / 22dp glyph to match the
@@ -299,7 +320,13 @@ private fun OverflowMenu(
                 modifier = Modifier.size(22.dp),
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        // M-308: the popup is a window of its own; TalkBack announced it as "Pop-Up Window".
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.semantics { paneTitle = "More actions" },
+        ) {
+            PopupWindowTitle("More actions")
             DropdownMenuItem(
                 text = { Text("Save a copy") },
                 onClick = {

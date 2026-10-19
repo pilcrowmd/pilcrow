@@ -36,8 +36,7 @@ class TextMateBundleGrammarsTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
-    // A clock that never moves, so the 1 s block budget can never decide these tests.
-    private val highlighter = TextMateCodeHighlighter(context.assets::open, nanoTime = { 0L })
+    private val highlighter = TextMateCodeHighlighter(context.assets::open)
 
     /** A fence, its code, and the role each probe's first character must take. */
     private class Probe(val fence: String, val code: String, val roles: Map<String, CodeRole>)

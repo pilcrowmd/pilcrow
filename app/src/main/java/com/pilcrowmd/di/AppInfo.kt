@@ -3,6 +3,9 @@
 
 package com.pilcrowmd.di
 
+import com.pilcrowmd.BuildConfig
+import com.pilcrowmd.domain.model.utcMidnightMillis
+
 /**
  * App-level metadata abstraction.
  * Provides read-only access to app properties (version, etc.) from the system,
@@ -18,6 +21,13 @@ interface AppInfo {
      * Safe to call multiple times; value is computed once and cached by the implementation.
      */
     val versionName: String
+
+    /**
+     * M-174: the release-prep date as UTC midnight in epoch millis; null when unknown, which hides
+     * the update note. Only [DefaultAppInfo] reads the real `BuildConfig` value — tests inject theirs,
+     * because it changes every release.
+     */
+    val releasePrepMillis: Long? get() = null
 }
 
 /**
@@ -31,4 +41,6 @@ class DefaultAppInfo(private val context: android.content.Context) : AppInfo {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull() ?: ""
+
+    override val releasePrepMillis: Long? = utcMidnightMillis(BuildConfig.RELEASE_PREP_DATE)
 }

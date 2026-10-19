@@ -200,8 +200,8 @@ class PreviewPinchScaleTest {
     @Test
     fun aViewSHOWNMidGestureIsMeasuredFromTheSizeItWasShownAt() {
         // `FencedCodeBlockEntry.bindMermaid` hides `codeScroll` WITHOUT setting `codeView`'s size,
-        // and `fallbackToSource` — an async image load-error callback, so it can land mid-gesture —
-        // makes it visible and sets that size at the committed scale. If a base had been recorded
+        // and the source fallback (run when the async render answers "no picture", so it can land
+        // mid-gesture) makes it visible and sets that size at the committed scale. If a base had been recorded
         // while it was hidden, the block would jump to a size derived from the stale value.
         val root = LinearLayout(context)
         val survivor = textView()
@@ -212,7 +212,7 @@ class PreviewPinchScaleTest {
 
         applyPinchTextScale(root, 1.2f)
 
-        // fallbackToSource: shown, and set to the committed scale.
+        // The source fallback: shown, and set to the committed scale.
         mermaidCode.visibility = View.VISIBLE
         mermaidCode.setTextSize(TypedValue.COMPLEX_UNIT_PX, base)
 

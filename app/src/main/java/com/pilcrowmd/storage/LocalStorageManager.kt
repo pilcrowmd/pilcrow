@@ -115,11 +115,13 @@ class LocalStorageManager(
     private val previewFontScaleKey = floatPreferencesKey("preview_font_scale")
     private val editorFontScaleKey = floatPreferencesKey("editor_font_scale")
     private val fontSetIdKey = stringPreferencesKey("font_set_id")
-    private val mermaidCloudEnabledKey = booleanPreferencesKey("mermaid_cloud_enabled")
     private val wrapCodeLinesKey = booleanPreferencesKey("wrap_code_lines")
     private val formattingBarEnabledKey = booleanPreferencesKey("formatting_bar_enabled")
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val dismissedImageFoldersKey = stringSetPreferencesKey("dismissed_image_folders")
+    private val documentsOpenedKey = intPreferencesKey("documents_opened")
+    private val ratingCardDismissedKey = booleanPreferencesKey("rating_card_dismissed")
+    private val updateNoteDismissedAtKey = longPreferencesKey("update_note_dismissed_at")
 
     private val maxRecents = 8
 
@@ -169,10 +171,6 @@ class LocalStorageManager(
         prefs[fontSetIdKey] ?: "source" // Default: Source Serif 4 + JetBrains Mono
     }.distinctUntilChanged()
 
-    override val mermaidCloudEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[mermaidCloudEnabledKey] ?: false // Default: OFF (offline/private)
-    }.distinctUntilChanged()
-
     override val wrapCodeLines: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[wrapCodeLinesKey] ?: false // Default: OFF — long lines side-scroll (M-134)
     }.distinctUntilChanged()
@@ -185,6 +183,18 @@ class LocalStorageManager(
         val modeStr = prefs[themeModeKey] ?: "DARK"
         runCatching { ThemeMode.valueOf(modeStr) }
             .getOrDefault(ThemeMode.DARK) // fallback to Dark on corrupt/unknown value
+    }.distinctUntilChanged()
+
+    override val documentsOpened: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[documentsOpenedKey] ?: 0
+    }.distinctUntilChanged()
+
+    override val ratingCardDismissed: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[ratingCardDismissedKey] ?: false
+    }.distinctUntilChanged()
+
+    override val updateNoteDismissedAt: Flow<Long?> = dataStore.data.map { prefs ->
+        prefs[updateNoteDismissedAtKey]
     }.distinctUntilChanged()
 
     override suspend fun saveLastFileUri(uri: Uri) {
@@ -287,10 +297,6 @@ class LocalStorageManager(
         dataStore.edit { prefs -> prefs[fontSetIdKey] = id }
     }
 
-    override suspend fun setMermaidCloudEnabled(enabled: Boolean) {
-        dataStore.edit { prefs -> prefs[mermaidCloudEnabledKey] = enabled }
-    }
-
     override suspend fun setWrapCodeLines(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[wrapCodeLinesKey] = enabled }
     }
@@ -312,6 +318,19 @@ class LocalStorageManager(
             val current = prefs[dismissedImageFoldersKey].orEmpty()
             prefs[dismissedImageFoldersKey] = if (dismissed) current + folderKey else current - folderKey
         }
+    }
+
+    override suspend fun incrementDocumentsOpened() {
+        // Read-modify-write inside one edit, so two opens finishing together cannot lose a count.
+        dataStore.edit { prefs -> prefs[documentsOpenedKey] = (prefs[documentsOpenedKey] ?: 0) + 1 }
+    }
+
+    override suspend fun dismissRatingCard() {
+        dataStore.edit { prefs -> prefs[ratingCardDismissedKey] = true }
+    }
+
+    override suspend fun dismissUpdateNote(atMillis: Long) {
+        dataStore.edit { prefs -> prefs[updateNoteDismissedAtKey] = atMillis }
     }
 
     private fun encodeRecents(list: List<RecentFile>): String =

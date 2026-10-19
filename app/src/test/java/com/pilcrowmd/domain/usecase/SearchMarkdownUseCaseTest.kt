@@ -4,8 +4,11 @@
 package com.pilcrowmd.domain.usecase
 
 import com.pilcrowmd.domain.markdown.AdapterBlocks
+import com.pilcrowmd.domain.markdown.CodeBlockPiece
 import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.testing.bigParagraph
+import com.pilcrowmd.testing.fencedCode
+import org.commonmark.node.FencedCodeBlock
 import org.commonmark.node.Node
 import org.commonmark.node.Text
 import org.junit.Assert.assertEquals
@@ -585,5 +588,122 @@ class SearchMarkdownUseCaseTest {
     fun testTooDeepDocumentHasNoContents() {
         // Plain text has no headings: the deep document's contents stay empty although it opens with one.
         assertEquals(emptyList<Any>(), parseHeadingsUseCase.extractHeadings("# Title\n\n" + tooDeep))
+    }
+
+    /**
+     * M-228: a Mermaid fence is drawn as a picture (M-70), so its source is not on screen and search
+     * must not count it. Every other fence, including one that only mentions mermaid later in its
+     * info string, stays searchable. The info string is read the way the reader routes it: first word,
+     * any case, attributes after it.
+     */
+    @Test
+    fun mermaidFenceSourceIsNotSearchable() {
+        val content = buildString {
+            append("temperature in prose\n\n")
+            append("```mermaid\nflowchart TD\n  A[temperature] --> B\n```\n\n")
+            append("```Mermaid {.wide}\npie title temperature\n```\n\n")
+            append("```python mermaid\ntemperature = 3\n```\n")
+        }
+
+        val matches = useCase.findSearchMatches(content, "temperature")
+
+        assertEquals("prose + the python fence only", 2, matches.size)
+        assertEquals(0, matches[0].startIndex)
+        assertEquals(content.indexOf("temperature = 3"), matches[1].startIndex)
+    }
+
+    /**
+     * M-228: only a top-level Mermaid fence is its own adapter block and drawn as a picture. One nested
+     * in a list item is painted by Markwon as text inside the list's block, so it stays searchable, and
+     * the prose match after it is that block's second occurrence, as the highlighter counts it.
+     */
+    @Test
+    fun mermaidFenceNestedInAListStaysSearchable() {
+        val content = "- item\n\n  ```mermaid\n  flowchart TD\n    A[temperature]\n  ```\n\n  temperature after\n"
+
+        val matches = useCase.findSearchMatches(content, "temperature")
+
+        assertEquals("the nested fence and the prose", 2, matches.size)
+        assertEquals(listOf(0, 0), matches.map { it.adapterPosition })
+        assertEquals(listOf(0, 1), matches.map { it.occurrenceInBlock })
+    }
+
+    /**
+     * Issue #17: a long code block is several adapter items, and a match is reported against the piece
+     * it is in (250 lines of 60 chars: 15,000 chars, in pieces of 100, 100 and 50 lines). The needle is
+     * in the last line of the first piece (line 100) and in the first line of the second (line 101), so
+     * the cut falls between two matches; the paragraph after the block has a third. The heading before
+     * the block shifts every piece by one.
+     */
+    private val seamDoc = "# Head\n\n" + fencedCode(250, width = 60, mark = mapOf(100 to "needle", 101 to "needle")) +
+        "\nAfter the block, one more needle.\n"
+
+    @Test
+    fun `matches on both sides of a code block seam are reported against their own pieces`() {
+        val matches = useCase.findSearchMatches(seamDoc, "needle")
+
+        val blocks = AdapterBlocks.of(parseHeadingsUseCase.parseDocument(seamDoc)!!)
+        val pieces = blocks.indices.filter { blocks[it] is CodeBlockPiece }
+        assertEquals("250 short lines in pieces of 100, 100 and 50", listOf(1, 2, 3), pieces)
+        val first = seamDoc.indexOf("needle")
+        val second = seamDoc.indexOf("needle", first + 1)
+        val third = seamDoc.indexOf("needle", second + 1)
+        assertEquals(
+            listOf(
+                SearchMatch("needle", startIndex = first, adapterPosition = 1, occurrenceInBlock = 0),
+                SearchMatch("needle", startIndex = second, adapterPosition = 2, occurrenceInBlock = 0),
+                SearchMatch("needle", startIndex = third, adapterPosition = 4, occurrenceInBlock = 0),
+            ),
+            matches,
+        )
+        assertEquals("the paragraph is the item after the last piece", pieces.last() + 1, matches[2].adapterPosition)
+        assertTrue(
+            "the paragraph is the block after the code",
+            blocks[matches[2].adapterPosition] is org.commonmark.node.Paragraph,
+        )
+        assertEquals(
+            "the match starts at its text in the source",
+            "needle",
+            seamDoc.substring(
+                second,
+                second + "needle".length,
+            ),
+        )
+    }
+
+    @Test
+    fun `two matches in one piece count their own occurrences from zero`() {
+        val doc =
+            "# Head\n\n" + fencedCode(250, width = 60, mark = mapOf(150 to "needle", 160 to "needle", 240 to "needle"))
+
+        val matches = useCase.findSearchMatches(doc, "needle")
+
+        assertEquals(listOf(2, 2, 3), matches.map { it.adapterPosition })
+        assertEquals(listOf(0, 1, 0), matches.map { it.occurrenceInBlock })
+        val at = doc.indexOf("needle")
+        assertEquals(
+            listOf(at, doc.indexOf("needle", at + 1), doc.lastIndexOf("needle")),
+            matches.map {
+                it.startIndex
+            },
+        )
+    }
+
+    @Test
+    fun `a code block that is not long is one item and reports one position`() {
+        val doc = "# Head\n\n" + fencedCode(60, mark = mapOf(5 to "needle", 55 to "needle"))
+
+        val matches = useCase.findSearchMatches(doc, "needle")
+
+        assertEquals(listOf(1, 1), matches.map { it.adapterPosition })
+        assertEquals(listOf(0, 1), matches.map { it.occurrenceInBlock })
+        assertTrue(AdapterBlocks.of(parseHeadingsUseCase.parseDocument(doc)!!).none { it is CodeBlockPiece })
+    }
+
+    @Test
+    fun `the pieces of a long block are code blocks to everything that walks the tree`() {
+        val blocks = AdapterBlocks.of(parseHeadingsUseCase.parseDocument(seamDoc)!!)
+
+        assertTrue(blocks.filterIsInstance<CodeBlockPiece>().all { it is FencedCodeBlock })
     }
 }

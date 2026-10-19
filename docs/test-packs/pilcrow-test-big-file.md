@@ -19,11 +19,12 @@ and memory, not looks. The text is generated and does not mean anything.
 - **Edit.** Switch to Edit, scroll to the end, type a word, and save. Then reopen the file and
   check your word is there and nothing else changed.
 
-**Known gaps in version 1.0.14** – we know about these, no need to report them:
+**Known gaps in version 1.0.15** – we know about these, no need to report them:
 
 - A Markdown file over 10 million characters opens as plain text, with a notice. This file is
   well below that size.
-- Switching a very large file (tested at 32 MB) to Edit has closed the app once, with no error.
+- A file over 2 million characters opens in Edit without colours, and one over 10 million
+  characters can be read and searched but not edited.
 - A closed collapsible section that holds hundreds of blocks makes the file slower to open.
 - Saving a file that uses Windows line endings does part of the work on the screen's thread, so a
   large file can stutter while it saves.

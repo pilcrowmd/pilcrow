@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.components.FormattingBar
+import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import com.pilcrowmd.ui.theme.LocalMDColors
@@ -31,9 +32,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Visual-regression goldens for the editor's formatting bar (M-217), closed and with More open, in
- * Dark + Light. The bar sits at the bottom of a short editor-coloured viewport, where it lives above
- * the keyboard. PIXEL goldens: a re-record makes any change "pass", so re-recorded PNGs must be
- * looked at.
+ * Dark, AMOLED (M-92) and Light. The bar sits at the bottom of a short editor-coloured viewport,
+ * where it lives above the keyboard. PIXEL goldens: a re-record makes any change "pass", so
+ * re-recorded PNGs must be looked at.
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -45,12 +46,14 @@ class FormattingBarScreenshotTest(private val themeMode: ThemeMode) {
 
     private fun suffix() = when (themeMode) {
         ThemeMode.DARK -> "dark"
+        ThemeMode.AMOLED -> "amoled"
         ThemeMode.LIGHT -> "light"
     }
 
     private fun show() {
         val scheme = when (themeMode) {
             ThemeMode.DARK -> DarkColorScheme
+            ThemeMode.AMOLED -> AmoledColorScheme
             ThemeMode.LIGHT -> LightColorScheme
         }
         composeRule.setContent {
@@ -96,6 +99,6 @@ class FormattingBarScreenshotTest(private val themeMode: ThemeMode) {
 
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
-        fun themes(): List<ThemeMode> = listOf(ThemeMode.DARK, ThemeMode.LIGHT)
+        fun themes(): List<ThemeMode> = listOf(ThemeMode.DARK, ThemeMode.AMOLED, ThemeMode.LIGHT)
     }
 }

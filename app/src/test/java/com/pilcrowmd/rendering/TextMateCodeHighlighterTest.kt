@@ -20,22 +20,23 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * M-136 — the TextMate highlighter on its own: fence names, the per-block budget, embeds that do not
- * ship, and the run cache. Robolectric runs the same joni regex engine as the device.
+ * M-136 — the TextMate highlighter on its own: fence names, embeds that do not ship, the run cache,
+ * and that a block is coloured whole. Robolectric runs the same joni regex engine as the device.
+ *
+ * Issue #17 took the limits off: no line limit, no line-length limit and no time limit. The time limit
+ * is gone by design, so there is no clock to move and no test of one; what still stops a tokenise is the
+ * caller's cancel check, read between lines (`a cancelled tokenise ...`).
  */
 @RunWith(RobolectricTestRunner::class)
 class TextMateCodeHighlighterTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
-    /**
-     * The block's time budget reads [nanoTime]. It defaults to a clock that never moves, so the time
-     * budget can never be what decides a test about the line or line-length limit, however slow the
-     * machine (CI hit the real 1 s budget before line 2,000). Only the time-budget test moves it.
-     */
-    private fun highlighter(nanoTime: () -> Long = { 0L }) = TextMateCodeHighlighter(context.assets::open, nanoTime)
+    private fun highlighter(openAsset: (String) -> java.io.InputStream = context.assets::open) =
+        TextMateCodeHighlighter(openAsset)
 
     /** The role of the run covering the first character of [probe] in [code], or null if none does. */
     private fun roleAt(runs: List<CodeRun>, code: String, probe: String, from: Int = 0): CodeRole? {
@@ -73,37 +74,24 @@ class TextMateCodeHighlighterTest {
     }
 
     @Test
-    fun `a block past the line limit colours its head and leaves its tail plain`() {
-        val lines = TextMateCodeHighlighter.MAX_LINES + 100
+    fun `a block of 2,100 lines is coloured on its last line`() {
+        val lines = 2_100
         val code = (1..lines).joinToString("\n") { "echo \"line $it\"" }
         val runs = highlighter().tokenize(TextMateCodeHighlighter.SHELL, code)!!
-        val lastLine = TextMateCodeHighlighter.MAX_LINES
-        assertEquals("last line inside the limit", CodeRole.FUNCTION, roleAt(runs, code, "echo \"line $lastLine\""))
-        val firstPlain = code.indexOf("echo \"line ${lastLine + 1}\"")
-        assertTrue("nothing past the limit is coloured", runs.none { it.end > firstPlain })
+        assertEquals("first line", CodeRole.FUNCTION, roleAt(runs, code, "echo \"line 1\""))
+        assertEquals("a line past the old limit", CodeRole.FUNCTION, roleAt(runs, code, "echo \"line 2001\""))
+        assertEquals("last line", CodeRole.FUNCTION, roleAt(runs, code, "echo \"line $lines\""))
     }
 
     @Test
-    fun `a line over the character limit stays plain and the next line is coloured`() {
-        val long = "echo \"" + "x".repeat(TextMateCodeHighlighter.MAX_LINE_CHARS) + "\""
+    fun `a line over 5,000 chars is coloured, and so are the lines after it`() {
+        val long = "echo \"" + "x".repeat(5_001) + "\""
         val code = "echo one\n$long\necho three"
         val runs = highlighter().tokenize(TextMateCodeHighlighter.SHELL, code)!!
         val longStart = code.indexOf(long)
-        val longEnd = longStart + long.length
-        assertTrue("the long line has no colour", runs.none { it.start < longEnd && it.end > longStart })
+        assertEquals("the long line's command", CodeRole.FUNCTION, roleAt(runs, code, long))
+        assertEquals("the long line's string", CodeRole.STRING, roleAt(runs, code, "xxxx", longStart))
         assertEquals("the line after it", CodeRole.FUNCTION, roleAt(runs, code, "echo three"))
-    }
-
-    @Test
-    fun `once the time budget is spent the rest of the block stays plain`() {
-        // A clock that jumps past the budget after the first line: only line 1 is coloured. It counts
-        // reads, not real time, so machine speed cannot move it; 3 short lines keep the line limits out.
-        var calls = 0L
-        val clock = { if (calls++ < 2) 0L else (TextMateCodeHighlighter.BLOCK_BUDGET_MS + 1) * 1_000_000L }
-        val code = "echo one\necho two\necho three"
-        val runs = highlighter(clock).tokenize(TextMateCodeHighlighter.SHELL, code)!!
-        assertEquals(CodeRole.FUNCTION, roleAt(runs, code, "echo one"))
-        assertTrue("lines after the budget are plain", runs.none { it.end > code.indexOf("echo two") })
     }
 
     @Test
@@ -142,27 +130,25 @@ class TextMateCodeHighlighterTest {
      * While one block is being tokenised, the blocks queued behind it must wait as suspended
      * coroutines, not as pool threads parked on the tokenise lock.
      *
-     * The first block is held inside the lock by its clock (the first thing tokenising reads). Three
-     * more are then requested. A thread parked on the lock shows as BLOCKED inside
-     * `TextMateCodeHighlighter.tokenize`; with the fix none ever starts, because the three wait on a
-     * one-at-a-time dispatcher. Without it, three Default workers park within milliseconds, so the
-     * test fails at once. Proving an absence needs a bounded wait: this one can only pass slowly,
-     * never fail falsely.
+     * The first block is held inside the lock by the asset read that loads the grammar (the first
+     * thing tokenising does). Three more are then requested. A thread parked on the lock shows as
+     * BLOCKED inside `TextMateCodeHighlighter.tokenize`; with the fix none ever starts, because the
+     * three wait on a one-at-a-time dispatcher. Without it, three Default workers park within
+     * milliseconds, so the test fails at once. Proving an absence needs a bounded wait: this one can
+     * only pass slowly, never fail falsely.
      */
     @Test
     fun `blocks queued behind a tokenise wait without holding a thread`() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
-        var first = true
-        val clock = {
-            if (first) {
-                first = false
+        val first = AtomicBoolean(true)
+        val h = highlighter { path ->
+            if (first.getAndSet(false)) {
                 entered.countDown()
                 release.await(GATE_TIMEOUT_S, TimeUnit.SECONDS)
             }
-            0L
+            context.assets.open(path)
         }
-        val h = highlighter(clock)
         val scope = CoroutineScope(Job())
         try {
             val jobs = (0..3).map { i -> scope.async { h.tokenizeAsync(TextMateCodeHighlighter.SHELL, "echo $i") } }
@@ -197,6 +183,16 @@ class TextMateCodeHighlighterTest {
         val h = highlighter()
         assertNull(h.tokenize(TextMateCodeHighlighter.SHELL, "echo hi") { false })
         assertNull(h.cachedRuns(TextMateCodeHighlighter.SHELL, "echo hi"))
+    }
+
+    @Test
+    fun `the cancel check between lines still stops a block part way`() {
+        val h = highlighter()
+        val code = (1..50).joinToString("\n") { "echo \"line $it\"" }
+        var checks = 0
+        assertNull(h.tokenize(TextMateCodeHighlighter.SHELL, code) { checks++ < 10 })
+        assertTrue("it read the check once per line, not once", checks > 5 && checks < 50)
+        assertNull("nothing half-done is cached", h.cachedRuns(TextMateCodeHighlighter.SHELL, code))
     }
 
     private companion object {

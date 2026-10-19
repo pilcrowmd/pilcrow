@@ -35,22 +35,29 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pilcrowmd.ui.theme.mdColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
 /**
  * LicensesScreen: Native Compose modal displaying all third-party dependencies and their licenses.
  *
- * Loads dependency list from bundled JSON (121 runtime deps) + 25 curated entries (5 fonts + 20 vendored grammars).
+ * Loads dependency list from bundled JSON (121 runtime deps) + 26 curated entries (5 fonts + 20 vendored grammars
+ * + Mermaid).
  * Tappable rows → detail view with full license text. Token-colored. Graceful degradation on missing assets.
  */
 @Composable
@@ -103,6 +110,8 @@ fun LicensesListView(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // M-309: TalkBack speaks the pane title when the screen appears.
+            .semantics { paneTitle = "Open source licenses" }
             .systemBarsPadding()
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
@@ -194,7 +203,7 @@ fun LicenseRowItem(license: License, onSelect: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(c.secondarySurface)
-            .clickable { onSelect() }
+            .clickable(role = Role.Button) { onSelect() }
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -241,6 +250,8 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // M-309: the page is named by the licence it shows.
+            .semantics { paneTitle = license.name }
             .systemBarsPadding()
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
@@ -287,16 +298,18 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
 
         // License text (scrollable)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(horizontal = 12.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(c.secondarySurface)
-                .padding(12.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
+        val panel = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+            .padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.secondarySurface)
+            .padding(12.dp)
+        if (license.textAsset == MERMAID_LICENSE_ASSET) {
+            MermaidLicenseText(licenseText, panel)
+            return@Column
+        }
+        Box(modifier = panel.verticalScroll(rememberScrollState())) {
             Column {
                 Text(
                     text = licenseText,
@@ -336,6 +349,44 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
         }
     }
 }
+
+/**
+ * Mermaid's own licence, then the licence texts of the libraries inlined in mermaid.min.js (M-70).
+ * Those run to thousands of lines, so they are read once, off the main thread, and laid out lazily,
+ * one library at a time.
+ */
+@Composable
+private fun MermaidLicenseText(licenseText: String, modifier: Modifier) {
+    val c = mdColors()
+    val context = LocalContext.current
+    val notices by produceState(initialValue = emptyList<String>()) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.assets.open(MERMAID_BUNDLED_NOTICES).bufferedReader().use { it.readText() }
+            }.getOrNull()?.split(NOTICE_SECTION_START).orEmpty()
+        }
+    }
+    LazyColumn(modifier = modifier) {
+        item { Text(text = licenseText, color = c.primaryText, fontSize = 11.sp) }
+        items(notices) { section ->
+            Text(
+                text = section,
+                color = c.primaryText,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+        }
+    }
+}
+
+/** Splits the notices before each library's opening rule (a rule line followed by its name line). */
+private val NOTICE_SECTION_START = Regex("\n(?==+\n[^=\n])")
+
+/** Mermaid's LICENSE, copied from the npm package into assets at build time (M-70). */
+private const val MERMAID_LICENSE_ASSET = "licenses/MIT-Mermaid.txt"
+
+/** The libraries inlined in mermaid.min.js and their licences, shown under Mermaid's own. */
+private const val MERMAID_BUNDLED_NOTICES = "licenses/Mermaid-Bundled-Notices.txt"
 
 /**
  * The reader's TextMate grammars (M-136, M-243, NEW-35). Each shows its own notice file, so the copyright
@@ -462,6 +513,9 @@ fun loadDependencies(context: Context): List<License> {
             textAsset = "licenses/OFL-PilcrowMathText.txt",
         ),
         License(name = "VSCode Markdown TextMate Grammar", license = "MIT"),
+        License(name = "Mermaid", license = "MIT", textAsset = MERMAID_LICENSE_ASSET),
+        // M-247: the reader's `:shortcode:` names, converted from gemoji's emoji list.
+        License(name = "Emoji shortcode names (gemoji)", license = "MIT", textAsset = "licenses/MIT-Gemoji.txt"),
     ) + READER_GRAMMAR_LICENSES
 
     // Graceful degradation (Safeguard 3): a missing/malformed JSON asset yields the curated

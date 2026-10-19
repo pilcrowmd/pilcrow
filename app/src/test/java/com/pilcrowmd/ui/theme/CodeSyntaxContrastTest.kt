@@ -7,27 +7,19 @@ import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.pow
 
 /**
  * M-132 — every code-token colour the Light theme draws must reach 4.5:1 on the Light code-block
  * background, and every role must be set in Dark and Light. The PDF draws its code on the Light code
- * panel (M-178), so every Print role must reach the same 4.5:1 on that panel.
+ * panel (M-178), so every Print role must reach the same 4.5:1 on that panel. AMOLED's roles (M-92)
+ * are held to the same 4.5:1 on AMOLED's own code-block background.
  *
- * Contrast is the WCAG 2.x ratio computed from the sRGB values, written out here rather than taken
+ * Contrast is the WCAG 2.x ratio from [wcagContrast], written out in the tests rather than taken
  * from a library, so the test does not share its method with anything it checks.
  */
 class CodeSyntaxContrastTest {
 
-    private fun channel(c: Float): Double = if (c <= 0.04045f) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
-
-    private fun luminance(color: Color): Double =
-        0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
-
-    private fun contrast(a: Color, b: Color): Double {
-        val (hi, lo) = listOf(luminance(a), luminance(b)).sortedDescending()
-        return (hi + 0.05) / (lo + 0.05)
-    }
+    private fun contrast(a: Color, b: Color): Double = wcagContrast(a, b)
 
     private fun roles(syntax: CodeSyntaxColors): Map<String, Color?> = mapOf(
         "keyword" to syntax.keyword,
@@ -54,6 +46,16 @@ class CodeSyntaxContrastTest {
             assertNotNull("Light role '$role' is unset", color)
             val ratio = contrast(color!!, background)
             assertTrue("Light '$role' is %.2f:1 on the code block, below 4.5:1".format(ratio), ratio >= 4.5)
+        }
+    }
+
+    @Test
+    fun everyAmoledTokenColourReachesFourAndAHalfToOneOnTheAmoledCodeBlock() {
+        val background = AmoledColorScheme.codeBlockBg
+        for ((role, color) in roles(AmoledColorScheme.codeSyntax)) {
+            assertNotNull("AMOLED role '$role' is unset", color)
+            val ratio = contrast(color!!, background)
+            assertTrue("AMOLED '$role' is %.2f:1 on the code block, below 4.5:1".format(ratio), ratio >= 4.5)
         }
     }
 

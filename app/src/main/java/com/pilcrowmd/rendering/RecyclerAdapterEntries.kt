@@ -4,6 +4,9 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import com.pilcrowmd.domain.markdown.CodeBlockPiece
+import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
+import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.domain.markdown.isFrontmatter
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
@@ -46,8 +49,8 @@ class SearchHighlight(
  * The adapter reuses the Markwon instance and its entire plugin chain (CommonMark, GFM tables,
  * Prism4j syntax highlighting, JLatexMath for math rendering, etc.).
  *
- * Unsupported node types (Mermaid, wiki-links, emoji shortcodes, etc.) gracefully fall back to the
- * default prose entry, ensuring no crash on unexpected syntax (Safeguard 3).
+ * Unsupported node types (wiki-links, emoji shortcodes, etc.) gracefully fall back to the default
+ * prose entry, ensuring no crash on unexpected syntax (Safeguard 3).
  */
 object RecyclerAdapterEntries {
 
@@ -58,13 +61,14 @@ object RecyclerAdapterEntries {
      * @param markwon Configured Markwon instance (from MarkwonRenderer) with all plugins
      * @param fontScale Font scale multiplier (0.85–1.6, default 1.0) applied to all text sizes
      * @param fontSet Selected typography set — drives reading + mono typefaces
-     * @param mermaidCloudEnabled When true, ```mermaid blocks render via mermaid.ink
      * @param searchHighlight Search highlight state
      * @param colorScheme Active color scheme (Dark or Light) for rendering colors
      * @param wrapCodeLines When true, long lines in code blocks wrap instead of side-scrolling (M-134)
      * @param details Which `<details>` sections are open (M-161); every entry is wrapped so a block
      *   inside a closed section takes no space. Null leaves every block showing (the PDF export).
      * @param codeHighlighting Colours bash/TypeScript/Rust/Ruby blocks (M-136); null leaves them plain
+     * @param mermaid Draws ```mermaid blocks on the device (M-70). Null draws none: every diagram shows
+     *   its source with the caption, as when a render fails. The reader always passes one.
      * @param seams Where the pieces of a split paragraph meet (M-328), so they draw with no gap; null
      *   draws every paragraph with its usual gap (the PDF keeps the paragraph whole)
      * @return MarkwonAdapter ready to be set on a RecyclerView
@@ -75,16 +79,29 @@ object RecyclerAdapterEntries {
         markwon: Markwon,
         fontScale: Float = 1.0f,
         fontSet: FontSet = FontSets.DEFAULT,
-        mermaidCloudEnabled: Boolean = false,
         searchHighlight: SearchHighlight = SearchHighlight(),
         colorScheme: PilcrowColorScheme = DarkColorScheme,
         wrapCodeLines: Boolean = false,
         details: DetailsState? = null,
         codeHighlighting: CodeHighlighting? = null,
+        mermaid: MermaidDiagrams? = null,
         seams: ParagraphSeamState? = null,
     ): MarkwonAdapter {
         fun <N : org.commonmark.node.Node, H : MarkwonAdapter.Holder> hideable(entry: MarkwonAdapter.Entry<N, H>) =
             if (details == null) entry else HideableEntry(entry, details)
+
+        val codeBlocks = hideable(
+            ConditionalCodeBlockEntry(
+                context,
+                fontScale,
+                fontSet,
+                colorScheme,
+                searchHighlight,
+                wrapCodeLines,
+                codeHighlighting,
+                mermaid,
+            ),
+        )
 
         // Default entry = styled prose (reading font / 17sp / primaryText / 1.35) so headings,
         // paragraphs, lists, blockquotes etc. match the reading design — NOT the unstyled SimpleEntry default.
@@ -94,21 +111,10 @@ object RecyclerAdapterEntries {
         )
             // Register custom entry for YAML frontmatter
             // Must come before generic FencedCodeBlockEntry so "yaml" blocks route here first
-            .include(
-                FencedCodeBlock::class.java,
-                hideable(
-                    ConditionalCodeBlockEntry(
-                        context,
-                        fontScale,
-                        fontSet,
-                        mermaidCloudEnabled,
-                        colorScheme,
-                        searchHighlight,
-                        wrapCodeLines,
-                        codeHighlighting,
-                    ),
-                ),
-            )
+            .include(FencedCodeBlock::class.java, codeBlocks)
+            // Issue #17: the pieces of a long code block. The adapter picks an entry by the node's exact
+            // class, so the subclass is registered too, to the same entry.
+            .include(CodeBlockPiece::class.java, codeBlocks)
             // Register custom entry for table blocks (renders into HorizontalScrollView)
             .include(
                 TableBlock::class.java,
@@ -144,6 +150,7 @@ object RecyclerAdapterEntries {
      * Conditional code block entry that routes FencedCodeBlock nodes based on info string:
      * - front matter ([isFrontmatter]) → FrontmatterBlockEntry (styled YAML block with label);
      *   a ```yaml fence is NOT front matter and stays a code block (M-198)
+     * - ```mermaid → FencedCodeBlockEntry.bindMermaid (the diagram, drawn on the device; M-70)
      * - else → FencedCodeBlockEntry (normal code block with copy button)
      *
      * This allows both entries to handle FencedCodeBlock without conflicts.
@@ -153,11 +160,11 @@ object RecyclerAdapterEntries {
         private val context: Context,
         private val fontScale: Float = 1.0f,
         private val fontSet: FontSet = FontSets.DEFAULT,
-        private val mermaidCloudEnabled: Boolean = false,
         private val colorScheme: PilcrowColorScheme = DarkColorScheme,
         private val searchHighlight: SearchHighlight = SearchHighlight(),
         private val wrapCodeLines: Boolean = false,
         private val codeHighlighting: CodeHighlighting? = null,
+        private val mermaid: MermaidDiagrams? = null,
     ) : MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder>() {
 
         private val yamlEntry = FrontmatterBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight)
@@ -170,6 +177,7 @@ object RecyclerAdapterEntries {
                 searchHighlight,
                 wrapCodeLines,
                 codeHighlighting,
+                mermaid,
             )
 
         override fun createHolder(
@@ -186,20 +194,30 @@ object RecyclerAdapterEntries {
             holder: FencedCodeBlockEntry.Holder,
             node: FencedCodeBlock,
         ) {
-            // First, on every route: the front-matter and Mermaid-cloud routes never reach codeEntry.bindHolder,
-            // so without this a holder rebound from code to either could still take the old colours (M-136).
+            // First, on every route: the front-matter and Mermaid routes never reach codeEntry.bindHolder
+            // (a drawn diagram never does), so without this a holder rebound from code to either could
+            // still take the old colours (M-136).
             holder.cancelPendingHighlight()
-            // Front matter → styled card; mermaid (if opted in) → cloud image; everything else →
+            // Issue #17: likewise, a holder that showed a piece of a long block gets its own margins,
+            // padding and width back, and leaves that block's shared views, whatever this bind routes to.
+            holder.resetPiece()
+            // The one place the Mermaid lane is reset (M-256, M-120): a render still running for the block
+            // this holder showed before is cancelled, and its image and caption are hidden, whatever this
+            // bind routes to. The lanes below never reset it themselves.
+            holder.resetMermaid()
+            // Front matter → styled card; mermaid → diagram drawn on the device; everything else →
             // normal code block, by the fence's language. All bind into the same holder.
             val info = fenceLanguage(node.info)
             when {
                 node.isFrontmatter() -> yamlEntry.bindHolder(markwon, holder, node)
-                info == "mermaid" && mermaidCloudEnabled -> codeEntry.bindMermaid(markwon, holder, node)
-                info == "mermaid" -> codeEntry.bindMermaidOff(markwon, holder, node)
+                info == MERMAID_LANGUAGE -> codeEntry.bindMermaid(markwon, holder, node)
                 else -> codeEntry.bindHolder(markwon, holder, node)
             }
         }
 
-        override fun onViewRecycled(holder: FencedCodeBlockEntry.Holder) = codeEntry.onViewRecycled(holder)
+        override fun onViewRecycled(holder: FencedCodeBlockEntry.Holder) {
+            holder.resetMermaid()
+            codeEntry.onViewRecycled(holder)
+        }
     }
 }

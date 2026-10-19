@@ -12,6 +12,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +31,9 @@ fun HeadingsDrawer(
     modifier: Modifier = Modifier,
     headings: List<HeadingNode> = emptyList(),
     onHeadingSelected: (HeadingNode) -> Unit = {},
+    // M-307: read when a focus move is made, so it is current the moment a drawer opens. The drawer
+    // stays composed while closed; its rows must not be Tab stops then.
+    rowsFocusable: () -> Boolean = { true },
 ) {
     val c = mdColors()
     Column(
@@ -60,6 +65,7 @@ fun HeadingsDrawer(
                 HeadingItem(
                     heading = heading,
                     onSelected = onHeadingSelected,
+                    focusable = rowsFocusable,
                 )
             }
         }
@@ -67,14 +73,19 @@ fun HeadingsDrawer(
 }
 
 @Composable
-private fun HeadingItem(heading: HeadingNode, onSelected: (HeadingNode) -> Unit = {}) {
+private fun HeadingItem(
+    heading: HeadingNode,
+    onSelected: (HeadingNode) -> Unit = {},
+    focusable: () -> Boolean = { true },
+) {
     val c = mdColors()
     val levelIndent = (heading.level - 1) * 16 // 0dp for H1, 16dp for H2, etc.
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onSelected(heading) }
+            .focusProperties { canFocus = focusable() }
+            .clickable(role = Role.Button) { onSelected(heading) }
             .padding(
                 start = levelIndent.dp,
                 top = PilcrowSpacing.xs,

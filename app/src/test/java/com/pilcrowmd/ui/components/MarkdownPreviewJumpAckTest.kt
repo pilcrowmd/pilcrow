@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.testing.readerModelFor
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -41,6 +42,7 @@ class MarkdownPreviewJumpAckTest {
             MarkdownPreview(
                 model = remember { renderer.readerModelFor(content) },
                 renderer = renderer,
+                mermaidRenderer = NullMermaidRenderer,
                 jumpPosition = jumpPosition,
                 jumpSeq = jumpSeq,
                 onJumpHandled = { acked += it },

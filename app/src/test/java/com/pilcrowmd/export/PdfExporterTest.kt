@@ -9,6 +9,7 @@ import android.net.Uri
 import androidx.compose.ui.graphics.toArgb
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.testing.bigParagraph
 import com.pilcrowmd.ui.theme.PrintColorScheme
@@ -39,7 +40,7 @@ class PdfExporterTest {
         // explicitly here to let synchronous JLatexMathDrawable rendering work under test.
         ru.noties.jlatexmath.JLatexMathAndroid.init(context)
         renderer = warmedMarkwonRenderer(context)
-        exporter = PdfExporter(context, renderer)
+        exporter = PdfExporter(context, renderer, NullMermaidRenderer)
     }
 
     @Test
