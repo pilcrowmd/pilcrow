@@ -6,6 +6,10 @@ package com.pilcrowmd.viewmodel
 import android.net.Uri
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.storage.ScrollAnchor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -103,5 +107,54 @@ class DocumentSlotTest {
         val target = Uri.parse("content://t/copy.md")
         assertFalse(slot.adoptIdentity(written, "a", target, "copy.md", transient = false))
         assertNull("B took the copy's URI", slot.document.value!!.uri)
+    }
+
+    @Test
+    fun `a file published again gets its caret back, a new one starts at 0`() {
+        val slot = DocumentSlot()
+        val a = Uri.parse("content://t/a.md")
+        slot.publish(slot.claim(), publication("a".repeat(200), a), ReplacePolicy.IF_CLEAN)
+        slot.editorShownOnDocument = true
+        slot.editorCursor.value = 123
+        slot.publish(slot.claim(), publication("b", Uri.parse("content://t/b.md")), ReplacePolicy.IF_CLEAN)
+        assertEquals(0, slot.editorCursor.value)
+        assertFalse(slot.editorCursorFromSession)
+
+        slot.publish(slot.claim(), publication("a".repeat(200), a), ReplacePolicy.IF_CLEAN)
+
+        assertEquals(123, slot.editorCursor.value)
+        assertTrue(slot.editorCursorFromSession)
+    }
+
+    @Test
+    fun `a collector of the document that resumes inside the publish already sees the caret was kept`() {
+        // The ViewModel reads editorCursorFromSession when the document changes; an unconfined
+        // collector resumes right in the `_document.value = ...` write, so the flag must be set before it.
+        val slot = DocumentSlot()
+        val a = Uri.parse("content://t/a.md")
+        val seen = mutableListOf<Pair<Uri?, Boolean>>()
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        scope.launch { slot.document.collect { doc -> seen += doc?.uri to slot.editorCursorFromSession } }
+        slot.publish(slot.claim(), publication("a".repeat(200), a), ReplacePolicy.IF_CLEAN)
+        slot.editorShownOnDocument = true
+        slot.editorCursor.value = 123
+        slot.publish(slot.claim(), publication("b", Uri.parse("content://t/b.md")), ReplacePolicy.IF_CLEAN)
+
+        slot.publish(slot.claim(), publication("a".repeat(200), a), ReplacePolicy.IF_CLEAN)
+        scope.cancel()
+
+        assertEquals("a reopened: the collector saw the kept caret", a to true, seen.last())
+    }
+
+    @Test
+    fun `a file the editor was never shown on keeps no caret, so reopening it is a new file`() {
+        val slot = DocumentSlot()
+        val a = Uri.parse("content://t/a.md")
+        slot.publish(slot.claim(), publication("a".repeat(200), a), ReplacePolicy.IF_CLEAN)
+        slot.publish(slot.claim(), publication("b", Uri.parse("content://t/b.md")), ReplacePolicy.IF_CLEAN)
+
+        slot.publish(slot.claim(), publication("a".repeat(200), a), ReplacePolicy.IF_CLEAN)
+
+        assertFalse("0 here is the default, not a place the user left", slot.editorCursorFromSession)
     }
 }

@@ -57,7 +57,8 @@ import com.pilcrowmd.ui.theme.mdColors
 import com.pilcrowmd.viewmodel.ViewMode
 
 /**
- * Top toolbar (44dp) with a 1px bottom border (toolbarBorder token).
+ * Top toolbar (49dp: a 48dp row plus a 1px bottom border, toolbarBorder token). The row is 48dp so the
+ * Read/Edit switch's 48dp touch area lies inside the bar; Compose does not route a tap outside a parent.
  *
  * Left: one mode button showing the action (Edit in Read mode, Read in Edit mode).
  * Right: Search, TOC, then explicit Save (Edit mode only; no auto-save) or Export PDF (Read mode
@@ -89,13 +90,13 @@ fun PilcrowToolbar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(49.dp)
             .background(c.primaryBackground),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(43.dp)
+                .height(48.dp)
                 .padding(horizontal = PilcrowSpacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -193,8 +194,10 @@ fun PilcrowToolbar(
 
 /**
  * The single Reader/Editor switch. It shows the action it performs: [Icons.Outlined.EditNote] "Edit"
- * in Read mode, [Icons.AutoMirrored.Outlined.MenuBook] "Read" in Edit mode. 42dp target, 22dp accent
- * glyph; a long-press tooltip carries the same word for sighted users (TalkBack reads the label).
+ * in Read mode, [Icons.AutoMirrored.Outlined.MenuBook] "Read" in Edit mode. A [MODE_BUTTON_WIDTH] by
+ * [MODE_BUTTON_HEIGHT] button, so its whole 48 by 48dp touch area lies inside the bar, with a
+ * [MODE_ICON_SIZE] accent glyph (10dp clear above and below inside the 48dp row); a long-press tooltip
+ * carries the same word for sighted users (TalkBack reads the label).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -211,13 +214,13 @@ private fun ModeButton(currentMode: ViewMode, onModeSelected: (ViewMode) -> Unit
     ) {
         IconButton(
             onClick = { onModeSelected(if (editing) ViewMode.READER else ViewMode.EDITOR) },
-            modifier = Modifier.size(42.dp),
+            modifier = Modifier.size(width = MODE_BUTTON_WIDTH, height = MODE_BUTTON_HEIGHT),
         ) {
             Icon(
                 imageVector = if (editing) Icons.AutoMirrored.Outlined.MenuBook else Icons.Outlined.EditNote,
                 contentDescription = label,
                 tint = c.accent,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(MODE_ICON_SIZE),
             )
         }
     }
@@ -355,3 +358,9 @@ private fun OverflowMenu(
         }
     }
 }
+
+// The Read/Edit switch is the bar's main control, so its icon is drawn larger than the actions' 22 dp
+// (on request, 21 Oct).
+private val MODE_ICON_SIZE = 28.dp
+private val MODE_BUTTON_WIDTH = 48.dp
+private val MODE_BUTTON_HEIGHT = 48.dp

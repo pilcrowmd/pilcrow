@@ -38,12 +38,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Nightlight
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.StarOutline
@@ -120,6 +122,8 @@ fun SettingsScreen(
     onClose: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     onOpenGitHub: () -> Unit = {},
+    onEmailUs: () -> Unit = {},
+    onReportIssue: () -> Unit = {},
 ) {
     val c = mdColors()
     Column(
@@ -335,6 +339,36 @@ fun SettingsScreen(
             trailing = {
                 Icon(
                     imageVector = Icons.Outlined.ChevronRight,
+                    contentDescription = null,
+                    tint = c.secondaryText,
+                    modifier = Modifier.size(20.dp),
+                )
+            },
+        )
+        CardGap()
+        InfoCard(
+            leadingIcon = Icons.Outlined.MailOutline,
+            title = "Email us",
+            subtitle = CONTACT_EMAIL,
+            onClick = onEmailUs,
+            trailing = {
+                Icon(
+                    imageVector = Icons.Outlined.OpenInNew,
+                    contentDescription = null,
+                    tint = c.secondaryText,
+                    modifier = Modifier.size(20.dp),
+                )
+            },
+        )
+        CardGap()
+        InfoCard(
+            leadingIcon = Icons.Outlined.BugReport,
+            title = "Report an issue on GitHub",
+            subtitle = "Opens in your browser",
+            onClick = onReportIssue,
+            trailing = {
+                Icon(
+                    imageVector = Icons.Outlined.OpenInNew,
                     contentDescription = null,
                     tint = c.secondaryText,
                     modifier = Modifier.size(20.dp),

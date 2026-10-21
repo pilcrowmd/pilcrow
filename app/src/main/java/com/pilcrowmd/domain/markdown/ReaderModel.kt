@@ -27,6 +27,18 @@ sealed class ReaderModel(
      */
     val blocks: List<Node>,
 ) {
+    /**
+     * Each block's share of the text, counted once off Main when the model is prepared, for the
+     * scroll percent ([ScrollPercent.textStarts]).
+     */
+    abstract val textStarts: IntArray
+
+    /**
+     * The characters of wrapped prose and the lines of code or table in each block, counted with
+     * [textStarts], for the "more than 6 screens" test ([ScrollPercent.isLong]).
+     */
+    abstract val rowCounts: ScrollPercent.RowCounts
+
     /** The Markdown tree, with everything derived from it in the same pass. */
     class Markdown(
         content: String,
@@ -37,7 +49,10 @@ sealed class ReaderModel(
         val headings: List<HeadingNode>,
         /** Where the pieces of a split paragraph meet (M-328, [ParagraphSplitter]); the reader draws no gap there. */
         val seams: ParagraphSeams = ParagraphSeams.NONE,
-    ) : ReaderModel(content, RenderMode.MARKDOWN, blocks)
+    ) : ReaderModel(content, RenderMode.MARKDOWN, blocks) {
+        override val textStarts = ScrollPercent.textStarts(blocks)
+        override val rowCounts = ScrollPercent.rowCounts(blocks)
+    }
 
     /** The text shown verbatim, in chunks; no Markdown parser ran. */
     class Plain(
@@ -46,7 +61,10 @@ sealed class ReaderModel(
         blocks: List<Node>,
         val chunkLiterals: List<String>,
         val reason: PlainReason,
-    ) : ReaderModel(content, renderMode, blocks)
+    ) : ReaderModel(content, renderMode, blocks) {
+        override val textStarts = ScrollPercent.textStartsOf(chunkLiterals)
+        override val rowCounts = ScrollPercent.rowCountsOf(chunkLiterals)
+    }
 
     /** The TOC this model yields: the Markdown headings, or none. */
     val tocHeadings: List<HeadingNode> get() = (this as? Markdown)?.headings.orEmpty()

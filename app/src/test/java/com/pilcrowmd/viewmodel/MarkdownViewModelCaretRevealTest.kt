@@ -88,6 +88,7 @@ class MarkdownViewModelCaretRevealTest {
     private val markdown = "# One\n\nText.\n\n# Two\n\nMore.\n" // blocks: 0 One, 1 Text, 2 Two, 3 More
     private val uriMd = Uri.parse("content://test/a.md")
     private val uriTxt = Uri.parse("content://test/a.txt")
+    private val uriOtherMd = Uri.parse("content://test/b.md")
 
     private fun vm(
         cpu: CoroutineDispatcher = Dispatchers.Default,
@@ -95,7 +96,7 @@ class MarkdownViewModelCaretRevealTest {
     ): MarkdownViewModel {
         val parseHeadings = ParseMarkdownHeadingsUseCase()
         return MarkdownViewModel(
-            repository = FakeRepo(mapOf(uriMd to markdown, uriTxt to markdown)),
+            repository = FakeRepo(mapOf(uriMd to markdown, uriTxt to markdown, uriOtherMd to markdown)),
             storage = storage,
             parseHeadingsUseCase = parseHeadings,
             searchUseCase = SearchMarkdownUseCase(parseHeadings),
@@ -267,11 +268,11 @@ class MarkdownViewModelCaretRevealTest {
         val cpu = HoldingDispatcher()
         val vm = vmEditingAt(uriMd, "More.", cpu)
         cpu.holding = true
-        vm.switchTo(ViewMode.READER) // computation 1, caret on block 3, held
+        // The mode flips only after the landing is worked out, so a held computation leaves it on EDITOR.
+        vm.setMode(ViewMode.READER) // computation 1, caret on block 3, held
         awaitValue(1, "computation 1 in flight") { cpu.held.size }
-        vm.switchTo(ViewMode.EDITOR)
         vm.updateEditorCursor(markdown.indexOf("Text."))
-        vm.switchTo(ViewMode.READER) // computation 2, caret on block 1, held
+        vm.setMode(ViewMode.READER) // supersedes 1; computation 2, caret on block 1, held
         awaitValue(2, "computation 2 in flight") { cpu.held.size }
 
         cpu.finishNext() // the OLD one returns first
@@ -279,6 +280,7 @@ class MarkdownViewModelCaretRevealTest {
         assertNull("the stale block 3 must not be published", vm.caretReveal.value)
         cpu.finishNext()
         awaitValue(1, "the newer switch's block is published") { vm.caretReveal.value?.blockIndex }
+        awaitValue(ViewMode.READER, "the newer switch flipped the mode") { vm.mode.value }
     }
 
     @Test
@@ -286,10 +288,12 @@ class MarkdownViewModelCaretRevealTest {
         val cpu = HoldingDispatcher()
         val vm = vmEditingAt(uriMd, "More.", cpu)
         cpu.holding = true
-        vm.switchTo(ViewMode.READER) // computation for document A, held
+        vm.setMode(ViewMode.READER) // computation for document A, held
         awaitValue(1, "computation in flight") { cpu.held.size }
         cpu.holding = false
-        vm.loadAndAwait(uriTxt) // document B replaces A while A's block is still being worked out
+        // Document B replaces A while A's block is still being worked out. B is Markdown too: were it
+        // plain text, the render mode it brings would already keep A's block from being published.
+        vm.loadAndAwait(uriOtherMd)
 
         cpu.finishNext()
 

@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.viewmodel
 
+import android.net.Uri
 import com.pilcrowmd.domain.model.HeadingNode
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.storage.ScrollAnchor
@@ -77,7 +78,8 @@ internal data class Publication(
  * - [setRendering] changes the render mode or TOC of one document, never identity.
  * - [mode], [previewScroll], [editorScroll] and [editorCursor] are VIEW state: the user moves them
  *   freely, so they are plain writable flows. They carry no identity; a publish resets them in the
- *   same step as the document it belongs to.
+ *   same step as the document it belongs to (the caret to where that file's caret was, if it was
+ *   open earlier in this session).
  *
  * **Adjudication is monotonic:** a publish succeeds only if its claim is newer than the last one
  * that published. It does NOT ask whether a newer claim merely exists, so an operation that claims
@@ -118,6 +120,21 @@ internal class DocumentSlot {
     val editorScroll = MutableStateFlow(0)
     val editorCursor = MutableStateFlow(0)
 
+    // Issue #15: the caret each file had when it was replaced, for this app session only, so editing
+    // a file opened again starts on the line last edited. Unsaved documents (no uri) are not kept.
+    private val sessionCarets = HashMap<Uri, Int>()
+
+    /**
+     * Whether the editor has been shown on the document in the slot (the ViewModel sets it when it
+     * publishes the editor). Only then is its caret worth keeping: a document never edited has caret 0
+     * by default, which is not a place the user left.
+     */
+    var editorShownOnDocument = false
+
+    /** Whether the last publish put back a caret kept from earlier in this session. */
+    var editorCursorFromSession = false
+        private set
+
     // M-126: a failed load earns a persistent message only when it leaves nothing on screen.
     // Retired by every publish, so no door that makes a document current can forget it.
     private val _loadFailedWithNoDocument = MutableStateFlow(false)
@@ -140,9 +157,14 @@ internal class DocumentSlot {
         // Mode BEFORE the document (M-111): the screen then composes the editor for the new
         // document and never parses it into a reader it would throw away.
         if (publication.switchToEditor) mode.value = ViewMode.EDITOR
+        if (editorShownOnDocument) _document.value?.uri?.let { sessionCarets[it] = editorCursor.value }
+        editorShownOnDocument = publication.switchToEditor
+        val keptCaret = publication.document.uri?.let { sessionCarets[it] }
+        // Before the document: a collector of it can resume inline, inside this publish, and reads this.
+        editorCursorFromSession = keptCaret != null
         _document.value = publication.document
         _transient.value = publication.transient
-        editorCursor.value = 0
+        editorCursor.value = keptCaret?.coerceAtMost(publication.document.content.length) ?: 0
         _plainToggleAvailable.value = publication.plainToggleAvailable
         _renderMode.value = publication.renderMode
         _headings.value = publication.headings
@@ -157,6 +179,8 @@ internal class DocumentSlot {
     fun publishClose(claim: Claim, policy: ReplacePolicy): PublishOutcome {
         val outcome = adjudicate(claim, policy)
         if (outcome != PublishOutcome.PUBLISHED) return outcome
+        if (editorShownOnDocument) _document.value?.uri?.let { sessionCarets[it] = editorCursor.value }
+        editorShownOnDocument = false
         _document.value = null
         _transient.value = false
         mode.value = ViewMode.READER

@@ -19,7 +19,7 @@ and memory, not looks. The text is generated and does not mean anything.
 - **Edit.** Switch to Edit, scroll to the end, type a word, and save. Then reopen the file and
   check your word is there and nothing else changed.
 
-**Known gaps in version 1.0.15** – we know about these, no need to report them:
+**Known gaps in version 1.0.16** – we know about these, no need to report them:
 
 - A Markdown file over 10 million characters opens as plain text, with a notice. This file is
   well below that size.
@@ -28,8 +28,6 @@ and memory, not looks. The text is generated and does not mean anything.
 - A closed collapsible section that holds hundreds of blocks makes the file slower to open.
 - Saving a file that uses Windows line endings does part of the work on the screen's thread, so a
   large file can stutter while it saves.
-- In the Dark theme, a hard fling past the end of the file can turn the text area blank. Swipe back
-  and the text returns.
 
 If this file opens and scrolls well, a bigger one may still not. If you test a bigger file, please
 tell us its size and what happened, at <https://github.com/pilcrowmd/pilcrow/issues>.

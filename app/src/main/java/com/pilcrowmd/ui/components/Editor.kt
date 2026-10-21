@@ -24,12 +24,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.res.ResourcesCompat
+import com.pilcrowmd.R
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
 import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import com.pilcrowmd.ui.theme.PilcrowTypography
 import com.pilcrowmd.ui.theme.mdColors
+import com.pilcrowmd.viewmodel.DocumentId
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.event.SubscriptionReceipt
@@ -88,6 +90,9 @@ fun MarkdownEditor(
     scrollPosition: Int = 0,
     onScrollChanged: (Int) -> Unit = {},
     initialCursor: Int = 0,
+    // Issue #15 / M-340: the document this editor shows. With it the editor can tell it still holds
+    // this document's unchanged text and keep it, with its undo history, caret and scroll.
+    documentId: DocumentId? = null,
     onCursorChange: (Int) -> Unit = {},
     onUndo: () -> Unit = {},
     onRedo: () -> Unit = {},
@@ -192,8 +197,17 @@ fun MarkdownEditor(
                     // tokenizes the large text anyway.
                     applyEditorLanguage(editor, plainText || !syntaxHighlighting)
 
-                    // Set initial content
-                    editor.setText(content)
+                    // Issue #15 / M-340: Sora's setText builds a new Content, which drops the undo
+                    // history and puts the caret and the scroll back to the top. When the editor
+                    // still holds this document's text unchanged (a switch back from Read), keep it.
+                    // The id matters, not only the text: two documents with the same text must not
+                    // share one undo history (Safeguard 2).
+                    val keepsText = documentId != null &&
+                        editor.getTag(R.id.editor_document) == documentId &&
+                        editor.text.length == content.length &&
+                        editor.text.toString() == content
+                    if (!keepsText) editor.setText(content)
+                    editor.setTag(R.id.editor_document, documentId)
 
                     // Configure editor appearance and behavior
                     editor.setTextSize(editorFontSizeSp)
@@ -243,10 +257,13 @@ fun MarkdownEditor(
                     editor.post {
                         try {
                             val clampedCursor = initialCursor.coerceIn(0, editor.text.length)
+                            // Kept text already has the caret and the scroll the user left; move them
+                            // only if the ViewModel moved the caret meanwhile (Read was scrolled).
+                            if (keepsText && editor.cursor.left == clampedCursor) return@post
                             val pos = editor.text.indexer.getCharPosition(clampedCursor)
                             editor.setSelection(pos.line, pos.column)
-                            // Ensure selection is visible
-                            editor.ensureSelectionVisible()
+                            // Issue #15: the caret's line in the middle, as it was in the reader.
+                            editor.revealLineInMiddleWhenSettled(pos.line)
                         } catch (e: Exception) {
                             Log.w("MarkdownEditor", "Failed to restore initial cursor", e)
                         }

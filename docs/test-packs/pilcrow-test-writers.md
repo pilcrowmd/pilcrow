@@ -16,7 +16,7 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 - **Edit and save.** Switch to Edit, change a word, save, and reopen: the file must come back
   exactly as you left it, with nothing reflowed or reformatted.
 
-**Known gaps in version 1.0.15** – we know about these, no need to report them:
+**Known gaps in version 1.0.16** – we know about these, no need to report them:
 
 - A picture in a table cell is dropped.
 - A link to another note (`./notes.md`) does nothing when tapped.

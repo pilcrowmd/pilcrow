@@ -6,6 +6,7 @@ package com.pilcrowmd.domain.usecase
 import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.AdmonitionBlockParserFactory
 import com.pilcrowmd.domain.markdown.AdmonitionFences
+import com.pilcrowmd.domain.markdown.BlockLines
 import com.pilcrowmd.domain.markdown.CodeBlockPiece
 import com.pilcrowmd.domain.markdown.CodeBlockSplitter
 import com.pilcrowmd.domain.markdown.FootnoteBlockParserFactory
@@ -109,21 +110,80 @@ class ParseMarkdownHeadingsUseCase {
      * that paragraph. Display math `$$…$$` containing a blank line counts as several blocks in the
      * parity parser (`parseDocument` omits ext-latex's block parser), so carets after it map too
      * high; Contents and search inherit the same limit.
+     *
+     * [blocks]: the document's adapter blocks when the caller already has them (the reader model).
      */
-    fun readerBlockForOffset(content: String, offset: Int): Int? {
-        val full = adapterBlocks(content)
-        val fullBlocks = full.size
-        if (fullBlocks == 0) return null
-        val caret = offset.coerceIn(0, content.length)
-        val lineEnd = content.indexOf('\n', caret).let { if (it < 0) content.length else it }
-        val prefix = content.substring(0, lineEnd)
-        val insideFrontmatter = FrontmatterDetector.hasWellFormedFrontmatter(content) &&
-            !FrontmatterDetector.hasWellFormedFrontmatter(prefix)
-        if (insideFrontmatter) return 0
+    fun readerBlockForOffset(content: String, offset: Int, blocks: List<Node>? = null): Int? {
+        val full = blocks ?: adapterBlocks(content)
+        if (full.isEmpty()) return null
+        return BlockLookup(content, full).blockAt(offset)
+    }
+
+    /**
+     * Issue #15, the other way round: where reader block [block] starts in [content] (the start of its
+     * first line), or `null` when there is no block, as for [readerBlockForOffset]. [blocks]: the
+     * document's adapter blocks when the caller has them (the reader model), so they are not parsed again.
+     *
+     * With no source spans, the lines are searched: the block a line maps to never goes down as the
+     * line goes down, so the block starts at the first line that maps to it or to a later one. The blocks'
+     * sizes place the first probe ([BlockLines]) and the later ones, so it takes a few. Each step parses
+     * a prefix, so it stops as soon as [keepGoing] says no and returns its best line so far, which on a
+     * very large document can be some lines off. [readerBlockForOffset]'s approximations apply to
+     * every step.
+     */
+    fun offsetOfReaderBlock(
+        content: String,
+        block: Int,
+        blocks: List<Node>? = null,
+        keepGoing: () -> Boolean = { true },
+    ): Int? {
+        val full = blocks ?: adapterBlocks(content)
+        if (full.isEmpty()) return null
+        val target = block.coerceIn(0, full.size - 1)
+        if (target == 0) return 0
+        val lookup = BlockLookup(content, full)
+        val lineStarts = lookup.lineStarts()
+        // Line lo maps before the target and line hi to it or later. The last line maps to the last
+        // block (a trailing link reference definition takes no position), so it is not parsed.
+        val search = ReaderBlockLineSearch(lineStarts.size, BlockLines.starts(full), target)
+        while (!search.done) {
+            val probe = search.nextProbe()
+            // Out of time: the best line the probes so far leave, or with no probe run, the guess.
+            if (!keepGoing()) return lineStarts[search.bestSoFar()]
+            search.record(probe, lookup.blockAt(lineStarts[probe]))
+        }
+        return lineStarts[search.hi]
+    }
+
+    /**
+     * One document's offset-to-block lookup, the work of [readerBlockForOffset]: what does not depend
+     * on the offset is worked out once, so a search can ask many times.
+     */
+    private inner class BlockLookup(private val content: String, private val full: List<Node>) {
+        private val hasFrontmatter = FrontmatterDetector.hasWellFormedFrontmatter(content)
+
         // A `:::` block is closed by a fence that may lie past the caret, so the prefix is parsed with the
         // whole document's answer about which openers close (M-251); it meets the same openers in order.
-        val prefixBlocks = adapterBlocks(prefix, AdmonitionFences.scan(content))
-        return (codePieceForCaret(prefixBlocks, full) ?: (prefixBlocks.size - 1)).coerceIn(0, fullBlocks - 1)
+        private val fences = AdmonitionFences.scan(content)
+
+        /** The start offset of every line; a final line with no newline counts too. */
+        fun lineStarts(): IntArray {
+            var count = 1
+            for (ch in content) if (ch == '\n') count++
+            val starts = IntArray(count)
+            var line = 1
+            for (i in content.indices) if (content[i] == '\n') starts[line++] = i + 1
+            return starts
+        }
+
+        fun blockAt(offset: Int): Int {
+            val caret = offset.coerceIn(0, content.length)
+            val lineEnd = content.indexOf('\n', caret).let { if (it < 0) content.length else it }
+            val prefix = content.substring(0, lineEnd)
+            if (hasFrontmatter && !FrontmatterDetector.hasWellFormedFrontmatter(prefix)) return 0
+            val prefixBlocks = adapterBlocks(prefix, fences)
+            return (codePieceForCaret(prefixBlocks, full) ?: (prefixBlocks.size - 1)).coerceIn(0, full.size - 1)
+        }
     }
 
     /**

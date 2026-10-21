@@ -341,8 +341,15 @@ class LongCodeBlockColourTest {
      * until released: the colours of the rest are not in yet. Each call is counted, and each step is a
      * permit, so a block coloured twice (a cancelled job, a restart) can be followed.
      */
-    private class FrontFirstHighlighter : CodeHighlighter {
+    private class FrontFirstHighlighter(private val gateFront: Boolean = false) : CodeHighlighter {
         val calls = AtomicInteger()
+
+        /**
+         * With [gateFront], onReady is not called until the test releases this. A test that must hold Main
+         * while the front is handed over needs it: the first `idle()` keeps draining the main queue until it
+         * is empty, so a worker that is quick to post the front to Main lets that same idle() paint it.
+         */
+        val frontGate = Semaphore(0)
 
         /** About to hand the front over. */
         val frontOffered = Semaphore(0)
@@ -366,6 +373,7 @@ class LongCodeBlockColourTest {
             calls.incrementAndGet()
             val front = code.lines().take(FRONT_LINES).sumOf { it.length + 1 }
             frontOffered.release()
+            if (gateFront) frontGate.acquire()
             onReady(fnRuns(code).filter { it.end <= front }, front)
             frontTaken.release()
             suspendCoroutine {
@@ -406,7 +414,7 @@ class LongCodeBlockColourTest {
 
     @Test
     fun `the pieces the first window covers are coloured while the rest of the block is still being coloured`() {
-        val front = FrontFirstHighlighter()
+        val front = FrontFirstHighlighter(gateFront = true)
         val built = build(rust, "rust", CodeHighlighting(front, mainScope, prism4j = front))
         val covered = built.adapter.bind(built.piece(1))
         val firstUncovered = built.adapter.bind(built.piece(3))
@@ -414,8 +422,11 @@ class LongCodeBlockColourTest {
         assertEquals("plain at bind, the first piece past the window too", 0, firstUncovered.keywords())
 
         // Main runs the launch (one idle), then is held here: whatever the front needs Main for cannot happen.
+        // The highlighter is gated, so the front is not handed over until this idle() has returned: an idle()
+        // drains the queue until it is empty, and a worker quick enough would get its front painted by it.
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue("the colouring offered its front", front.frontOffered.tryAcquire(WAIT_S, TimeUnit.SECONDS))
+        front.frontGate.release()
         assertFalse(
             "the front is painted on Main: the highlighter's onReady cannot return while Main is not run",
             front.frontTaken.tryAcquire(OFF_MAIN_WAIT_MS, TimeUnit.MILLISECONDS),

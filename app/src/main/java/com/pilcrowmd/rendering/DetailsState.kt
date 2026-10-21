@@ -22,6 +22,13 @@ class DetailsState {
     private val expanded = mutableSetOf<Int>()
 
     /**
+     * Counts every change to which blocks are hidden (new sections, a toggle, a section opened for a
+     * jump), so a reader that has worked something out from them can tell it has gone stale.
+     */
+    var version: Int = 0
+        private set
+
+    /**
      * Take the sections of a freshly parsed [content]. The same content keeps what the user opened —
      * a pinch-zoom or a theme change re-parses the same text — and new content starts over.
      */
@@ -30,6 +37,7 @@ class DetailsState {
         this.content = content
         this.sections = sections
         if (!sameDocument) {
+            version++
             expanded.clear()
             sections.filter { it.openByDefault }.forEach { expanded += it.header }
         }
@@ -52,6 +60,7 @@ class DetailsState {
     fun toggle(header: Int): IntRange {
         val section = sectionAt(header) ?: return IntRange.EMPTY
         if (!expanded.remove(header)) expanded += header
+        version++
         return section.header..section.last
     }
 
@@ -69,6 +78,7 @@ class DetailsState {
         }
         if (hiding.isEmpty()) return null
         hiding.forEach { expanded += it.header }
+        version++
         return hiding.minOf { it.header }..hiding.maxOf { it.last }
     }
 

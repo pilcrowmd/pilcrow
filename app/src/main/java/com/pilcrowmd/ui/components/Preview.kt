@@ -3,7 +3,9 @@
 
 package com.pilcrowmd.ui.components
 
+import android.content.Context
 import android.net.Uri
+import android.text.TextPaint
 import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -25,15 +27,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,11 +52,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.doOnNextLayout
@@ -60,6 +70,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.ParagraphSeams
 import com.pilcrowmd.domain.markdown.ReaderModel
+import com.pilcrowmd.domain.markdown.ScrollPercent
 import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.rendering.AnchorTargets
 import com.pilcrowmd.rendering.CodeHighlighting
@@ -89,6 +100,7 @@ import com.pilcrowmd.rendering.smoothJumpTo
 import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
+import com.pilcrowmd.ui.theme.PilcrowTypography
 import com.pilcrowmd.ui.theme.mdColors
 import io.noties.markwon.Markwon
 import io.noties.markwon.recycler.MarkwonAdapter
@@ -144,6 +156,10 @@ fun MarkdownPreview(
     caretRevealSeq: Int = 0,
     onCaretRevealHandled: (Int) -> Unit = {},
     imeVisible: Boolean = false,
+    // Issue #15: the user moved the reader (a drag or fling, a jump button, a heading or search
+    // jump), and what sits under the middle of the screen (block, how far down it, screen height).
+    onReaderMoved: () -> Unit = {},
+    onReaderMiddleChanged: (block: Int, fraction: Float, viewportHeight: Int) -> Unit = { _, _, _ -> },
     // M-93: the note on screen, which `images/x.png` is read against; null leaves relative images
     // as placeholders. [imageAccessKey] changes when the granted folders do, which re-renders the
     // pictures; [onImageTap] is a tap on a relative-image placeholder ("Tap to show").
@@ -155,6 +171,8 @@ fun MarkdownPreview(
     val currentOnJumpHandled = rememberUpdatedState(onJumpHandled)
     val currentOnCaretRevealHandled = rememberUpdatedState(onCaretRevealHandled)
     val currentImeVisible = rememberUpdatedState(imeVisible)
+    val currentOnReaderMoved = rememberUpdatedState(onReaderMoved)
+    val currentOnReaderMiddleChanged = rememberUpdatedState(onReaderMiddleChanged)
     // Captured once per composition-entry, so re-entering Reader mode (or rotating) restores the
     // saved offset without fighting live scroll updates.
     val initialScroll = remember { scrollPosition }
@@ -204,6 +222,19 @@ fun MarkdownPreview(
     val canScroll = remember { mutableStateOf(false) }
     // M-195: the jump controls show only while the list is being scrolled (see [JumpControls]).
     val scrolling = remember { mutableStateOf(false) }
+    // The scroll percent badge: the number, whether the document is long enough to show it, and the
+    // model and scale that decision was made for (see [refreshLongDocument]).
+    val currentModel = rememberUpdatedState(model)
+    val scrollPercent = remember { mutableIntStateOf(0) }
+    val longDocument = remember { mutableStateOf(false) }
+    val decided = remember { LongDocumentDecision() }
+    // How wide a character and how tall a line of body text are, measured once per font set and
+    // scale (not per frame): what the row estimate for "more than 6 screens" is made of.
+    val textMetrics = remember { mutableStateOf<ReaderTextMetrics?>(null) }
+    val currentFontSet = rememberUpdatedState(fontSet)
+    // The model's text weights with the blocks of closed details sections counted as nothing; what
+    // the percent is read against. Refreshed together with [longDocument], never per frame.
+    val effectiveStarts = remember { mutableStateOf<IntArray?>(null) }
 
     // The scale the adapter is built at. The live pinch reflows the visible TextViews directly (no
     // rebuild mid-gesture); this is bumped ONCE on gesture end to trigger the single crisp rebuild,
@@ -214,6 +245,27 @@ fun MarkdownPreview(
     // scale changes externally (Settings A−/A+ slider, or the round-trip after a pinch persists) —
     // never overwriting an in-flight pinch, since the param stays constant during the gesture.
     val lastParamScale = remember { mutableStateOf(fontScale) }
+
+    // Works out which text takes room and whether the document is long, from its text rows at the
+    // list's current width and the current text size (see [ScrollPercent.isLong]); no layout sample.
+    // Runs at the first layout of a document or text size (the first scroll callback), whenever the
+    // list starts to scroll and when its size changes, so a section opened or closed, a changed
+    // font or a rotation is picked up. Not per frame.
+    val refreshLongDocument = { rv: RecyclerView, shown: ReaderModel ->
+        val blocks = shown.textStarts.size - 1
+        val closed = if (detailsState.sections.isEmpty()) null else BooleanArray(blocks) { detailsState.isHidden(it) }
+        val isHidden: (Int) -> Boolean = if (closed == null) NONE_HIDDEN else { i -> closed[i] }
+        val starts = if (closed == null) shown.textStarts else ScrollPercent.withoutHidden(shown.textStarts, isHidden)
+        effectiveStarts.value = starts
+        val font = currentFontSet.value
+        val scale = liveFontScale.value
+        val metrics = textMetrics.value?.takeIf { it.matches(font, scale) }
+            ?: ReaderTextMetrics.measure(rv.context, font, scale).also { textMetrics.value = it }
+        decideLongDocument(rv, shown.rowCounts, isHidden, metrics)?.let {
+            longDocument.value = it
+            decided.record(shown, scale, font.id, detailsState.version, rv)
+        }
+    }
 
     // M-220: one traversal group, so the jump controls' negative traversalIndex orders them ahead of
     // the list only within the reader, never ahead of the toolbar above it.
@@ -261,11 +313,32 @@ fun MarkdownPreview(
                         override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                             onScrollChanged(rv.currentScrollAnchor())
                             canScroll.value = documentOverflowsViewport(rv)
+                            rv.middleItem()?.let { (block, fraction) ->
+                                currentOnReaderMiddleChanged.value(block, fraction, rv.height)
+                            }
+                            val shown = currentModel.value ?: return
+                            val fresh = decided.matches(
+                                shown,
+                                liveFontScale.value,
+                                currentFontSet.value.id,
+                                detailsState.version,
+                                rv,
+                            )
+                            if (!fresh) refreshLongDocument(rv, shown)
+                            if (!longDocument.value) return
+                            val starts = effectiveStarts.value ?: return
+                            val percent = scrollPercentOf(rv, starts) ?: return
+                            if (percent != scrollPercent.intValue) scrollPercent.intValue = percent
                         }
 
                         override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                            val startsScrolling = !scrolling.value && newState != RecyclerView.SCROLL_STATE_IDLE
                             scrolling.value = newState != RecyclerView.SCROLL_STATE_IDLE
-                            if (newState == RecyclerView.SCROLL_STATE_DRAGGING) userDragged.value = true
+                            if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                                userDragged.value = true
+                                currentOnReaderMoved.value()
+                            }
+                            if (startsScrolling) currentModel.value?.let { refreshLongDocument(rv, it) }
                         }
                     })
 
@@ -458,6 +531,7 @@ fun MarkdownPreview(
                         val lm = rv.layoutManager as? LinearLayoutManager
                         rv.post {
                             cancelReaderJump(rv)
+                            currentOnReaderMoved.value()
                             lm?.scrollToPositionWithOffset(focusedPos, 0)
                             rv.post {
                                 val delta = rv.intraBlockMatchDelta(focusedPos, query, focusedOccurrence)
@@ -476,6 +550,7 @@ fun MarkdownPreview(
                         // A heading inside a closed <details> section opens it first (M-161).
                         detailsState.reveal(jumpPosition)?.let { adapter.notifyItemRangeChanged(it.first, it.count()) }
                         // Eases the heading to the top of the viewport (instantly when animations are off).
+                        currentOnReaderMoved.value()
                         smoothJumpTo(rv, jumpPosition)
                         // M-184: performed, so it is acknowledged; a reader composed later never replays it.
                         currentOnJumpHandled.value(jumpSeq)
@@ -513,9 +588,20 @@ fun MarkdownPreview(
             recyclerView = recyclerView.value,
             visible = canScroll.value,
             scrolling = scrolling.value,
+            onJump = { currentOnReaderMoved.value() },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
+        )
+
+        // Where the reader is in a long document, top right, only while scrolling (see [ScrollPercentOverlay]).
+        ScrollPercentOverlay(
+            percent = scrollPercent,
+            longDocument = longDocument,
+            scrolling = scrolling,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 8.dp, end = 12.dp),
         )
 
         // S8-A7: the style the entry drew the diagram with (same token object [c]), so the cached picture answers.
@@ -679,6 +765,25 @@ internal fun clearPinchTextScaleBases(root: View) {
 internal const val JUMP_CONTROLS_LINGER_MS = 1_500L
 
 /**
+ * True while the list is [scrolling] and for [JUMP_CONTROLS_LINGER_MS] after it stops (M-195): the
+ * time the jump controls and the scroll percent stay on screen.
+ */
+@Composable
+private fun rememberLingering(scrolling: Boolean): Boolean {
+    var lingering by remember { mutableStateOf(false) }
+    LaunchedEffect(scrolling) {
+        if (scrolling) {
+            lingering = true
+        } else if (lingering) {
+            // Only once they are showing: a reader that is never scrolled schedules nothing.
+            delay(JUMP_CONTROLS_LINGER_MS)
+            lingering = false
+        }
+    }
+    return lingering
+}
+
+/**
  * Stacked up/down buttons that jump the preview to the very top / bottom. Subtle and
  * token-colored (Safeguard 4); preview-only (this composable is only used by [MarkdownPreview]).
  * Owns the scroll actions so [MarkdownPreview] stays simple.
@@ -702,18 +807,10 @@ private fun JumpControls(
     recyclerView: RecyclerView?,
     visible: Boolean,
     scrolling: Boolean,
+    onJump: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var lingering by remember { mutableStateOf(false) }
-    LaunchedEffect(scrolling) {
-        if (scrolling) {
-            lingering = true
-        } else if (lingering) {
-            // Only once they are showing: a reader that is never scrolled schedules nothing.
-            delay(JUMP_CONTROLS_LINGER_MS)
-            lingering = false
-        }
-    }
+    val lingering = rememberLingering(scrolling)
     val touchExploration = rememberTouchExplorationEnabled()
     // `visible` still gates both paths: hidden on short docs that don't scroll.
     AnimatedVisibility(
@@ -731,13 +828,13 @@ private fun JumpControls(
             modifier
         },
     ) {
-        JumpButtons(recyclerView, announce = touchExploration)
+        JumpButtons(recyclerView, announce = touchExploration, onJump = onJump)
     }
 }
 
 /** [announce]: say where a jump landed, for TalkBack (M-220); a scroll alone is silent there. */
 @Composable
-private fun JumpButtons(recyclerView: RecyclerView?, announce: Boolean) {
+private fun JumpButtons(recyclerView: RecyclerView?, announce: Boolean, onJump: () -> Unit) {
     // `announceForAccessibility` is deprecated since API 36 in favour of live regions and pane
     // titles, which describe a state that stays on screen. A jump's result is a one-off with no node
     // whose text changes to carry it, and Compose 1.7 has no announcement API of its own.
@@ -746,6 +843,7 @@ private fun JumpButtons(recyclerView: RecyclerView?, announce: Boolean) {
     Column {
         JumpButton(icon = Icons.Filled.KeyboardArrowUp, description = "Scroll to top") {
             recyclerView?.let { cancelReaderJump(it) }
+            onJump()
             (recyclerView?.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
             sayWhereItLanded("Top of document")
         }
@@ -757,10 +855,166 @@ private fun JumpButtons(recyclerView: RecyclerView?, announce: Boolean) {
             // rather than inherited — see `scrollToDocumentEnd`.
             recyclerView?.let {
                 cancelReaderJump(it)
+                onJump()
                 scrollToDocumentEnd(it)
             }
             sayWhereItLanded("End of document")
         }
+    }
+}
+
+/** Marks the scroll percent for tests. The badge itself has no semantics, so TalkBack never reads it. */
+internal const val SCROLL_PERCENT_TAG = "scroll_percent"
+
+/**
+ * The number the badge shows, as a custom semantics property so a test can read what the screen
+ * shows. Accessibility services are not given custom properties, so TalkBack still hears nothing.
+ */
+internal val ScrollPercentValue = SemanticsPropertyKey<Int>("ScrollPercentValue")
+
+/**
+ * What the row estimate needs of the body text at one font set and scale: the average width of a
+ * character and the height of a line, measured with the reader's own typeface and size.
+ */
+private class ReaderTextMetrics(
+    private val fontSetId: String,
+    private val scale: Float,
+    val avgCharWidthPx: Float,
+    val lineHeightPx: Int,
+) {
+    fun matches(fontSet: FontSet, scale: Float) = fontSetId == fontSet.id && this.scale == scale
+
+    companion object {
+        private const val SAMPLE = "The quick brown fox jumps over the lazy dog, and then it rests a while. "
+
+        fun measure(context: Context, fontSet: FontSet, scale: Float): ReaderTextMetrics {
+            val typeface = ResourcesCompat.getFont(context, fontSet.readingRegular)
+            val paint = TextPaint()
+            paint.typeface = typeface
+            paint.textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * scale,
+                context.resources.displayMetrics,
+            )
+            return ReaderTextMetrics(
+                fontSetId = fontSet.id,
+                scale = scale,
+                avgCharWidthPx = paint.measureText(SAMPLE) / SAMPLE.length,
+                lineHeightPx = shortestLineHeightPx(readerBodyLineHeightPx(context, scale, typeface)),
+            )
+        }
+    }
+}
+
+/**
+ * The shortest line the reader paints, from the body line: code is set smaller than prose, and the
+ * estimate of the document's height must not come out taller than the document is.
+ */
+private fun shortestLineHeightPx(bodyLineHeightPx: Int): Int =
+    (bodyLineHeightPx * PilcrowTypography.CODE_BLOCK_FONT_SIZE_SP / PilcrowTypography.PROSE_BODY_FONT_SIZE_SP).toInt()
+
+private val NONE_HIDDEN: (Int) -> Boolean = { false }
+
+/**
+ * What the long-document decision was made for. Plain fields, read only from the list's scroll
+ * callbacks; [matches] is the per-frame check, with no allocation.
+ */
+private class LongDocumentDecision {
+    private var model: ReaderModel? = null
+    private var scale = 0f
+    private var fontSetId = ""
+    private var detailsVersion = -1
+    private var width = 0
+    private var height = 0
+
+    fun record(model: ReaderModel, scale: Float, fontSetId: String, detailsVersion: Int, rv: RecyclerView) {
+        this.model = model
+        this.scale = scale
+        this.fontSetId = fontSetId
+        this.detailsVersion = detailsVersion
+        width = rv.width
+        height = rv.height
+    }
+
+    fun matches(model: ReaderModel, scale: Float, fontSetId: String, detailsVersion: Int, rv: RecyclerView): Boolean {
+        if (this.model !== model || this.scale != scale) return false
+        if (this.fontSetId != fontSetId || this.detailsVersion != detailsVersion) return false
+        return width == rv.width && height == rv.height
+    }
+}
+
+/**
+ * Whether the document is taller than 6 screens at the list's current width and text size (see
+ * [ScrollPercent.isLong], a lower bound). Null while the list has no size yet, so the caller asks
+ * again later. Not called per frame.
+ */
+private fun decideLongDocument(
+    rv: RecyclerView,
+    counts: ScrollPercent.RowCounts,
+    hidden: (Int) -> Boolean,
+    metrics: ReaderTextMetrics,
+): Boolean? {
+    val usableWidth = rv.width - rv.paddingLeft - rv.paddingRight
+    if (usableWidth <= 0 || rv.height <= 0 || metrics.avgCharWidthPx <= 0f) return null
+    val charsPerLine = (usableWidth / metrics.avgCharWidthPx).toInt().coerceAtLeast(1)
+    return ScrollPercent.isLong(counts, hidden, charsPerLine, metrics.lineHeightPx, rv.height)
+}
+
+/**
+ * The percent for the list's current position over the text weights [starts], or null while the
+ * first visible block is not laid out.
+ */
+private fun scrollPercentOf(rv: RecyclerView, starts: IntArray): Int? {
+    val lm = rv.layoutManager as? LinearLayoutManager ?: return null
+    val first = lm.findFirstVisibleItemPosition()
+    if (first == RecyclerView.NO_POSITION) return null
+    val firstView = lm.findViewByPosition(first) ?: return null
+    val past = (rv.paddingTop - firstView.top).coerceAtLeast(0).toFloat() / firstView.height.coerceAtLeast(1)
+    return ScrollPercent.percent(
+        starts,
+        first,
+        past,
+        atTop = !rv.canScrollVertically(-1),
+        atEnd = !rv.canScrollVertically(1),
+    )
+}
+
+/**
+ * Reads the badge's state in a scope of its own, so a changing number recomposes only this and not
+ * the whole reader. Shown on a long document while the list scrolls and for the same linger as the
+ * jump controls ([rememberLingering]).
+ */
+@Composable
+private fun ScrollPercentOverlay(
+    percent: State<Int>,
+    longDocument: State<Boolean>,
+    scrolling: State<Boolean>,
+    modifier: Modifier = Modifier,
+) {
+    val lingering = rememberLingering(scrolling.value)
+    ScrollPercentBadge(percent = percent.value, visible = longDocument.value && lingering, modifier = modifier)
+}
+
+/**
+ * The small "37%" pill. Nothing to tap, and no accessibility node but a test tag: TalkBack never
+ * reads it, by design, and it is out of the traversal order entirely.
+ */
+@Composable
+private fun ScrollPercentBadge(percent: Int, visible: Boolean, modifier: Modifier = Modifier) {
+    val c = mdColors()
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        Text(
+            text = "$percent%",
+            color = c.secondaryText,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .clearAndSetSemantics {
+                    testTag = SCROLL_PERCENT_TAG
+                    this[ScrollPercentValue] = percent
+                }
+                .background(c.secondarySurface, RoundedCornerShape(10.dp))
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        )
     }
 }
 

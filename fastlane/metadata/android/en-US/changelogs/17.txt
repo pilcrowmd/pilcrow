@@ -1,0 +1,4 @@
+- Switching between Read and Edit keeps your place, and undo still works.
+- A small percent shows how far you are in a long document.
+- Settings > Feedback: email us or report an issue on GitHub.
+- A bigger Read and Edit button in the top bar.

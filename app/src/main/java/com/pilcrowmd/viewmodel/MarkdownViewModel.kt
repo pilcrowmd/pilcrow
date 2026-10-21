@@ -16,6 +16,7 @@ import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.PrepareReaderModelUseCase
+import com.pilcrowmd.domain.usecase.ReadEditLanding
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
 import com.pilcrowmd.repository.FileRepository
@@ -25,6 +26,7 @@ import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.storage.StorageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,8 +37,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** UI model for a recent file row, including whether its permission is still held. */
 data class RecentFileUi(val uri: Uri, val displayName: String, val lastOpened: Long, val available: Boolean)
@@ -279,6 +283,42 @@ constructor(
     private var caretRevealSeq = 0
     private val _caretReveal = MutableStateFlow<CaretReveal?>(null)
     val caretReveal: StateFlow<CaretReveal?> = _caretReveal.asStateFlow()
+
+    // Issue #15 (M-388, NEW-105): a switch lands on the same text. Each mode keeps its own place
+    // unless the user moved the other one since the last switch: then Edit opens at the line in the
+    // middle of the Read screen, and Read shows the caret's block. Plain view state, read only here.
+    private val readEditLanding = ReadEditLanding(parseHeadingsUseCase)
+    private var modeSwitch: Job? = null
+    private var pendingMode: ViewMode? = null
+
+    // How long the Read to Edit search may probe; a test shortens it.
+    @androidx.annotation.VisibleForTesting
+    internal var readEditBudgetNs = READ_EDIT_LANDING_BUDGET_NS
+
+    // Read to Edit, worked out ahead: once the reader has stopped moving, the line its middle maps to
+    // is searched for with no time limit, so the tap finds it ready (see [searchLanding]).
+    private var settleJob: Job? = null
+    private var landing: Landing? = null
+
+    private class Landing(
+        val content: String,
+        val renderMode: RenderMode,
+        val point: ReadEditLanding.ReaderPoint,
+        val offset: Int,
+        // A code block or plain chunk lands on the line the fraction names; a prose block on its first.
+        val fractional: Boolean,
+    )
+
+    // How long a document may be for the landing to be searched ahead; a test shortens it.
+    @androidx.annotation.VisibleForTesting
+    internal var precomputeMaxChars = LANDING_PRECOMPUTE_MAX_CHARS
+
+    /** Whether a landing is worked out ahead for the reader's current middle. */
+    @androidx.annotation.VisibleForTesting
+    internal val landingReady: Boolean get() = landing != null
+    private var readerMovedSinceSwitch = true
+    private var editorMovedSinceSwitch = false
+    private var readerMiddle: ReaderMiddle? = null
 
     // A file arriving from an intent while another dirty file is open is held here
     // until the user resolves the unsaved-changes prompt (Save/Discard). null = no pending open.
@@ -600,6 +640,18 @@ constructor(
     private var readerModelPreparedFor: DocumentId? = null
 
     init {
+        // Issue #15: a newly opened document has no switch behind it. Its reader position is not the
+        // editor's, so a first Edit lands on the reader's middle line, unless the caret was kept from
+        // earlier in this session: then Edit returns to the line last edited.
+        viewModelScope.launch {
+            slot.document.map { it?.id }.distinctUntilChanged().collect {
+                readerMovedSinceSwitch = !slot.editorCursorFromSession
+                editorMovedSinceSwitch = false
+                readerMiddle = null
+                settleJob?.cancel()
+                landing = null
+            }
+        }
         viewModelScope.launch {
             kotlinx.coroutines.flow.combine(slot.document, slot.renderMode, slot.mode, ::Triple)
                 // Latest wins: a newer text or mode cancels a preparation in flight (which is joined
@@ -809,40 +861,212 @@ constructor(
         viewModelScope.launch { slot.updateContent(expected, newContent) }
     }
 
-    fun toggleMode() {
-        viewModelScope.launch {
-            val before = slot.mode.value
-            slot.mode.update { if (it == ViewMode.READER) ViewMode.EDITOR else ViewMode.READER }
-            refreshCaretReveal(before)
-        }
-    }
+    fun toggleMode() = switchMode { if (it == ViewMode.READER) ViewMode.EDITOR else ViewMode.READER }
 
     /** Set the view mode directly (used by the toolbar's Read/Edit mode button). */
-    fun setMode(mode: ViewMode) {
-        viewModelScope.launch {
-            val before = slot.mode.value
+    fun setMode(mode: ViewMode) = switchMode { mode }
+
+    /**
+     * Switch to the mode [target] picks from the current one, landing on the same text (issue #15).
+     * When there is somewhere new to land, it is worked out off Main BEFORE the mode changes, so the
+     * new mode composes in place instead of showing the old position first; otherwise the switch is
+     * immediate. A newer switch cancels one still working and picks its target from the mode that
+     * one was heading for, so a second tap reverses the first. A switch whose document was replaced
+     * meanwhile is dropped: it was for the other document.
+     */
+    private fun switchMode(target: (ViewMode) -> ViewMode) {
+        val before = slot.mode.value
+        val mode = target(pendingMode ?: before)
+        modeSwitch?.cancel()
+        settleJob?.cancel()
+        pendingMode = mode
+        modeSwitch = viewModelScope.launch {
+            val seq = ++caretRevealSeq
+            _caretReveal.value = null
+            val doc = slot.document.value
+            var caretBlock: Int? = null
+            if (doc != null && before != mode) {
+                when {
+                    mode == ViewMode.EDITOR -> landEditorOnReader(doc)
+                    editorMovedSinceSwitch -> caretBlock = landReaderOnCaret(doc)
+                }
+                if (slot.document.value?.id != doc.id) {
+                    pendingMode = null
+                    return@launch
+                }
+                readerMovedSinceSwitch = false
+                editorMovedSinceSwitch = false
+            }
             slot.mode.value = mode
-            refreshCaretReveal(before)
+            if (mode == ViewMode.EDITOR) {
+                slot.editorShownOnDocument = true
+                settleJob?.cancel()
+            }
+            pendingMode = null
+            if (doc != null && before == ViewMode.EDITOR && mode == ViewMode.READER) {
+                publishCaretReveal(doc, seq, caretBlock)
+            }
         }
     }
 
     /**
-     * After a mode change from [before]: drop the old reveal, and on a switch Edit to Read publish
-     * the block the caret sat in. Plain-text rendering has no blocks to point at, so it publishes
-     * nothing; that includes a document past the Markdown ceiling, which must not be parsed (M-179).
-     * The block is found off Main, so a newer switch or a different document that arrives meanwhile
-     * takes over (the seq no longer matches) and this result is dropped.
+     * Edit to Read after the caret moved: put the caret's block a third of the way down the Read
+     * screen. Returns that block when the reader shows Markdown, for the keyboard reveal. Not
+     * bounded: it is one parse of the text, which the reader has to make anyway to show it.
      */
-    private suspend fun refreshCaretReveal(before: ViewMode) {
-        val seq = ++caretRevealSeq
-        _caretReveal.value = null
-        val doc = slot.document.value ?: return
-        if (before != ViewMode.EDITOR || slot.mode.value != ViewMode.READER) return
+    private suspend fun landReaderOnCaret(doc: Document): Int? {
+        val markdown = !prepareReaderModel.showsAsPlain(doc.content, slot.renderMode.value)
+        val model = currentReaderModel(doc)
+        val plain = model?.let { it is ReaderModel.Plain } ?: !markdown
+        val caret = slot.editorCursor.value
+        val block = withContext(cpuDispatcher) {
+            readEditLanding.blockForOffset(doc.content, plain, caret, model?.blocks)
+        } ?: return null
+        if (slot.document.value?.id != doc.id) return null
+        updatePreviewScroll(ScrollAnchor(block, (readerMiddle?.viewportHeight ?: 0) / CARET_BLOCK_SCREEN_SHARE))
+        return block.takeUnless { plain }
+    }
+
+    /**
+     * Edit to Read: publish the block the caret sat in ([known] when the landing found it already),
+     * so the reader can bring it above an open keyboard. Plain-text rendering has no blocks to point
+     * at, so it publishes nothing; that includes a document past the Markdown ceiling, which must not
+     * be parsed (M-179). A newer switch or a different document that arrives meanwhile takes over
+     * (the seq no longer matches) and this result is dropped.
+     */
+    private suspend fun publishCaretReveal(doc: Document, seq: Int, known: Int?) {
         if (prepareReaderModel.showsAsPlain(doc.content, slot.renderMode.value)) return
         val caret = slot.editorCursor.value
-        val block = withContext(cpuDispatcher) { parseHeadingsUseCase.readerBlockForOffset(doc.content, caret) }
+        val block = known ?: withContext(cpuDispatcher) {
+            parseHeadingsUseCase.readerBlockForOffset(doc.content, caret)
+        }
         if (block != null && seq == caretRevealSeq && slot.document.value?.id == doc.id) {
             _caretReveal.value = CaretReveal(block, seq)
+        }
+    }
+
+    /**
+     * Read to Edit: when the reader moved since the last switch, move the caret to the line that was
+     * in the middle of the Read screen (the editor brings it to its own middle). Otherwise the caret
+     * stays, and the editor comes back exactly as it was. The line is usually ready: it is searched for
+     * when the reader stops ([searchLanding]). If not, the search runs now and stops probing after
+     * [READ_EDIT_LANDING_BUDGET_NS], and the caret goes to the nearest line it found; a probe still
+     * running then gets [READ_EDIT_LANDING_GRACE_NS] more to finish, and past that the caret goes to
+     * the guess from the blocks' sizes.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun landEditorOnReader(doc: Document) {
+        if (!readerMovedSinceSwitch) return
+        val middle = readerMiddle ?: return
+        val model = currentReaderModel(doc) ?: return
+        val point = ReadEditLanding.ReaderPoint(middle.block, middle.fraction)
+        val ready = landing?.takeIf { it.matches(doc, slot.renderMode.value, point) }
+        if (ready != null) {
+            slot.editorCursor.value = ready.offset
+            return
+        }
+        val plain = model is ReaderModel.Plain
+        val budget = readEditBudgetNs
+        val deadline = System.nanoTime() + budget
+        // The wait is a little longer than the search's own budget, so the nearest line it found when
+        // the budget ran out is received and not thrown away. The search is cancelled however the wait
+        // ends (a timeout, or a newer switch): it stops at its next probe, and one still running is
+        // left to finish unseen, so the tap never waits for a slow probe.
+        val search = viewModelScope.async(cpuDispatcher) {
+            readEditLanding.offsetForBlock(doc.content, plain, point, model.blocks) {
+                isActive && System.nanoTime() < deadline
+            }
+        }
+        val found = try {
+            withTimeoutOrNull((budget + READ_EDIT_LANDING_GRACE_NS) / NANOS_PER_MILLI) { search.await() }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: OutOfMemoryError) {
+            searchAheadFailed(e)
+        } catch (e: RuntimeException) {
+            searchAheadFailed(e)
+        } finally {
+            search.cancel()
+        }
+        // A probe that overran even the grace: the guess from the blocks' sizes, not the old caret.
+        val offset = found ?: readEditLanding.estimatedOffsetForBlock(doc.content, plain, point, model.blocks)
+        if (offset != null && slot.document.value?.id == doc.id) slot.editorCursor.value = offset
+    }
+
+    private fun Landing.matches(doc: Document, renderMode: RenderMode, point: ReadEditLanding.ReaderPoint): Boolean {
+        val sameText = content === doc.content && this.renderMode == renderMode
+        val sameFraction = kotlin.math.abs(this.point.fraction - point.fraction) <= LANDING_FRACTION_TOLERANCE
+        return sameText && this.point.block == point.block && (!fractional || sameFraction)
+    }
+
+    /**
+     * The reader stopped moving: work out, with no time limit, the line its middle maps to, so the
+     * tap on Edit finds it ready. Cancelled by the reader moving again, a switch or another document.
+     * Only a reader still showing, and a document short enough to be worth it ([precomputeMaxChars]);
+     * a failure of the search (it is a parse on a worker) changes nothing: the tap searches then.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun searchLanding() {
+        val doc = slot.document.value ?: return
+        val middle = readerMiddle
+        val model = currentReaderModel(doc)
+        if (middle == null || model == null || !worthSearchingAhead(doc)) return
+        val renderMode = slot.renderMode.value
+        val point = ReadEditLanding.ReaderPoint(middle.block, middle.fraction)
+        if (landing?.matches(doc, renderMode, point) == true) return
+        val offset = try {
+            withContext(cpuDispatcher) {
+                val plain = model is ReaderModel.Plain
+                readEditLanding.offsetForBlock(doc.content, plain, point, model.blocks) { isActive }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: OutOfMemoryError) {
+            searchAheadFailed(e)
+        } catch (e: RuntimeException) {
+            searchAheadFailed(e)
+        }
+        if (offset != null && worthSearchingAhead(doc) && slot.document.value?.id == doc.id) {
+            val code = model.blocks.getOrNull(point.block) is org.commonmark.node.FencedCodeBlock
+            val fractional = model is ReaderModel.Plain || code
+            landing = Landing(doc.content, renderMode, point, offset, fractional)
+        }
+    }
+
+    private fun worthSearchingAhead(doc: Document) =
+        slot.mode.value == ViewMode.READER && doc.content.length <= precomputeMaxChars
+
+    private fun searchAheadFailed(e: Throwable): Int? {
+        landing = null
+        android.util.Log.e("MarkdownViewModel", "landing search ahead failed", e)
+        return null
+    }
+
+    /** The reader model when it is the one for this text and render mode, else null. */
+    private fun currentReaderModel(doc: Document): ReaderModel? =
+        _readerModel.value?.takeIf { it.content === doc.content && it.renderMode == slot.renderMode.value }
+
+    /**
+     * The user moved the reader: a drag or fling, a jump button, a heading or search jump. A pinch,
+     * a layout or the caret reveal does not count.
+     */
+    fun onReaderMoved() {
+        readerMovedSinceSwitch = true
+    }
+
+    /**
+     * The reader block under the middle of the Read screen, [fraction] of the way down it, and the
+     * screen's height in pixels. The reader reports it from its scroll callback, which RecyclerView also
+     * calls (with dx 0, dy 0) after a layout, so a reader nobody scrolled reports it too.
+     */
+    fun updateReaderMiddle(block: Int, fraction: Float, viewportHeight: Int) {
+        readerMiddle = ReaderMiddle(block, fraction, viewportHeight)
+        // Debounced: the search starts once the reports stop, and only for a reader somebody moved.
+        settleJob?.cancel()
+        if (!readerMovedSinceSwitch || slot.mode.value != ViewMode.READER) return
+        settleJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(READER_SETTLE_MILLIS)
+            searchLanding()
         }
     }
 
@@ -869,6 +1093,7 @@ constructor(
 
     /** Remember the editor caret offset so a mode toggle restores it (not reset to 0). */
     fun updateEditorCursor(offset: Int) {
+        if (offset != slot.editorCursor.value) editorMovedSinceSwitch = true
         slot.editorCursor.value = offset
     }
 

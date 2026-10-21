@@ -153,6 +153,8 @@ class EditorHeadingJumpAckTest {
         }
         awaitTrue("the headings were never parsed") { vm.headings.value.size == 2 }
         vm.setMode(ViewMode.EDITOR)
+        // The mode flips after the landing is worked out off Main, so wait for it before looking.
+        awaitTrue("the mode never switched to the editor") { vm.mode.value == ViewMode.EDITOR }
         compose.waitForIdle()
         assertNotNull(
             "barrier: the editor is on screen, so the reader has left",

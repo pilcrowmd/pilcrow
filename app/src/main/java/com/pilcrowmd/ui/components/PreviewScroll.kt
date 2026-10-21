@@ -41,6 +41,25 @@ fun RecyclerView.currentScrollAnchor(): ScrollAnchor {
 }
 
 /**
+ * Issue #15: the item under the middle of the list, and how far down that item the middle falls
+ * (0 = its top, 1 = its bottom), or null when nothing is laid out. Children of a vertical
+ * LinearLayoutManager are in top-to-bottom order, so the last one starting above the middle holds
+ * it, gaps between items included.
+ */
+fun RecyclerView.middleItem(): Pair<Int, Float>? {
+    val middle = height / 2
+    var holder: View? = null
+    for (i in 0 until childCount) {
+        val child = getChildAt(i)
+        if (child.top <= middle) holder = child
+    }
+    val view = holder ?: return null
+    val position = getChildAdapterPosition(view)
+    if (position == RecyclerView.NO_POSITION) return null
+    return position to ((middle - view.top).toFloat() / view.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+}
+
+/**
  * Which rendered TextView of a block holds the focused match, and that match's index within it.
  * A block can render to several TextViews (a table's cells); [textViewIndex] is into the block's
  * TextViews in document order, [withinTextViewOccurrence] is the 0-based ordinal inside that view.

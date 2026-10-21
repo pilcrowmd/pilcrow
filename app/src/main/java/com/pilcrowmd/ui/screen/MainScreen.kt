@@ -89,6 +89,8 @@ import com.pilcrowmd.ui.components.PilcrowToolbar
 import com.pilcrowmd.ui.components.SearchBar
 import com.pilcrowmd.ui.components.SettingsScreen
 import com.pilcrowmd.ui.components.WelcomeScreen
+import com.pilcrowmd.ui.components.openEmailUs
+import com.pilcrowmd.ui.components.openIssueReport
 import com.pilcrowmd.ui.components.openStoreListing
 import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
@@ -112,7 +114,7 @@ import kotlinx.coroutines.launch
  * Implements code-block copy affordance setup.
  *
  * Architecture:
- * - Toolbar at top (44dp, fixed)
+ * - Toolbar at top (49dp, fixed)
  * - Content area: welcome screen (no file) or Preview/Editor (file open)
  * - SAF file picker launched from welcome screen or toolbar action
  * - Mode toggle switches between READER and EDITOR
@@ -769,6 +771,8 @@ fun MainScreen(
                         appVersion = aboutVersion,
                         showRateCard = isPlayInstall.value,
                         onRate = { openStoreListing(context) },
+                        onEmailUs = { openEmailUs(context) },
+                        onReportIssue = { openIssueReport(context) },
                         onClose = { showSettings = false },
                         // Close Settings as we open Licenses — the modal blocks are checked
                         // showSettings-first, so leaving it true would keep Settings on top.
@@ -899,6 +903,8 @@ fun MainScreen(
                                         caretRevealBlock = caretReveal.value?.blockIndex ?: -1,
                                         caretRevealSeq = caretReveal.value?.seq ?: 0,
                                         onCaretRevealHandled = { viewModel.onCaretRevealHandled(it) },
+                                        onReaderMoved = viewModel::onReaderMoved,
+                                        onReaderMiddleChanged = viewModel::updateReaderMiddle,
                                         imeVisible = WindowInsets.isImeVisible,
                                         documentUri = currentDocument.value!!.uri,
                                         imageAccessKey = imageFolder?.value?.accessKey.orEmpty(),
@@ -942,6 +948,7 @@ fun MainScreen(
                                                 viewModel.updateEditorScroll(position)
                                             },
                                             initialCursor = editorCursor.value,
+                                            documentId = editedDocument,
                                             onCursorChange = { offset ->
                                                 viewModel.updateEditorCursor(offset)
                                             },

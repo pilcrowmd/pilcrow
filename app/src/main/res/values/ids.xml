@@ -39,4 +39,14 @@
       RecyclerView, so a second jump can cancel the first without a global.
     -->
     <item name="reader_jump" type="id" />
+    <!--
+      Issue #15 / M-340: the DocumentId the hoisted editor's text belongs to, so a switch back from
+      Read keeps that text (and its undo history, caret and scroll) instead of setting it again.
+    -->
+    <item name="editor_document" type="id" />
+    <!--
+      Issue #15: the landing reveal still watching the hoisted editor, so a newer one replaces it
+      instead of the two moving the editor against each other.
+    -->
+    <item name="editor_reveal" type="id" />
 </resources>

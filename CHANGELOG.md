@@ -7,6 +7,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-10-21
+
+### Added
+
+- **See how far you are in a long document.** While you scroll a document more than six screens
+  long, a small number in the top corner shows how far in you are, from 0% to 100%. It fades out
+  when you stop.
+- **Email us, or report an issue on GitHub, from Settings.** Both are under Feedback. They open
+  your mail app or your browser; PilcrowMD itself still has no internet access.
+
+### Changed
+
+- **A bigger Read and Edit button.** The Read and Edit switch in the top bar has a larger icon and a
+  wider touch area, so it is easier to find and tap.
+
+### Fixed
+
+- **Switching between Read and Edit keeps your place.** If you scrolled in Read, Edit opens at the
+  line that was in the middle of the screen. If you did not, Edit comes back exactly where you left
+  it, with undo still working. If you moved the cursor in Edit, Read opens at the text around it.
+  A file you open again in the same session returns to the line you last edited. (Issue #15)
+
 ## [1.0.15] - 2026-10-19
 
 ### Added
