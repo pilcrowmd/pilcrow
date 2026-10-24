@@ -42,12 +42,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pilcrowmd.R
 import com.pilcrowmd.ui.theme.mdColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -106,12 +108,13 @@ fun LicensesListView(
 ) {
     val c = mdColors()
     val dependencies = loadDependencies(context)
+    val listTitle = stringResource(R.string.licenses_pane_title)
 
     Column(
         modifier = modifier
             .fillMaxSize()
             // M-309: TalkBack speaks the pane title when the screen appears.
-            .semantics { paneTitle = "Open source licenses" }
+            .semantics { paneTitle = listTitle }
             .systemBarsPadding()
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
@@ -125,14 +128,14 @@ fun LicensesListView(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "Open Source Licenses",
+                text = stringResource(R.string.licenses_title),
                 color = c.primaryText,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Icon(
                 imageVector = Icons.Outlined.ArrowBack,
-                contentDescription = "Close",
+                contentDescription = stringResource(R.string.licenses_close),
                 tint = c.secondaryText,
                 modifier = Modifier
                     .size(24.dp)
@@ -158,15 +161,13 @@ fun LicensesListView(
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                text = "© 2026 pleree — free software under the GNU General Public " +
-                    "License v3.0 or later (GPL-3.0-or-later). You may redistribute and/or modify " +
-                    "it under the terms of the GPL; it comes with NO WARRANTY.",
+                text = stringResource(R.string.licenses_app_notice),
                 color = c.secondaryText,
                 fontSize = 12.sp,
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "The third-party components below have their own licenses.",
+                text = stringResource(R.string.licenses_third_party_notice),
                 color = c.secondaryText,
                 fontSize = 12.sp,
             )
@@ -217,7 +218,7 @@ fun LicenseRowItem(license: License, onSelect: () -> Unit) {
             )
             if (license.version != null) {
                 Text(
-                    text = "${license.version} • ${license.license}",
+                    text = stringResource(R.string.licenses_version_and_license, license.version, license.license),
                     color = c.secondaryText,
                     fontSize = 12.sp,
                 )
@@ -273,7 +274,7 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
                 )
                 if (license.version != null) {
                     Text(
-                        text = "${license.version} • ${license.license}",
+                        text = stringResource(R.string.licenses_version_and_license, license.version, license.license),
                         color = c.secondaryText,
                         fontSize = 12.sp,
                     )
@@ -287,7 +288,7 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
             }
             Icon(
                 imageVector = Icons.Outlined.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = stringResource(R.string.licenses_back),
                 tint = c.secondaryText,
                 modifier = Modifier
                     .size(24.dp)
@@ -320,11 +321,8 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
                 // Special notes for certain licenses
                 if (license.license.contains("GPL", ignoreCase = true)) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    val gplNote = "Note: This library is licensed under GPLv2 with " +
-                        "the Classpath Exception, which permits linking into non-GPL " +
-                        "applications. See the full license text for details."
                     Text(
-                        text = gplNote,
+                        text = stringResource(R.string.licenses_gpl_note),
                         color = c.primaryText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -333,13 +331,8 @@ fun LicenseDetailView(license: License, onBack: () -> Unit) {
 
                 if (license.name.contains("Sora", ignoreCase = true)) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    val soraNote = "Note: Sora Editor is licensed under LGPL-2.1. " +
-                        "As an unmodified binary dependency, it is used in compliance " +
-                        "with LGPL §6 (relink terms). The source code and version are " +
-                        "published; users may request the object code or rebuild the " +
-                        "app with a modified editor if needed."
                     Text(
-                        text = soraNote,
+                        text = stringResource(R.string.licenses_sora_note),
                         color = c.primaryText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -527,14 +520,14 @@ fun loadDependencies(context: Context): List<License> {
         val jsonArray = JSONArray(jsonString)
         (0 until jsonArray.length()).mapNotNull { index ->
             val obj = jsonArray.optJSONObject(index) ?: return@mapNotNull null
-            val name = obj.optString("project", "Unknown")
+            val name = obj.optString("project", context.getString(R.string.licenses_unknown))
             val version = obj.optString("version", null).takeIf { it?.isNotBlank() == true }
             val licenses = obj.optJSONArray("licenses")
             val license = if (licenses != null && licenses.length() > 0) {
                 val licenseObj = licenses.getJSONObject(0)
-                licenseObj.optString("license", "Unknown")
+                licenseObj.optString("license", context.getString(R.string.licenses_unknown))
             } else {
-                "Unknown"
+                context.getString(R.string.licenses_unknown)
             }
             License(name = name, version = version, license = license)
         }
@@ -560,7 +553,7 @@ fun licenseTextFor(context: Context, license: License): String {
  * Gracefully handles missing/malformed files (shows fallback text, Safeguard 3).
  */
 fun loadLicenseText(context: Context, licenseName: String): String {
-    val fallback = "License text not available — see LICENSES.md"
+    val fallback = context.getString(R.string.licenses_text_unavailable)
     // LGPL must be matched before GPL (LGPL strings also contain "GPL").
     val fileName = when {
         licenseName.contains("OFL", ignoreCase = true) -> "licenses/OFL-1.1.txt"

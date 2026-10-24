@@ -176,7 +176,7 @@ class FencedCodeBlockEntry(
             Log.e("FencedCodeBlockEntry", "render failed: ${e.message}", e)
             // A piece that failed shows the message as an ordinary block would, off its block's views.
             holder.resetPiece()
-            holder.codeView.text = "[code block could not be rendered]"
+            holder.codeView.text = context.getString(R.string.render_code_block_failed)
             holder.codeView.setTextColor(colorScheme.secondaryText.toArgb())
         }
     }
@@ -204,7 +204,7 @@ class FencedCodeBlockEntry(
             val clipboard =
                 context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("code", literal))
-            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.render_code_copied), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -308,7 +308,7 @@ class FencedCodeBlockEntry(
      */
     private fun showSource(markwon: Markwon, holder: Holder, node: FencedCodeBlock) {
         bindHolder(markwon, holder, node)
-        holder.mermaidCaption.text = MERMAID_FALLBACK_CAPTION
+        holder.mermaidCaption.text = context.getString(R.string.render_mermaid_fallback_caption)
         holder.mermaidCaption.setTextColor(colorScheme.secondaryText.toArgb())
         holder.mermaidCaption.visibility = View.VISIBLE
     }
@@ -403,20 +403,17 @@ class FencedCodeBlockEntry(
         /** S8-A7: tapping the drawn picture calls [onOpen]; TalkBack announces "double-tap to open full screen". */
         internal fun openOnTap(request: MermaidDiagramRequest, onOpen: (MermaidDiagramRequest) -> Unit) {
             mermaidImage.setOnClickListener { onOpen(request) }
-            // A label with no command: the view's own click still runs.
+            // A label with no command: the view's own click still runs. TalkBack reads it after "double-tap to".
             ViewCompat.replaceAccessibilityAction(
                 mermaidImage,
                 AccessibilityActionCompat.ACTION_CLICK,
-                OPEN_FULL_SCREEN_LABEL,
+                mermaidImage.context.getString(R.string.render_mermaid_open_full_screen),
                 null,
             )
         }
     }
 
     private companion object {
-        // Shown under a ```mermaid block whose diagram could not be drawn, above its source.
-        const val MERMAID_FALLBACK_CAPTION = "Diagram could not be drawn. Showing its source."
-
         // Bounds for the requested mermaid render width (px): never absurdly small, capped so a
         // huge tablet/landscape request stays sane for the on-device renderer.
         const val MERMAID_MIN_W = 320
@@ -425,9 +422,6 @@ class FencedCodeBlockEntry(
         const val IMAGE_PADDING_DP = 12f // mermaid_image horizontal padding
     }
 }
-
-// TalkBack reads this after "double-tap to" on a drawn diagram.
-private const val OPEN_FULL_SCREEN_LABEL = "open full screen"
 
 // Markwon 4.6.2's CorePlugin.visitCodeBlock writes a no-break space and a newline before the code.
 private const val MARKWON_CODE_PREFIX = 2

@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.ui.components
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -43,32 +44,38 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.FormatAction
 import com.pilcrowmd.ui.theme.mdColors
 
 /** One formatting button: what it does, its glyph and its TalkBack label. */
-private class FormatButton(val action: FormatAction, val icon: ImageVector, val label: String)
+private class FormatButton(val action: FormatAction, val icon: ImageVector, @StringRes val label: Int)
 
 private val MAIN_BUTTONS = listOf(
-    FormatButton(FormatAction.Bold, Icons.Outlined.FormatBold, "Bold"),
-    FormatButton(FormatAction.Italic, Icons.Outlined.FormatItalic, "Italic"),
-    FormatButton(FormatAction.Heading, Icons.Outlined.Title, "Heading"),
-    FormatButton(FormatAction.BulletList, Icons.AutoMirrored.Outlined.FormatListBulleted, "Bulleted list"),
-    FormatButton(FormatAction.Checkbox, Icons.Outlined.CheckBox, "Checkbox"),
-    FormatButton(FormatAction.Link, Icons.Outlined.Link, "Link"),
+    FormatButton(FormatAction.Bold, Icons.Outlined.FormatBold, R.string.format_bold),
+    FormatButton(FormatAction.Italic, Icons.Outlined.FormatItalic, R.string.format_italic),
+    FormatButton(FormatAction.Heading, Icons.Outlined.Title, R.string.format_heading),
+    FormatButton(
+        FormatAction.BulletList,
+        Icons.AutoMirrored.Outlined.FormatListBulleted,
+        R.string.format_bulleted_list,
+    ),
+    FormatButton(FormatAction.Checkbox, Icons.Outlined.CheckBox, R.string.format_checkbox),
+    FormatButton(FormatAction.Link, Icons.Outlined.Link, R.string.format_link),
 )
 
 private val MORE_BUTTONS = listOf(
-    FormatButton(FormatAction.InlineCode, Icons.Outlined.Code, "Inline code"),
-    FormatButton(FormatAction.Quote, Icons.Outlined.FormatQuote, "Quote"),
-    FormatButton(FormatAction.Table, Icons.Outlined.TableChart, "Table"),
-    FormatButton(FormatAction.Strikethrough, Icons.Outlined.StrikethroughS, "Strikethrough"),
-    FormatButton(FormatAction.Divider, Icons.Outlined.HorizontalRule, "Divider"),
-    FormatButton(FormatAction.Outdent, Icons.AutoMirrored.Outlined.FormatIndentDecrease, "Outdent"),
-    FormatButton(FormatAction.Indent, Icons.AutoMirrored.Outlined.FormatIndentIncrease, "Indent"),
+    FormatButton(FormatAction.InlineCode, Icons.Outlined.Code, R.string.format_inline_code),
+    FormatButton(FormatAction.Quote, Icons.Outlined.FormatQuote, R.string.format_quote),
+    FormatButton(FormatAction.Table, Icons.Outlined.TableChart, R.string.format_table),
+    FormatButton(FormatAction.Strikethrough, Icons.Outlined.StrikethroughS, R.string.format_strikethrough),
+    FormatButton(FormatAction.Divider, Icons.Outlined.HorizontalRule, R.string.format_divider),
+    FormatButton(FormatAction.Outdent, Icons.AutoMirrored.Outlined.FormatIndentDecrease, R.string.format_outdent),
+    FormatButton(FormatAction.Indent, Icons.AutoMirrored.Outlined.FormatIndentIncrease, R.string.format_indent),
 )
 
 /**
@@ -105,8 +112,8 @@ fun FormattingBar(
             Row(modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
                 MAIN_BUTTONS.forEach { BarButton(it.icon, it.label) { onAction(it.action) } }
             }
-            BarButton(Icons.AutoMirrored.Outlined.Undo, "Undo", onUndo)
-            BarButton(Icons.AutoMirrored.Outlined.Redo, "Redo", onRedo)
+            BarButton(Icons.AutoMirrored.Outlined.Undo, R.string.format_undo, onUndo)
+            BarButton(Icons.AutoMirrored.Outlined.Redo, R.string.format_redo, onRedo)
             MoreButton(expanded = expanded, onClick = { expanded = !expanded })
         }
     }
@@ -114,11 +121,11 @@ fun FormattingBar(
 
 /** A 42dp touch target with a 22dp glyph, the same scale as the top toolbar's buttons. */
 @Composable
-private fun BarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun BarButton(icon: ImageVector, @StringRes label: Int, onClick: () -> Unit) {
     IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
         Icon(
             imageVector = icon,
-            contentDescription = label,
+            contentDescription = stringResource(label),
             tint = mdColors().primaryText,
             modifier = Modifier.size(22.dp),
         )
@@ -133,6 +140,9 @@ private fun BarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
 @Composable
 private fun MoreButton(expanded: Boolean, onClick: () -> Unit) {
     val c = mdColors()
+    val stateLabel = stringResource(
+        if (expanded) R.string.format_state_expanded else R.string.format_state_collapsed,
+    )
     Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
@@ -144,11 +154,11 @@ private fun MoreButton(expanded: Boolean, onClick: () -> Unit) {
             onClick = onClick,
             modifier = Modifier
                 .size(42.dp)
-                .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+                .semantics { stateDescription = stateLabel },
         ) {
             Icon(
                 imageVector = Icons.Outlined.MoreHoriz,
-                contentDescription = "More formatting",
+                contentDescription = stringResource(R.string.format_more_formatting),
                 tint = if (expanded) c.onAccent else c.primaryText,
                 modifier = Modifier.size(22.dp),
             )

@@ -71,6 +71,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.paneTitle
@@ -102,10 +103,6 @@ private const val PILCROW = "¶"
  * image either. A semantics tag is what is left to assert its placement from.
  */
 const val WELCOME_WATERMARK_TEST_TAG = "welcome-watermark"
-
-/** M-174: the update note's copy, store-neutral on purpose. */
-internal const val UPDATE_NOTE_TEXT =
-    "This version is over 2 months old. A newer one with fixes is probably available where you installed the app."
 
 /**
  * The share of its line the "PilcrowMD" lockup may occupy before it is scaled down to fit.
@@ -453,7 +450,7 @@ fun WelcomeScreen(
                                             )
                                             Spacer(Modifier.width(10.dp))
                                             Text(
-                                                text = "Opening your last document…",
+                                                text = stringResource(R.string.welcome_loading_last_document),
                                                 color = c.secondaryText,
                                                 fontSize = 13.sp,
                                             )
@@ -571,7 +568,7 @@ fun WelcomeScreen(
                                 Spacer(Modifier.height(16.dp))
 
                                 Text(
-                                    text = "Beautiful Markdown Reading",
+                                    text = stringResource(R.string.welcome_tagline),
                                     fontFamily = sourceSerif4Family,
                                     fontSize = 16.sp,
                                     color = c.secondaryText,
@@ -605,7 +602,7 @@ fun WelcomeScreen(
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Text(
-                                        text = "Open MD File",
+                                        text = stringResource(R.string.welcome_open_file),
                                         color = ctaContent,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 18.sp,
@@ -639,7 +636,7 @@ fun WelcomeScreen(
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Text(
-                                        text = "Create MD File",
+                                        text = stringResource(R.string.welcome_create_file),
                                         color = c.primaryText,
                                         fontWeight = FontWeight.Medium,
                                         fontSize = 16.sp,
@@ -652,7 +649,7 @@ fun WelcomeScreen(
                                 // never writes back.)
                                 Spacer(Modifier.height(14.dp))
                                 Text(
-                                    text = "Can't see your file? Browse all files",
+                                    text = stringResource(R.string.welcome_browse_all_files),
                                     color = c.secondaryText,
                                     fontSize = 13.sp,
                                     modifier = Modifier
@@ -698,7 +695,7 @@ fun WelcomeScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Supports .md files",
+                            text = stringResource(R.string.welcome_supports_md),
                             color = c.secondaryText.copy(alpha = 0.6f),
                             fontSize = 13.sp,
                         )
@@ -718,7 +715,7 @@ fun WelcomeScreen(
         ) {
             Icon(
                 imageVector = Icons.Outlined.Settings,
-                contentDescription = "Settings",
+                contentDescription = stringResource(R.string.welcome_settings_description),
                 tint = c.secondaryText,
                 // The ¶ mark's anchor: the gear GLYPH's bottom edge, not the 48dp touch target's.
                 modifier = Modifier
@@ -743,19 +740,19 @@ fun WelcomeScreen(
                 containerColor = c.secondarySurface,
                 titleContentColor = c.primaryText,
                 textContentColor = c.secondaryText,
-                title = { Text("Clear recent files?") },
-                text = { Text("This removes every entry from your Recent list. Your files are not deleted.") },
+                title = { Text(stringResource(R.string.welcome_clear_recents_title)) },
+                text = { Text(stringResource(R.string.welcome_clear_recents_message)) },
                 confirmButton = {
                     TextButton(onClick = {
                         showClearConfirm = false
                         onClearRecents()
                     }) {
-                        Text("Clear all", color = c.accent)
+                        Text(stringResource(R.string.welcome_clear_recents_confirm), color = c.accent)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showClearConfirm = false }) {
-                        Text("Cancel", color = c.secondaryText)
+                        Text(stringResource(R.string.welcome_clear_recents_cancel), color = c.secondaryText)
                     }
                 },
             )
@@ -787,13 +784,13 @@ private fun RatingCard(onNotNow: () -> Unit, onRate: () -> Unit) {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Enjoying PilcrowMD?",
+                    text = stringResource(R.string.welcome_rating_title),
                     color = c.primaryText,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(2.dp))
-                Text(text = RATING_ASK, color = c.secondaryText, fontSize = 13.sp)
+                Text(text = stringResource(R.string.store_rating_ask), color = c.secondaryText, fontSize = 13.sp)
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -803,14 +800,23 @@ private fun RatingCard(onNotNow: () -> Unit, onRate: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onNotNow) {
-                Text("Not now", color = c.secondaryText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    stringResource(R.string.welcome_rating_not_now),
+                    color = c.secondaryText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
             }
             Spacer(Modifier.width(4.dp))
             Button(
                 onClick = onRate,
                 colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
             ) {
-                Text("Rate on Play", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(R.string.welcome_rating_rate),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }
@@ -860,7 +866,7 @@ private fun UpdateNote(onDismiss: () -> Unit) {
             modifier = Modifier.padding(top = 12.dp).size(18.dp),
         )
         Text(
-            text = UPDATE_NOTE_TEXT,
+            text = stringResource(R.string.update_note_text),
             color = c.secondaryText,
             fontSize = 13.sp,
             modifier = Modifier.weight(1f).padding(vertical = 10.dp),
@@ -868,7 +874,7 @@ private fun UpdateNote(onDismiss: () -> Unit) {
         IconButton(onClick = onDismiss) {
             Icon(
                 imageVector = Icons.Outlined.Close,
-                contentDescription = "Dismiss update note",
+                contentDescription = stringResource(R.string.update_note_dismiss_description),
                 tint = c.secondaryText,
                 modifier = Modifier.size(18.dp),
             )
@@ -895,13 +901,13 @@ private fun RecentsSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "RECENT",
+                stringResource(R.string.welcome_recent_header),
                 color = c.secondaryText,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "Clear",
+                stringResource(R.string.welcome_recent_clear),
                 color = c.accent,
                 fontSize = 13.sp,
                 modifier = Modifier
@@ -956,14 +962,18 @@ internal fun RecentRow(
             // M-221: a name that does not fit keeps its last 8 characters, shortened in the middle.
             FileNameText(name = r.displayName, color = nameColor, fontSize = 15.sp)
             Text(
-                text = relativeTime(r.lastOpened) + if (!r.available) " · unavailable" else "",
+                text = if (r.available) {
+                    relativeTime(r.lastOpened)
+                } else {
+                    stringResource(R.string.welcome_recent_unavailable, relativeTime(r.lastOpened))
+                },
                 color = c.secondaryText.copy(alpha = 0.6f),
                 fontSize = 12.sp,
             )
         }
         Icon(
             imageVector = Icons.Outlined.Close,
-            contentDescription = "Remove from recents",
+            contentDescription = stringResource(R.string.welcome_recent_remove_description),
             tint = c.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))

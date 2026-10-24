@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.ui.components
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -67,6 +68,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -82,6 +84,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pilcrowmd.R
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -126,12 +129,13 @@ fun SettingsScreen(
     onReportIssue: () -> Unit = {},
 ) {
     val c = mdColors()
+    val screenTitle = stringResource(R.string.settings_title)
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(c.primaryBackground)
             // M-309: TalkBack speaks the pane title when the screen appears.
-            .semantics { paneTitle = "Settings" }
+            .semantics { paneTitle = screenTitle }
             .systemBarsPadding()
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
@@ -145,12 +149,12 @@ fun SettingsScreen(
         ) {
             Column {
                 Text(
-                    text = "Settings",
+                    text = screenTitle,
                     style = PilcrowTypography.h3Style,
                     color = c.primaryText,
                 )
                 Text(
-                    text = "Customize your reading experience",
+                    text = stringResource(R.string.settings_subtitle),
                     color = c.secondaryText,
                     fontSize = 12.sp,
                 )
@@ -166,7 +170,7 @@ fun SettingsScreen(
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Close,
-                    contentDescription = "Close Settings",
+                    contentDescription = stringResource(R.string.settings_close),
                     tint = c.primaryText,
                     modifier = Modifier.size(16.dp),
                 )
@@ -176,17 +180,17 @@ fun SettingsScreen(
         Spacer(Modifier.height(14.dp))
 
         // ───────────── APPEARANCE ─────────────
-        SectionLabel("Appearance")
+        SectionLabel(stringResource(R.string.settings_section_appearance))
 
         SettingsCard {
-            CardTitle("Theme")
+            CardTitle(stringResource(R.string.settings_theme))
             Spacer(Modifier.height(8.dp))
             ThemeOptionGroup(themeMode = themeMode, onThemeSelected = onThemeSelected)
         }
 
         CardGap()
         SettingsCard {
-            CardTitle("Reading & code font")
+            CardTitle(stringResource(R.string.settings_reading_font))
             Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FontSets.ALL.forEach { set ->
@@ -197,7 +201,7 @@ fun SettingsScreen(
 
         CardGap()
         SettingsCard {
-            CardTitle("Preview text size")
+            CardTitle(stringResource(R.string.settings_preview_text_size))
             Spacer(Modifier.height(4.dp))
             SizeControl(scale = previewFontScale, onChange = onPreviewFontScaleChanged)
             Spacer(Modifier.height(8.dp))
@@ -211,7 +215,7 @@ fun SettingsScreen(
 
         CardGap()
         SettingsCard {
-            CardTitle("Edit text size")
+            CardTitle(stringResource(R.string.settings_edit_text_size))
             Spacer(Modifier.height(4.dp))
             SizeControl(scale = editorFontScale, onChange = onEditorFontScaleChanged)
             Spacer(Modifier.height(8.dp))
@@ -234,9 +238,9 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    CardTitle("Line numbers")
+                    CardTitle(stringResource(R.string.settings_line_numbers))
                     Text(
-                        text = "Show line numbers in the editor",
+                        text = stringResource(R.string.settings_line_numbers_summary),
                         color = c.secondaryText,
                         fontSize = 12.sp,
                     )
@@ -269,9 +273,9 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    CardTitle("Open in edit mode")
+                    CardTitle(stringResource(R.string.settings_open_in_edit_mode))
                     Text(
-                        text = "Open documents ready to write, not to read",
+                        text = stringResource(R.string.settings_open_in_edit_mode_summary),
                         color = c.secondaryText,
                         fontSize = 12.sp,
                     )
@@ -306,9 +310,9 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    CardTitle("Show formatting bar")
+                    CardTitle(stringResource(R.string.settings_formatting_bar))
                     Text(
-                        text = "Buttons for bold, lists and links above the keyboard",
+                        text = stringResource(R.string.settings_formatting_bar_summary),
                         color = c.secondaryText,
                         fontSize = 12.sp,
                     )
@@ -330,11 +334,11 @@ fun SettingsScreen(
         Spacer(Modifier.height(18.dp))
 
         // ───────────── FEEDBACK ─────────────
-        SectionLabel("Feedback")
+        SectionLabel(stringResource(R.string.settings_section_feedback))
         InfoCard(
             leadingIcon = Icons.Outlined.Lightbulb,
-            title = "Tell us what to build",
-            subtitle = "Browsing Markdown from your GitHub repos is one thing people have asked for.",
+            title = stringResource(R.string.settings_request_feature),
+            subtitle = stringResource(R.string.settings_request_feature_summary),
             onClick = onOpenGitHub,
             trailing = {
                 Icon(
@@ -348,7 +352,7 @@ fun SettingsScreen(
         CardGap()
         InfoCard(
             leadingIcon = Icons.Outlined.MailOutline,
-            title = "Email us",
+            title = stringResource(R.string.settings_email_us),
             subtitle = CONTACT_EMAIL,
             onClick = onEmailUs,
             trailing = {
@@ -363,8 +367,8 @@ fun SettingsScreen(
         CardGap()
         InfoCard(
             leadingIcon = Icons.Outlined.BugReport,
-            title = "Report an issue on GitHub",
-            subtitle = "Opens in your browser",
+            title = stringResource(R.string.settings_report_issue),
+            subtitle = stringResource(R.string.settings_report_issue_summary),
             onClick = onReportIssue,
             trailing = {
                 Icon(
@@ -381,8 +385,8 @@ fun SettingsScreen(
             CardGap()
             InfoCard(
                 leadingIcon = Icons.Outlined.StarOutline,
-                title = "Rate PilcrowMD",
-                subtitle = RATING_ASK,
+                title = stringResource(R.string.settings_rate),
+                subtitle = stringResource(R.string.store_rating_ask),
                 onClick = onRate,
                 trailing = {
                     Icon(
@@ -398,7 +402,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(18.dp))
 
         // ───────────── RENDERING ─────────────
-        SectionLabel("Rendering")
+        SectionLabel(stringResource(R.string.settings_section_rendering))
         // M-134: a setting, default OFF, because issue #8 asked for both behaviours — wrapping, and
         // keeping side-scroll. The default was promised in public; it is not a tuning knob.
         SettingsCard {
@@ -411,9 +415,9 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    CardTitle("Wrap long lines in code blocks")
+                    CardTitle(stringResource(R.string.settings_wrap_code_lines))
                     Text(
-                        text = "In reading mode, wrap instead of scrolling sideways",
+                        text = stringResource(R.string.settings_wrap_code_lines_summary),
                         color = c.secondaryText,
                         fontSize = 12.sp,
                     )
@@ -486,12 +490,12 @@ private fun CardTitle(text: String) {
     )
 }
 
-private class ThemeChoice(val icon: ImageVector, val label: String, val mode: ThemeMode)
+private class ThemeChoice(val icon: ImageVector, @StringRes val labelRes: Int, val mode: ThemeMode)
 
 private val THEME_CHOICES = listOf(
-    ThemeChoice(Icons.Outlined.DarkMode, "Dark", ThemeMode.DARK),
-    ThemeChoice(Icons.Outlined.Nightlight, "AMOLED", ThemeMode.AMOLED),
-    ThemeChoice(Icons.Outlined.LightMode, "Light", ThemeMode.LIGHT),
+    ThemeChoice(Icons.Outlined.DarkMode, R.string.settings_theme_dark, ThemeMode.DARK),
+    ThemeChoice(Icons.Outlined.Nightlight, R.string.settings_theme_amoled, ThemeMode.AMOLED),
+    ThemeChoice(Icons.Outlined.LightMode, R.string.settings_theme_light, ThemeMode.LIGHT),
 )
 
 /**
@@ -504,7 +508,8 @@ private fun ThemeOptionGroup(themeMode: ThemeMode, onThemeSelected: (ThemeMode) 
     val labelStyle = LocalTextStyle.current.merge(TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium))
     val density = LocalDensity.current
     BoxWithConstraints {
-        val widestLabelPx = THEME_CHOICES.maxOf { measurer.measure(it.label, labelStyle).size.width }
+        val labels = THEME_CHOICES.map { stringResource(it.labelRes) }
+        val widestLabelPx = labels.maxOf { measurer.measure(it, labelStyle).size.width }
         // Everything ThemeOption puts around the label: icon, icon-to-label gap, side padding, border.
         val chromePx = with(density) { (16 + 8 + 2 * 12 + 2 * 1).dp.toPx() }
         val gapsPx = with(density) { (2 * 8).dp.toPx() }
@@ -518,7 +523,7 @@ private fun ThemeOptionGroup(themeMode: ThemeMode, onThemeSelected: (ThemeMode) 
                 THEME_CHOICES.forEach { choice ->
                     ThemeOption(
                         icon = choice.icon,
-                        label = choice.label,
+                        label = stringResource(choice.labelRes),
                         selected = themeMode == choice.mode,
                         onClick = { onThemeSelected(choice.mode) },
                         modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -530,7 +535,7 @@ private fun ThemeOptionGroup(themeMode: ThemeMode, onThemeSelected: (ThemeMode) 
                 THEME_CHOICES.forEach { choice ->
                     ThemeOption(
                         icon = choice.icon,
-                        label = choice.label,
+                        label = stringResource(choice.labelRes),
                         selected = themeMode == choice.mode,
                         onClick = { onThemeSelected(choice.mode) },
                         modifier = Modifier.fillMaxWidth(),
@@ -608,7 +613,7 @@ private fun RowScope.FontPill(set: FontSet, selected: Boolean, onClick: () -> Un
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = set.displayName,
+            text = stringResource(set.displayNameRes),
             color = if (selected) c.primaryBackground else c.primaryText,
             fontFamily = set.readingFamily,
             fontSize = 13.sp,
@@ -641,6 +646,9 @@ internal fun steppedScale(scale: Float, deltaPct: Int): Float {
 @Composable
 private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
     val c = mdColors()
+    val smallerText = stringResource(R.string.settings_smaller_text)
+    val largerText = stringResource(R.string.settings_larger_text)
+    val percentText = stringResource(R.string.settings_percent, scaleToPercent(scale))
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -652,7 +660,7 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
             modifier = Modifier
                 .clip(CircleShape)
                 .clickable(role = Role.Button) { onChange(steppedScale(scale, -5)) }
-                .clearAndSetSemantics { contentDescription = "Smaller text" }
+                .clearAndSetSemantics { contentDescription = smallerText }
                 .padding(4.dp),
         )
         Slider(
@@ -666,7 +674,7 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
                 .height(28.dp)
                 .padding(horizontal = 4.dp)
                 // Speak the percent the readout shows, not the fraction of the 85–160 range.
-                .semantics { stateDescription = "${scaleToPercent(scale)}%" },
+                .semantics { stateDescription = percentText },
             colors = SliderDefaults.colors(
                 thumbColor = c.accent,
                 activeTrackColor = c.accent,
@@ -680,7 +688,7 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
             modifier = Modifier
                 .clip(CircleShape)
                 .clickable(role = Role.Button) { onChange(steppedScale(scale, +5)) }
-                .clearAndSetSemantics { contentDescription = "Larger text" }
+                .clearAndSetSemantics { contentDescription = largerText }
                 .padding(4.dp),
         )
         Box(
@@ -691,7 +699,7 @@ private fun SizeControl(scale: Float, onChange: (Float) -> Unit) {
                 .background(c.border),
         )
         Text(
-            text = "${scaleToPercent(scale)}%",
+            text = percentText,
             color = c.accent,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
@@ -784,14 +792,14 @@ private fun AboutCard(appVersion: String, onOpenLicenses: () -> Unit = {}) {
             // fitted beside it at the phone's width, and the title wrapped (M-174).
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "About PilcrowMD",
+                    text = stringResource(R.string.settings_about_title),
                     color = c.primaryText,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                 )
                 if (appVersion.isNotEmpty()) {
                     Text(
-                        text = "v$appVersion",
+                        text = stringResource(R.string.settings_about_version, appVersion),
                         color = c.secondaryText,
                         fontSize = 12.sp,
                     )
@@ -807,27 +815,27 @@ private fun AboutCard(appVersion: String, onOpenLicenses: () -> Unit = {}) {
         if (expanded) {
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "A native Markdown reader & editor for Android.",
+                text = stringResource(R.string.settings_about_description),
                 color = c.secondaryText,
                 fontSize = 12.sp,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "Built with",
+                text = stringResource(R.string.settings_built_with),
                 color = c.primaryText,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(3.dp))
             listOf(
-                "Markwon — Markdown rendering (Apache-2.0)",
-                "Prism4j — syntax highlighting (Apache-2.0)",
-                "Sora Editor — code editor (LGPL-2.1)",
-                "JLatexMath — math rendering (GPL w/ classpath)",
-                "Source Serif 4, Merriweather, Atkinson Hyperlegible, JetBrains Mono, IBM Plex Mono (OFL)",
-            ).forEach { credit ->
+                R.string.settings_credit_markwon,
+                R.string.settings_credit_prism4j,
+                R.string.settings_credit_sora,
+                R.string.settings_credit_jlatexmath,
+                R.string.settings_credit_fonts,
+            ).forEach { creditRes ->
                 Text(
-                    text = "• $credit",
+                    text = stringResource(R.string.settings_credit_bullet, stringResource(creditRes)),
                     color = c.secondaryText,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(bottom = 2.dp),
@@ -844,7 +852,7 @@ private fun AboutCard(appVersion: String, onOpenLicenses: () -> Unit = {}) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = "Open source licenses",
+                    text = stringResource(R.string.settings_open_source_licenses),
                     color = c.primaryText,
                     fontSize = 12.sp,
                 )

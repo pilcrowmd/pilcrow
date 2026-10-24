@@ -10,11 +10,6 @@ import android.net.Uri
 import com.pilcrowmd.di.PLAY_STORE_INSTALLER
 
 /**
- * The rating ask, word for word the same on both cards (M-176, M-177).
- */
-internal const val RATING_ASK = "A rating on Google Play helps others find it and keeps this free app going."
-
-/**
  * Open this app's Play listing so the user can rate it (M-176, M-177). No Play Core, no network.
  *
  * `market://` first, pinned to the Play Store app: the button says "Rate on Play", and an unpinned

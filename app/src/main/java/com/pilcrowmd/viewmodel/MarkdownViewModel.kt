@@ -19,6 +19,10 @@ import com.pilcrowmd.domain.usecase.PrepareReaderModelUseCase
 import com.pilcrowmd.domain.usecase.ReadEditLanding
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
+import com.pilcrowmd.repository.ByteFingerprint
+import com.pilcrowmd.repository.Draft
+import com.pilcrowmd.repository.DraftInfo
+import com.pilcrowmd.repository.DraftRepository
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.RecentFile
@@ -144,10 +148,31 @@ constructor(
      */
     private val prepareReaderModel: PrepareReaderModelUseCase =
         PrepareReaderModelUseCase(parseHeadingsUseCase::parseTree, parseHeadingsUseCase),
+    /** Where unsaved text is kept between keystrokes and a save, so a kill does not lose it. */
+    private val drafts: DraftRepository = DraftRepository.None,
 ) : ViewModel() {
     // The open document and everything derived from it. This class READS all of it, but can
     // replace the document only through the slot's adjudicated doors (M-109) — see [DocumentSlot].
     private val slot = DocumentSlot()
+
+    // Unsaved text is kept as a draft while the document is dirty (crash recovery). Declared straight
+    // after the slot and before anything that can load a document: the startup restore below may run
+    // inline, and it asks this to hold and offer the draft of the file it publishes.
+    private val draftKeeper = DraftKeeper(
+        drafts = drafts,
+        scope = viewModelScope,
+        cpu = cpuDispatcher,
+        slot = slot,
+        isProtected = ::draftFileHasChanged,
+    )
+
+    // The stored draft of the file just opened, until the user decides: Restore, Save a copy or Discard.
+    private val _recoveryOffer = MutableStateFlow<RecoveryOffer?>(null)
+    val recoveryOffer: StateFlow<RecoveryOffer?> = _recoveryOffer.asStateFlow()
+
+    init {
+        viewModelScope.launch { slot.document.collect { draftKeeper.onDocument(it) } }
+    }
 
     // v1 holds single document, but the structure allows collection.
     val currentDocument: StateFlow<Document?> = slot.document
@@ -212,6 +237,11 @@ constructor(
     // The list backs both the dialog and the passive indicator; never auto-discarded.
     private val _strandedSlots = MutableStateFlow<List<StrandedSlot>>(emptyList())
     val strandedSlots: StateFlow<List<StrandedSlot>> = _strandedSlots.asStateFlow()
+
+    // Drafts of unsaved edits whose file can no longer be opened (deleted, moved, access lost): they are
+    // never offered by reopening the file, so they are listed in the same dialog. Never aged out.
+    private val _orphanDrafts = MutableStateFlow<List<OrphanDraft>>(emptyList())
+    val orphanDrafts: StateFlow<List<OrphanDraft>> = _orphanDrafts.asStateFlow()
 
     // Whether the stranded-slot dialog is shown. Auto-opened ONCE on a cold launcher start with
     // slots present (not on an intent open / onNewIntent / after dismissal) — the passive indicator
@@ -547,6 +577,8 @@ constructor(
         val publication = prepareLoad(uri, content, notUtf8 = !file.isUtf8)
         when (slot.publish(claim, publication, policy)) {
             PublishOutcome.PUBLISHED -> {
+                // Before anything suspends: from here a keystroke could start overwriting the draft.
+                checkForStoredDraft(publication.document)
                 // The TOC is the one value allowed to arrive AFTER the document: it comes from the
                 // reader model, which [readerModel] prepares off Main once the document is published.
                 finishLoad(claim, FileLoadState.Success)
@@ -1423,18 +1455,82 @@ constructor(
         viewModelScope.launch {
             val slots = repository.strandedSlots().getOrDefault(emptyList())
             _strandedSlots.value = slots
-            if (slots.isNotEmpty() && !openingFileFromIntent) _strandedDialogVisible.value = true
+            val orphans = findOrphanDrafts()
+            _orphanDrafts.value = orphans
+            if ((slots.isNotEmpty() || orphans.isNotEmpty()) && !openingFileFromIntent) {
+                _strandedDialogVisible.value = true
+            }
         }
     }
 
-    /** Re-read the stranded-slot list from the journal (after a rescue/discard). */
+    /** Re-read the stranded-slot and orphan-draft lists (after a rescue/discard). */
     private fun refreshStrandedSlots() {
         viewModelScope.launch {
             val slots = repository.strandedSlots().getOrDefault(emptyList())
             _strandedSlots.value = slots
-            // Keep the dialog flag honest: once the last slot is resolved, close it (so a NEW slot
+            val orphans = findOrphanDrafts()
+            _orphanDrafts.value = orphans
+            // Keep the dialog flag honest: once the last entry is resolved, close it (so a NEW slot
             // appearing later this session can't auto-reopen the dialog via a stale visible flag).
-            if (slots.isEmpty()) _strandedDialogVisible.value = false
+            if (slots.isEmpty() && orphans.isEmpty()) _strandedDialogVisible.value = false
+        }
+    }
+
+    /**
+     * The stored drafts whose file cannot be opened any more, newest first. The draft of the open
+     * document and the one being offered are excluded: the user is already looking at those.
+     */
+    private suspend fun findOrphanDrafts(): List<OrphanDraft> {
+        val orphans = drafts.list().filter { isOrphan(it.uri) }
+        if (orphans.isEmpty()) return emptyList()
+        val known = storage.recentFiles.first().associate { it.uri to it.displayName }
+        return orphans.map { OrphanDraft(it.uri, known[it.uri] ?: nameFromUri(it.uri), it.savedAt) }
+    }
+
+    /**
+     * Whether the draft stored for [uri] is an orphan right now: not the open document, not the draft being
+     * offered, and its file cannot be opened. The list is a snapshot, so the actions ask again before acting.
+     */
+    private suspend fun isOrphan(uri: Uri): Boolean =
+        uri != slot.document.value?.uri && uri != _recoveryOffer.value?.uri && repository.readFile(uri).isFailure
+
+    /** A name for a file nobody remembers: the last path segment (already URL-decoded), after any `/` or `:`. */
+    private fun nameFromUri(uri: Uri): String =
+        uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')?.takeIf { it.isNotBlank() }
+            ?: uri.toString()
+
+    /** Save an orphan draft's text as a copy at [targetUri]; the draft is removed only once that succeeded. */
+    fun saveOrphanDraftAsCopy(targetUri: Uri, draftUri: Uri) {
+        viewModelScope.launch {
+            // A stale row (its file opens again) is left alone: the draft is offered when that file is reopened.
+            if (isOrphan(draftUri)) {
+                drafts.read(draftUri)?.let { writeDraftCopy(it, targetUri) { forgetOrphanFile(draftUri) } }
+            }
+            refreshStrandedSlots()
+        }
+    }
+
+    /** Explicitly discard an orphan draft at the user's request. */
+    fun discardOrphanDraft(draftUri: Uri) {
+        viewModelScope.launch {
+            if (isOrphan(draftUri)) {
+                drafts.delete(draftUri)
+                forgetOrphanFile(draftUri)
+            }
+            refreshStrandedSlots()
+        }
+    }
+
+    /**
+     * The orphan's draft is settled, so its file is dead to the app: drop it from Recent and, when it is the
+     * remembered last file, forget that too. The startup restore of that last file is what put "Couldn't open
+     * that file" on the welcome screen, so that line goes with it.
+     */
+    private suspend fun forgetOrphanFile(uri: Uri) {
+        storage.removeRecent(uri)
+        if (storage.lastFileUri.first() == uri) {
+            storage.clearLastFileUri()
+            slot.markLoadFailure(false)
         }
     }
 
@@ -1473,6 +1569,111 @@ constructor(
     /** Dismiss the stranded-slot dialog without acting — every slot stays intact (never auto-discarded). */
     fun dismissStrandedDialog() {
         _strandedDialogVisible.value = false
+    }
+
+    // ── Drafts: recovery of unsaved edits ─────────────────────────────────────────────
+
+    /**
+     * The file [doc] was just opened: if a draft of unsaved edits is stored for it, offer it. Writing
+     * a draft for this file is held from this very turn until the user has decided, so nothing typed
+     * meanwhile can overwrite the stored one.
+     */
+    private fun checkForStoredDraft(doc: Document) {
+        val uri = doc.uri ?: return
+        // An offer for another file is dropped with the file; its draft stays stored, offered again on reopening.
+        _recoveryOffer.value?.takeIf { it.uri != uri }?.let {
+            _recoveryOffer.value = null
+            draftKeeper.release(it.uri)
+        }
+        draftKeeper.hold(uri)
+        viewModelScope.launch {
+            val offer = try {
+                draftKeeper.offerFor(uri, doc.displayName, doc.content)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                android.util.Log.w("MarkdownViewModel", "could not look for a stored draft", e)
+                null
+            }
+            // The file may have been replaced while the draft was read: no offer is shown for a file no longer open.
+            val stillOpen = slot.document.value?.uri == uri
+            if (offer == null || !stillOpen) draftKeeper.release(uri) else _recoveryOffer.value = offer
+        }
+    }
+
+    /** Whether the file a stored draft belongs to is no longer what the draft was typed on (or cannot be told). */
+    private suspend fun draftFileHasChanged(info: DraftInfo): Boolean {
+        val disk = repository.readFile(info.uri).getOrNull() ?: return true
+        return withContext(cpuDispatcher) { ByteFingerprint.of(disk.content.replace("\r\n", "\n")) } != info.baseline
+    }
+
+    /**
+     * Restore: put the stored text in the editor. Nothing is written to the file; the document is
+     * dirty and the draft stays stored until the user saves or discards.
+     */
+    fun restoreDraft() {
+        val offer = _recoveryOffer.value ?: return
+        viewModelScope.launch {
+            val draft = drafts.read(offer.uri)
+            val doc = slot.document.value
+            if (draft != null && doc?.uri == offer.uri) {
+                slot.updateContent(doc.id, draft.text)
+                setMode(ViewMode.EDITOR)
+            }
+            _recoveryOffer.value = null
+            draftKeeper.release(offer.uri)
+        }
+    }
+
+    /** Discard: the user does not want the stored text. The only way a draft that differs from its file is removed. */
+    fun discardDraft() {
+        val offer = _recoveryOffer.value ?: return
+        viewModelScope.launch {
+            drafts.delete(offer.uri)
+            _recoveryOffer.value = null
+            draftKeeper.release(offer.uri)
+        }
+    }
+
+    /**
+     * Save a copy: write the stored text to a new file of the user's choosing, with the line ending
+     * the file had, through the crash-safe save. The draft is removed only once that has succeeded.
+     */
+    fun saveDraftAsCopy(targetUri: Uri) {
+        val offer = _recoveryOffer.value ?: return
+        viewModelScope.launch {
+            val draft = drafts.read(offer.uri) ?: return@launch
+            writeDraftCopy(draft, targetUri) {
+                _recoveryOffer.value = null
+                draftKeeper.release(offer.uri)
+            }
+        }
+    }
+
+    /**
+     * Write [draft]'s text to [targetUri] with the line ending its file had, through the crash-safe
+     * save, and remove the draft only once that has succeeded ([onSaved] runs then, before the outcome
+     * is published). A refused or failed write leaves the draft where it was.
+     */
+    private suspend fun writeDraftCopy(draft: Draft, targetUri: Uri, onSaved: suspend () -> Unit) {
+        // NEW-12: the picker can hand back an existing file, and one that is not UTF-8 is never written over.
+        if (!repository.readsAsUtf8(targetUri)) return refusePickNewFile()
+        repository.takePersistableUriPermission(targetUri) // best-effort; result intentionally ignored
+        repository.saveFile(targetUri, applyLineEnding(draft.text, draft.lineEnding))
+            .onSuccess {
+                drafts.delete(draft.uri)
+                onSaved()
+                _fileLoadState.emit(FileLoadState.SaveSuccess)
+            }
+            .onFailure { error -> _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error")) }
+    }
+
+    /** The app is going to the background, where the system may end it: write the draft now. */
+    fun flushDraft() = draftKeeper.flush()
+
+    override fun onCleared() {
+        draftKeeper.flush()
+        super.onCleared()
     }
 
     fun setLineNumbersEnabled(enabled: Boolean) {
@@ -1746,6 +1947,7 @@ constructor(
                         searchUseCase = container.searchMarkdownUseCase,
                         pdfExporter = container.pdfExporter,
                         appInfo = container.appInfo,
+                        drafts = container.draftRepository,
                         prepareReaderModel = PrepareReaderModelUseCase(
                             parse = container.markwonRenderer::parseForReader,
                             headings = container.parseMarkdownHeadingsUseCase,

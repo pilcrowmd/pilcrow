@@ -92,14 +92,15 @@ class SettingsLargeFontLayoutTest {
     fun fontPillLabelsAreNotClipped() {
         show()
         FontSets.ALL.forEach { set ->
-            val node = composeRule.onNodeWithText(set.displayName, useUnmergedTree = true).fetchSemanticsNode()
+            val displayName = composeRule.activity.getString(set.displayNameRes)
+            val node = composeRule.onNodeWithText(displayName, useUnmergedTree = true).fetchSemanticsNode()
             val layout = node.textLayout()
             assertFalse(
-                "\"${set.displayName}\" pill cuts its label off at font scale 2.0 " +
+                "\"$displayName\" pill cuts its label off at font scale 2.0 " +
                     "(text ${layout.multiParagraph.height}px, box ${layout.size.height}px)",
                 layout.didOverflowHeight,
             )
-            assertEquals("\"${set.displayName}\" pill wraps its label", 1, layout.lineCount)
+            assertEquals("\"$displayName\" pill wraps its label", 1, layout.lineCount)
         }
     }
 

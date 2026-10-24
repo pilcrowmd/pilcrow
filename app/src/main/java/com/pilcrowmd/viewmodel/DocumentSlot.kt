@@ -240,6 +240,10 @@ internal class DocumentSlot {
         _document.value = current.copy(content = newContent, dirty = newContent != originalContent)
     }
 
+    /** The text the open document is measured against: what its file held when it was opened or last saved. */
+    val baseline: String
+        @Synchronized get() = originalContent
+
     /**
      * [savedContent] reached disk for document [expected]. The baseline moves to it, and `dirty`
      * clears ONLY if nothing was typed during the write — otherwise those keystrokes would be marked

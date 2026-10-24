@@ -100,7 +100,11 @@ class AccessibleCodeEditor(context: Context) : PilcrowCodeEditor(context) {
     override fun createAccessibilityNodeInfo(): AccessibilityNodeInfo {
         val info = super.createAccessibilityNodeInfo()
         val name = context.getString(R.string.editor_accessibility_name)
-        info.hintText = if (fileName.isBlank()) name else "$name, $fileName"
+        info.hintText = if (fileName.isBlank()) {
+            name
+        } else {
+            context.getString(R.string.editor_accessibility_name_with_file, name, fileName)
+        }
         // Same condition under which Sora adds its text and editing actions.
         if (isEnabled && props.maxAccessibilityTextLength > 0) {
             info.movementGranularities = GRANULARITIES

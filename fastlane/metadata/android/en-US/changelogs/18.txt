@@ -1,0 +1,4 @@
+- Your unsaved edits survive a crash: next time you open the file, PilcrowMD offers to put them back.
+- Edits of a deleted or moved file are listed under "Recover unsaved files", to save a copy or discard.
+- A file changed by another app is no longer written over by an interrupted save.
+- A failed save no longer deletes an older kept copy.

@@ -129,7 +129,7 @@ class TableBlockEntry(
             table.removeAllViews()
             table.addView(
                 TextView(context).apply {
-                    text = "[table could not be rendered]"
+                    text = context.getString(R.string.render_table_failed)
                     setTextColor(colorScheme.secondaryText.toArgb())
                     // The degraded path takes the font scale like every other block. Without this it
                     // renders at the theme default, so at any zoom other than 100% a failed table
@@ -276,7 +276,7 @@ class TableBlockEntry(
      * picture's size is known only once it has loaded, after the columns are measured and fixed, so
      * it could only be squeezed into a column as wide as its alt text. The image span and its
      * "Tap to show" target are removed, and the alt text stays as text
-     * ([ImagePlaceholderDrawable.LABEL_NO_ALT] when there is none, the placeholder's word).
+     * (`render_image_label_no_alt` when there is none, the placeholder's word).
      * [ImageAltTextSpan] marks it so search highlighting skips it, as search itself does
      * (`SearchMarkdownUseCase.appendVisible`), so painted and searched counts agree.
      */
@@ -289,8 +289,9 @@ class TableBlockEntry(
             var end = editable.getSpanEnd(span)
             editable.removeSpan(span)
             if (editable.subSequence(start, end).toString() == OBJECT_REPLACEMENT) {
-                editable.replace(start, end, ImagePlaceholderDrawable.LABEL_NO_ALT)
-                end = start + ImagePlaceholderDrawable.LABEL_NO_ALT.length
+                val label = context.getString(R.string.render_image_label_no_alt)
+                editable.replace(start, end, label)
+                end = start + label.length
             }
             editable.setSpan(ImageAltTextSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }

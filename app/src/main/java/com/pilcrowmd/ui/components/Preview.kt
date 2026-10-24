@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -840,15 +841,24 @@ private fun JumpButtons(recyclerView: RecyclerView?, announce: Boolean, onJump: 
     // whose text changes to carry it, and Compose 1.7 has no announcement API of its own.
     @Suppress("DEPRECATION")
     val sayWhereItLanded: (String) -> Unit = { if (announce) recyclerView?.announceForAccessibility(it) }
+    // Resolved here, not in the click lambdas: those run outside composition.
+    val topOfDocument = stringResource(R.string.preview_landed_top)
+    val endOfDocument = stringResource(R.string.preview_landed_bottom)
     Column {
-        JumpButton(icon = Icons.Filled.KeyboardArrowUp, description = "Scroll to top") {
+        JumpButton(
+            icon = Icons.Filled.KeyboardArrowUp,
+            description = stringResource(R.string.preview_scroll_to_top_description),
+        ) {
             recyclerView?.let { cancelReaderJump(it) }
             onJump()
             (recyclerView?.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
-            sayWhereItLanded("Top of document")
+            sayWhereItLanded(topOfDocument)
         }
         Spacer(modifier = Modifier.height(10.dp))
-        JumpButton(icon = Icons.Filled.KeyboardArrowDown, description = "Scroll to bottom") {
+        JumpButton(
+            icon = Icons.Filled.KeyboardArrowDown,
+            description = stringResource(R.string.preview_scroll_to_bottom_description),
+        ) {
             // NOT `scrollToPosition(last)`: that asks for the last block at the TOP, and only the
             // end-of-list clamp turned it into "the end of the document at the bottom of the
             // screen". M-06's spacer removes that clamp, so the resting position is now stated
@@ -858,7 +868,7 @@ private fun JumpButtons(recyclerView: RecyclerView?, announce: Boolean, onJump: 
                 onJump()
                 scrollToDocumentEnd(it)
             }
-            sayWhereItLanded("End of document")
+            sayWhereItLanded(endOfDocument)
         }
     }
 }
@@ -1004,7 +1014,7 @@ private fun ScrollPercentBadge(percent: Int, visible: Boolean, modifier: Modifie
     val c = mdColors()
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         Text(
-            text = "$percent%",
+            text = stringResource(R.string.preview_scroll_percent, percent),
             color = c.secondaryText,
             fontSize = 12.sp,
             modifier = Modifier

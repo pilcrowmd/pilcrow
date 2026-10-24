@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import com.pilcrowmd.R
 
 /** Where mail to the developer goes. */
 internal const val CONTACT_EMAIL = "pilcrowmd@gmail.com"
@@ -29,7 +30,7 @@ fun openEmailUs(context: Context) {
     val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$CONTACT_EMAIL?subject=" + Uri.encode("PilcrowMD")))
         .putExtra(Intent.EXTRA_SUBJECT, "PilcrowMD")
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    startOrToast(context, intent, "No email app found. Write to $CONTACT_EMAIL")
+    startOrToast(context, intent, context.getString(R.string.contact_no_email_app, CONTACT_EMAIL))
 }
 
 /**
@@ -40,7 +41,8 @@ fun openEmailUs(context: Context) {
 fun openIssueReport(context: Context) {
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(ISSUE_REPORT_URL))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    startOrToast(context, intent, "No browser found. The address is github.com/pilcrowmd/pilcrow/issues")
+    val fallback = context.getString(R.string.contact_no_browser, "github.com/pilcrowmd/pilcrow/issues")
+    startOrToast(context, intent, fallback)
 }
 
 /**

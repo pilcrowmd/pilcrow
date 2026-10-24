@@ -15,7 +15,7 @@
   code blocks** and they should wrap instead.
 - Try a few blocks in both reading mode and Edit mode.
 
-**Known gaps in version 1.0.16** – we know about these, no need to report them:
+**Known gaps in version 1.0.17** – we know about these, no need to report them:
 
 - Inside a list, a quote or a callout, a block in one of the languages new in version 1.0.12 (such
   as those in Part B) shows as plain text.

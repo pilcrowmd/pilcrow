@@ -79,7 +79,8 @@ internal fun TextView.bindDetailsToggle(expanded: Boolean, onToggle: (() -> Unit
         return
     }
     setOnClickListener { onToggle() }
-    ViewCompat.setStateDescription(this, if (expanded) "Expanded" else "Collapsed")
+    val state = if (expanded) R.string.render_details_expanded else R.string.render_details_collapsed
+    ViewCompat.setStateDescription(this, context.getString(state))
 }
 
 /** Undo [bindDetailsToggle] on a recycled prose view that is now showing something else. */

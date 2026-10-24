@@ -13,10 +13,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pilcrowmd.R
 import com.pilcrowmd.domain.model.HeadingNode
 import com.pilcrowmd.ui.theme.PilcrowSpacing
 import com.pilcrowmd.ui.theme.mdColors
@@ -52,7 +54,7 @@ fun HeadingsDrawer(
     ) {
         // Title
         Text(
-            text = "Headings",
+            text = stringResource(R.string.headings_title),
             color = c.primaryText,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,

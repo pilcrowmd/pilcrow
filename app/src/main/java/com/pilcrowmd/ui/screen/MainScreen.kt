@@ -18,6 +18,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -40,7 +41,9 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Text
@@ -60,6 +63,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -67,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.PlainReason
 import com.pilcrowmd.domain.markdown.ReaderModel
 import com.pilcrowmd.domain.model.EditorSupport
@@ -102,6 +109,8 @@ import com.pilcrowmd.viewmodel.FileLoadState
 import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 import com.pilcrowmd.viewmodel.NEW_DOCUMENT_NAME
+import com.pilcrowmd.viewmodel.OrphanDraft
+import com.pilcrowmd.viewmodel.RecoveryOffer
 import com.pilcrowmd.viewmodel.ViewMode
 import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
 import kotlinx.coroutines.launch
@@ -144,6 +153,9 @@ fun MainScreen(
     // Stranded WAL slots (escape hatch): non-empty → persistent indicator; dialog when visible.
     val strandedSlots = viewModel.strandedSlots.collectAsStateWithLifecycle()
     val strandedDialogVisible = viewModel.strandedDialogVisible.collectAsStateWithLifecycle()
+    val orphanDrafts = viewModel.orphanDrafts.collectAsStateWithLifecycle()
+    // Unsaved edits found for the file just opened (crash recovery): a dialog until the user decides.
+    val recoveryOffer = viewModel.recoveryOffer.collectAsStateWithLifecycle()
     val lineNumbersEnabled = viewModel.lineNumbersEnabled.collectAsStateWithLifecycle()
     val openInEditMode = viewModel.openInEditMode.collectAsStateWithLifecycle()
     // Separate preview/editor scales and selected font set.
@@ -351,7 +363,11 @@ fun MainScreen(
             BackIntent.CloseFile -> viewModel.closeFile()
             BackIntent.ArmExit -> {
                 exitArmed = true
-                Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.main_press_back_again_to_exit),
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
             BackIntent.Exit -> (context as? android.app.Activity)?.finish()
         }
@@ -401,13 +417,13 @@ fun MainScreen(
     androidx.compose.runtime.LaunchedEffect(fileLoadState.value) {
         when (fileLoadState.value) {
             is FileLoadState.SaveSuccess -> {
-                statusToastText = "Saved"
+                statusToastText = context.getString(R.string.main_toast_saved)
                 statusToastError = false
                 statusToastVisible = true
                 viewModel.resetSaveState()
             }
             is FileLoadState.SaveError -> {
-                statusToastText = "Save failed"
+                statusToastText = context.getString(R.string.main_toast_save_failed)
                 statusToastError = true
                 statusToastVisible = true
                 viewModel.resetSaveState()
@@ -415,14 +431,14 @@ fun MainScreen(
             // NEW-12: nothing was written, and the reason is the file's encoding, not a failure.
             // The banner under the toolbar stays up and offers Save a copy.
             is FileLoadState.SaveRefusedNotUtf8 -> {
-                statusToastText = "Not saved: this file isn't UTF-8"
+                statusToastText = context.getString(R.string.main_toast_not_saved_not_utf8)
                 statusToastError = true
                 statusToastVisible = true
                 viewModel.resetSaveState()
             }
             // The copy has to go to a new file; the picked one has content or is not UTF-8.
             is FileLoadState.SaveRefusedPickNewFile -> {
-                statusToastText = "Not saved: pick a new file for the copy"
+                statusToastText = context.getString(R.string.main_toast_not_saved_pick_new_file)
                 statusToastError = true
                 statusToastVisible = true
                 viewModel.resetSaveState()
@@ -438,7 +454,7 @@ fun MainScreen(
             // reader cannot act on or the literal words "Unknown error". A plain sentence is more
             // use to them than either. The cause still reaches the log at the throw site.
             is FileLoadState.Error -> {
-                statusToastText = "Couldn't open that file"
+                statusToastText = context.getString(R.string.main_load_failed)
                 statusToastError = true
                 statusToastVisible = true
                 viewModel.resetLoadErrorState()
@@ -449,13 +465,13 @@ fun MainScreen(
     androidx.compose.runtime.LaunchedEffect(exportState.value) {
         when (exportState.value) {
             is ExportState.Success -> {
-                statusToastText = "Exported"
+                statusToastText = context.getString(R.string.main_toast_exported)
                 statusToastError = false
                 statusToastVisible = true
                 viewModel.resetExportState()
             }
             is ExportState.Error -> {
-                statusToastText = "Export failed"
+                statusToastText = context.getString(R.string.main_toast_export_failed)
                 statusToastError = true
                 statusToastVisible = true
                 viewModel.resetExportState()
@@ -483,6 +499,8 @@ fun MainScreen(
     }
     // Back from Android's settings, or from the picker: a grant may have come or gone.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { imageFolderViewModel?.refresh() }
+    // The system ends a backgrounded app without warning, so unsaved text is kept before it goes.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.flushDraft() }
     val folderPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         imageFolderViewModel?.onFolderPicked(tree)
     }
@@ -527,16 +545,28 @@ fun MainScreen(
     // while the system file picker is foregrounded — otherwise the key would reset to null and the
     // picker result would misroute to the document Save-As (writing the wrong content).
     var pendingRescueSlotKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // Same for "Save a copy" on the unsaved-edits dialog: the next picker result writes the kept draft.
+    var pendingDraftCopy by rememberSaveable { mutableStateOf(false) }
+    // Same for "Save a copy" on an orphan draft (its file can no longer be opened): the draft's URI.
+    var pendingOrphanDraftUri by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Save-As / "Save a copy" launcher (ACTION_CREATE_DOCUMENT). Mirrors the PDF launcher. Dispatches
     // by what initiated the pick: a stranded-slot rescue (raw WAL bytes, never touches the open doc)
     // when pendingRescueSlotKey is set, else the document Save-As (write + adopt).
     val handleSaveAsResult = { uri: Uri? ->
         val rescueKey = pendingRescueSlotKey
+        val orphanUri = pendingOrphanDraftUri
         if (uri != null) {
-            if (rescueKey != null) viewModel.rescueStrandedSlot(uri, rescueKey) else viewModel.saveActiveDocumentAs(uri)
+            when {
+                rescueKey != null -> viewModel.rescueStrandedSlot(uri, rescueKey)
+                orphanUri != null -> viewModel.saveOrphanDraftAsCopy(uri, Uri.parse(orphanUri))
+                pendingDraftCopy -> viewModel.saveDraftAsCopy(uri)
+                else -> viewModel.saveActiveDocumentAs(uri)
+            }
         }
         pendingRescueSlotKey = null // clear regardless (incl. picker cancel) so a later Save-As isn't misrouted
+        pendingDraftCopy = false
+        pendingOrphanDraftUri = null
     }
     val saveAsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/markdown"),
@@ -580,6 +610,20 @@ fun MainScreen(
     val launchRescue = { slot: com.pilcrowmd.repository.StrandedSlot ->
         pendingRescueSlotKey = slot.key
         val baseName = slot.displayName.substringBeforeLast('.').takeIf { it.isNotBlank() }
+        saveAsLauncher.launch("Recovered ${baseName ?: "document"}.md")
+    }
+
+    // Save an orphan draft as a copy: route the next picker result to saveOrphanDraftAsCopy.
+    val launchOrphanCopy = { orphan: OrphanDraft ->
+        pendingOrphanDraftUri = orphan.uri.toString()
+        val baseName = orphan.displayName.substringBeforeLast('.').takeIf { it.isNotBlank() }
+        saveAsLauncher.launch("Recovered ${baseName ?: "document"}.md")
+    }
+
+    // Save the kept draft of the file just opened as a copy: route the next picker result to it.
+    val launchDraftCopy = { offer: RecoveryOffer ->
+        pendingDraftCopy = true
+        val baseName = offer.displayName.substringBeforeLast('.').takeIf { it.isNotBlank() }
         saveAsLauncher.launch("Recovered ${baseName ?: "document"}.md")
     }
 
@@ -629,9 +673,9 @@ fun MainScreen(
                 // (welcome + document) whenever recovery files await action, and opens the dialog
                 // on tap. The dialog itself (auto-popped on a cold launcher start, else opened
                 // from here) lives at the Box level below.
-                if (strandedSlots.value.isNotEmpty()) {
+                if (strandedSlots.value.isNotEmpty() || orphanDrafts.value.isNotEmpty()) {
                     StrandedSlotIndicator(
-                        count = strandedSlots.value.size,
+                        count = strandedSlots.value.size + orphanDrafts.value.size,
                         onClick = { viewModel.showStrandedDialog() },
                     )
                 }
@@ -656,7 +700,11 @@ fun MainScreen(
                         // Quiet .txt render toggle: item present only for .txt documents;
                         // label names the mode to switch TO. Viewing-only — never touches bytes.
                         plainToggleLabel = if (plainToggleAvailable.value) {
-                            if (renderMode.value == RenderMode.PLAIN) "View as Markdown" else "View as plain text"
+                            if (renderMode.value == RenderMode.PLAIN) {
+                                stringResource(R.string.main_view_as_markdown)
+                            } else {
+                                stringResource(R.string.main_view_as_plain_text)
+                            }
                         } else {
                             null
                         },
@@ -702,7 +750,7 @@ fun MainScreen(
                     // takes precedence — it is the one that says why saving in place would harm the file.
                     if (currentDocument.value?.notUtf8 == true) {
                         TransientBanner(
-                            text = "This file isn't UTF-8, so saving would change it.\nTap to Save a copy…",
+                            text = stringResource(R.string.main_banner_not_utf8),
                             enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                             onClick = { launchSaveAs() },
                         )
@@ -726,7 +774,9 @@ fun MainScreen(
                     // M-179: a document the reader cannot format is shown as plain text — say so,
                     // rather than let it look like the Markdown was lost.
                     val plainNotice = plainFallbackNoticeText((readerModel.value as? ReaderModel.Plain)?.reason)
-                    if (mode.value == ViewMode.READER && plainNotice != null) PlainFallbackNotice(plainNotice)
+                    if (mode.value == ViewMode.READER && plainNotice != null) {
+                        PlainFallbackNotice(stringResource(plainNotice))
+                    }
                     // M-154: editor mode on a document too large to edit keeps the reader — say why.
                     val tooLargeToEdit = currentDocument.value?.editorSupport == EditorSupport.READ_ONLY
                     if (mode.value == ViewMode.EDITOR && tooLargeToEdit) EditorReadOnlyNotice()
@@ -816,9 +866,8 @@ fun MainScreen(
                     // M-309: with a document open the box is the Reader or Editor pane; with none, Welcome
                     // names itself.
                     val paneModifier = currentDocument.value?.let { doc ->
-                        Modifier.semantics {
-                            paneTitle = documentPaneTitle(mode.value, doc.editorSupport, doc.displayName)
-                        }
+                        val paneName = documentPaneTitle(context, mode.value, doc.editorSupport, doc.displayName)
+                        Modifier.semantics { paneTitle = paneName }
                     } ?: Modifier
                     Box(modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().then(paneModifier)) {
                         if (currentDocument.value == null) {
@@ -832,7 +881,7 @@ fun MainScreen(
                                 // M-126: a failed open is otherwise invisible here. Null unless
                                 // the failure actually left the user on this screen.
                                 loadErrorMessage =
-                                "Couldn't open that file".takeIf { loadFailedWithNoDocument.value },
+                                stringResource(R.string.main_load_failed).takeIf { loadFailedWithNoDocument.value },
                                 onOpenFile = {
                                     // Default: soft-filter the picker to text/Markdown so document
                                     // files surface and binaries (PNG/PDF) don't. Providers that
@@ -975,8 +1024,8 @@ fun MainScreen(
                         containerColor = mdColors().secondarySurface,
                         titleContentColor = mdColors().primaryText,
                         textContentColor = mdColors().secondaryText,
-                        title = { Text("Unsaved changes") },
-                        text = { Text("You have unsaved edits. Save before closing?") },
+                        title = { Text(stringResource(R.string.main_dialog_unsaved_title)) },
+                        text = { Text(stringResource(R.string.main_dialog_unsaved_close_text)) },
                         confirmButton = {
                             TextButton(onClick = {
                                 showCloseConfirm = false
@@ -992,7 +1041,7 @@ fun MainScreen(
                                     viewModel.saveAndClose()
                                 }
                             }) {
-                                Text("Save", color = mdColors().primaryText)
+                                Text(stringResource(R.string.main_action_save), color = mdColors().primaryText)
                             }
                         },
                         dismissButton = {
@@ -1000,7 +1049,7 @@ fun MainScreen(
                                 showCloseConfirm = false
                                 viewModel.discardAndClose() // the user chose to lose the edits
                             }) {
-                                Text("Discard", color = mdColors().secondaryText)
+                                Text(stringResource(R.string.main_action_discard), color = mdColors().secondaryText)
                             }
                         },
                     )
@@ -1014,8 +1063,8 @@ fun MainScreen(
                         containerColor = mdColors().secondarySurface,
                         titleContentColor = mdColors().primaryText,
                         textContentColor = mdColors().secondaryText,
-                        title = { Text("Unsaved changes") },
-                        text = { Text("Open the new file? Save your current edits first, or discard them.") },
+                        title = { Text(stringResource(R.string.main_dialog_unsaved_title)) },
+                        text = { Text(stringResource(R.string.main_dialog_unsaved_open_text)) },
                         confirmButton = {
                             // Neither a transient doc nor a never-saved one (M-91) can save in
                             // place → route to Save-As (adopts a persistable location); the prompt
@@ -1028,12 +1077,12 @@ fun MainScreen(
                                     viewModel.saveAndOpenPending()
                                 }
                             }) {
-                                Text("Save", color = mdColors().primaryText)
+                                Text(stringResource(R.string.main_action_save), color = mdColors().primaryText)
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { viewModel.discardAndOpenPending() }) {
-                                Text("Discard", color = mdColors().secondaryText)
+                                Text(stringResource(R.string.main_action_discard), color = mdColors().secondaryText)
                             }
                         },
                     )
@@ -1044,13 +1093,32 @@ fun MainScreen(
                 // cold launcher start with slots; otherwise opened from the persistent indicator.
                 // Closes itself when the last slot is rescued/discarded (list goes empty). Never
                 // auto-discards — dismiss leaves every slot intact.
-                if (strandedDialogVisible.value && strandedSlots.value.isNotEmpty()) {
+                val anyToRecover = strandedSlots.value.isNotEmpty() || orphanDrafts.value.isNotEmpty()
+                if (strandedDialogVisible.value && anyToRecover) {
                     StrandedSlotsDialog(
                         slots = strandedSlots.value,
                         onRescue = { slot -> launchRescue(slot) },
                         onDiscard = { slot -> viewModel.discardStrandedSlot(slot.key) },
                         onDismiss = { viewModel.dismissStrandedDialog() },
+                        orphans = orphanDrafts.value,
+                        onRescueOrphan = { orphan -> launchOrphanCopy(orphan) },
+                        onDiscardOrphan = { orphan -> viewModel.discardOrphanDraft(orphan.uri) },
                     )
+                } else {
+                    // Unsaved edits kept from before the app was ended. Modal on purpose: typing
+                    // under it would start replacing the very text it asks about. One dialog at a
+                    // time, so the stranded-slot one above goes first.
+                    recoveryOffer.value?.let { offer ->
+                        val context = LocalContext.current
+                        DraftRecoveryDialog(
+                            info = remember(offer) {
+                                DraftDialogInfo(offer.displayName, draftTime(context, offer.savedAt), offer.diskChanged)
+                            },
+                            onRestore = { viewModel.restoreDraft() },
+                            onSaveCopy = { launchDraftCopy(offer) },
+                            onDiscard = { viewModel.discardDraft() },
+                        )
+                    }
                 }
             }
 
@@ -1091,7 +1159,7 @@ fun MainScreen(
 private fun TransientBanner(
     onClick: () -> Unit,
     enabled: Boolean = true,
-    text: String = "Temporary file opened from another app.\nTap to Save a copy…",
+    text: String = stringResource(R.string.main_banner_transient),
 ) {
     val c = mdColors()
     // Dim the accent + text while disabled (a save is in flight) so the temporarily-inert banner
@@ -1120,18 +1188,30 @@ internal fun shownViewMode(mode: ViewMode, editorSupport: EditorSupport): ViewMo
     if (editorSupport == EditorSupport.READ_ONLY) ViewMode.READER else mode
 
 /** M-309: the pane title TalkBack speaks as a document opens or switches mode, e.g. "Reader, notes.md". */
-internal fun documentPaneTitle(mode: ViewMode, editorSupport: EditorSupport, displayName: String): String {
-    val shown = if (shownViewMode(mode, editorSupport) == ViewMode.READER) "Reader" else "Editor"
-    return "$shown, $displayName"
+internal fun documentPaneTitle(
+    context: Context,
+    mode: ViewMode,
+    editorSupport: EditorSupport,
+    displayName: String,
+): String {
+    val shown = context.getString(
+        if (shownViewMode(mode, editorSupport) == ViewMode.READER) {
+            R.string.main_pane_reader
+        } else {
+            R.string.main_pane_editor
+        },
+    )
+    return context.getString(R.string.main_pane_title, shown, displayName)
 }
 
 /**
  * The notice for a document the reader shows as plain text for [reason] (M-179), or null for none: the
  * user's own plain view, and a document nested too deeply to render (NEW-11, silent as it always was).
  */
-internal fun plainFallbackNoticeText(reason: PlainReason?): String? = when (reason) {
-    PlainReason.TOO_LARGE -> "This document is too large to format on this device, so it is shown as plain text."
-    PlainReason.UNRENDERABLE -> "This document could not be formatted, so it is shown as plain text."
+@StringRes
+internal fun plainFallbackNoticeText(reason: PlainReason?): Int? = when (reason) {
+    PlainReason.TOO_LARGE -> R.string.main_plain_notice_too_large
+    PlainReason.UNRENDERABLE -> R.string.main_plain_notice_unrenderable
     PlainReason.PLAIN_TEXT, PlainReason.TOO_DEEP, null -> null
 }
 
@@ -1155,7 +1235,7 @@ private fun PlainFallbackNotice(text: String) {
 private fun EditorReadOnlyNotice() {
     val c = mdColors()
     Text(
-        text = "This file is too large to edit here. You can still read and search it.",
+        text = stringResource(R.string.main_editor_too_large),
         color = c.secondaryText,
         fontSize = 13.sp,
         modifier = Modifier
@@ -1175,11 +1255,7 @@ private fun EditorReadOnlyNotice() {
 @Composable
 private fun StrandedSlotIndicator(count: Int, onClick: () -> Unit) {
     val c = mdColors()
-    val label = if (count == 1) {
-        "1 recovered file to save — tap to resolve"
-    } else {
-        "$count recovered files to save — tap to resolve"
-    }
+    val label = pluralStringResource(R.plurals.main_recovered_files_to_save, count, count)
     Text(
         text = label,
         color = c.onError,
@@ -1214,45 +1290,68 @@ private class OpenAnyDocument : ActivityResultContract<Unit, Uri?>() {
  * screenshot-tested (M-221). Each slot's name is one line, shortened in the middle when it does
  * not fit.
  */
+@Suppress("LongParameterList") // Slots and orphan drafts are two lists with two callbacks each, plus dismiss.
 @Composable
 internal fun StrandedSlotsDialog(
     slots: List<StrandedSlot>,
     onRescue: (StrandedSlot) -> Unit,
     onDiscard: (StrandedSlot) -> Unit,
     onDismiss: () -> Unit,
+    orphans: List<OrphanDraft> = emptyList(),
+    onRescueOrphan: (OrphanDraft) -> Unit = {},
+    onDiscardOrphan: (OrphanDraft) -> Unit = {},
 ) {
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = mdColors().secondarySurface,
         titleContentColor = mdColors().primaryText,
         textContentColor = mdColors().secondaryText,
-        title = { Text("Recover unsaved files") },
+        title = { Text(stringResource(R.string.main_recover_title)) },
         text = {
-            Column {
-                Text(
-                    "These saves couldn't be written to their original location. " +
-                        "Save a copy of each to keep it, or discard it.",
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (slots.isNotEmpty()) {
+                    Text(stringResource(R.string.main_recover_text))
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
                 slots.forEach { slot ->
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                        FileNameText(name = slot.displayName, color = mdColors().primaryText)
-                        Row {
-                            TextButton(onClick = { onRescue(slot) }) {
-                                Text("Save a copy", color = mdColors().primaryText)
-                            }
-                            TextButton(onClick = { onDiscard(slot) }) {
-                                Text("Discard", color = mdColors().secondaryText)
-                            }
-                        }
-                    }
+                    RecoverRow(slot.displayName, null, { onRescue(slot) }, { onDiscard(slot) })
+                }
+                if (orphans.isNotEmpty()) {
+                    Text(stringResource(R.string.main_recover_orphans_text))
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+                orphans.forEach { orphan ->
+                    RecoverRow(
+                        orphan.displayName,
+                        draftTime(context, orphan.savedAt),
+                        { onRescueOrphan(orphan) },
+                        { onDiscardOrphan(orphan) },
+                    )
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = mdColors().primaryText)
+                Text(stringResource(R.string.main_action_close), color = mdColors().primaryText)
             }
         },
     )
+}
+
+/** One entry of the recovery dialog: the name, the time the edits were kept (drafts only), and the two actions. */
+@Composable
+private fun RecoverRow(name: String, time: String?, onSaveCopy: () -> Unit, onDiscard: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        FileNameText(name = name, color = mdColors().primaryText)
+        if (time != null) Text(time, color = mdColors().secondaryText, fontSize = 13.sp)
+        Row {
+            TextButton(onClick = onSaveCopy) {
+                Text(stringResource(R.string.main_action_save_a_copy), color = mdColors().primaryText)
+            }
+            TextButton(onClick = onDiscard) {
+                Text(stringResource(R.string.main_action_discard), color = mdColors().secondaryText)
+            }
+        }
+    }
 }

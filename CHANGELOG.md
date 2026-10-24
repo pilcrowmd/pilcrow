@@ -7,6 +7,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-10-24
+
+### Added
+
+- **Your unsaved edits survive a crash.** While you type, PilcrowMD keeps a private copy of your
+  text on your phone. If the app is closed by the system or crashes before you save, the next
+  time you open that file it offers to put your text back, save it as a copy, or discard it. Your
+  file stays as it is until you save.
+- **Unsaved edits of a file that is gone are listed under "Recover unsaved files".** If the file
+  was deleted or moved, you can still save a copy of your edits or discard them. Once you do, the
+  file is also gone from Recent.
+
+### Fixed
+
+- **A file changed by another app is no longer written over.** If a save was cut short and another
+  app changed the file before PilcrowMD started again, the kept text now waits under "Recover
+  unsaved files" for you to save a copy, instead of replacing the other app's changes.
+- **A save that fails no longer deletes an older kept copy.** The older copy stays until a newer
+  save has really written the file.
+
 ## [1.0.16] - 2026-10-21
 
 ### Added

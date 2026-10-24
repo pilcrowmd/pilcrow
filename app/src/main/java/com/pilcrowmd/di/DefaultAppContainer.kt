@@ -13,8 +13,10 @@ import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.rendering.mermaid.WebViewMermaidRenderer
 import com.pilcrowmd.repository.AssetEmojiTable
+import com.pilcrowmd.repository.DraftRepository
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FolderAccessRepository
+import com.pilcrowmd.repository.LocalDraftRepository
 import com.pilcrowmd.repository.LocalFileRepository
 import com.pilcrowmd.repository.LocalFolderAccessRepository
 import com.pilcrowmd.repository.ProviderDocumentTree
@@ -35,6 +37,11 @@ class DefaultAppContainer(private val appContext: Context) : AppContainer {
         // noBackupFilesDir: durable and non-evictable, so the crash-recovery write-ahead log
         // survives storage pressure (cacheDir can be wiped by the OS) and is not cloud-backed up.
         LocalFileRepository(appContext.contentResolver, appContext.noBackupFilesDir)
+    }
+
+    // noBackupFilesDir like the save journal: excluded from Auto Backup, and Android never clears it.
+    override val draftRepository: DraftRepository by lazy {
+        LocalDraftRepository(appContext.noBackupFilesDir)
     }
 
     /**

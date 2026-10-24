@@ -24,12 +24,14 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
 - The very last line of the file says **End of the General pack**. If you can read it, nothing
   was lost on the way.
 
-**Known gaps in version 1.0.16** – we know about these, no need to report them:
+**Known gaps in version 1.0.17** – we know about these, no need to report them:
 
 - A web address written without angle brackets (`https://…`) is not a link; `<https://…>` is.
 - Task boxes cannot be ticked in reading mode (by design: reading mode never changes your file).
 - Gantt charts (Mermaid) are drawn very small.
 - An HTML `<table>` runs its cells together on one line.
+- A new note made with Create MD File and not yet saved has no kept copy: if the app is closed before
+  its first save, the text is lost.
 
 Found something not on this list? Please open an issue at
 <https://github.com/pilcrowmd/pilcrow/issues> and say which pack and which section.

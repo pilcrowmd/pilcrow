@@ -139,7 +139,7 @@ class ProseBlockEntry(
             // Graceful-ignore: never crash the adapter on a bad/unsupported block (Safeguard 3) —
             // same degradation shape as FencedCodeBlockEntry.bindHolder.
             Log.e("ProseBlockEntry", "render failed: ${e.message}", e)
-            holder.textView.text = RENDER_FALLBACK_TEXT
+            holder.textView.text = context.getString(R.string.render_content_failed)
             holder.textView.setTextColor(colorScheme.secondaryText.toArgb())
         }
         // M-157: last, after the text and the tap target are in place. A header takes a tap instead.
@@ -232,8 +232,9 @@ class ProseBlockEntry(
         const val HEADING_TOP_PADDING_DP = 24f
         const val HEADING_BOTTOM_PADDING_DP = 12f
 
-        // Shown when a prose block fails to render (Safeguard 3 fallback). Internal so the
-        // failure-path test asserts the exact degradation contract.
+        // Shown when a prose block fails to render (Safeguard 3 fallback). The reader shows
+        // render_content_failed; this English twin stays so the failure-path tests can assert the
+        // exact degradation contract without a Context.
         internal const val RENDER_FALLBACK_TEXT = "[content could not be rendered]"
     }
 }

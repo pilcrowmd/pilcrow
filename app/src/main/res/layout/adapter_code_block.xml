@@ -48,7 +48,7 @@
             android:scaleType="fitCenter"
             android:padding="12dp"
             android:visibility="gone"
-            android:contentDescription="Mermaid diagram" />
+            android:contentDescription="@string/render_mermaid_diagram" />
 
         <TextView
             android:id="@+id/code_copy"
@@ -60,7 +60,7 @@
             android:paddingEnd="8dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
-            android:text="Copy"
+            android:text="@string/render_code_copy"
             android:textSize="12sp" />
     </FrameLayout>
 

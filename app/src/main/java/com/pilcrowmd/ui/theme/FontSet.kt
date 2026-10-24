@@ -4,6 +4,7 @@
 package com.pilcrowmd.ui.theme
 
 import androidx.annotation.FontRes
+import androidx.annotation.StringRes
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -22,7 +23,7 @@ import com.pilcrowmd.R
  */
 data class FontSet(
     val id: String,
-    val displayName: String,
+    @StringRes val displayNameRes: Int,
     @FontRes val readingRegular: Int,
     @FontRes val readingBold: Int,
     @FontRes val monoRegular: Int,
@@ -43,7 +44,7 @@ object FontSets {
     // Classic keeps the id "source" so an existing user's persisted selection survives the rename.
     val CLASSIC = FontSet(
         id = "source",
-        displayName = "Classic",
+        displayNameRes = R.string.render_font_set_classic,
         readingRegular = R.font.source_serif_4_regular,
         readingBold = R.font.source_serif_4_bold,
         monoRegular = R.font.jetbrains_mono_regular,
@@ -52,7 +53,7 @@ object FontSets {
 
     val BOOK = FontSet(
         id = "book",
-        displayName = "Book",
+        displayNameRes = R.string.render_font_set_book,
         readingRegular = R.font.merriweather_regular,
         readingBold = R.font.merriweather_bold,
         monoRegular = R.font.ibm_plex_mono_regular,
@@ -61,7 +62,7 @@ object FontSets {
 
     val MODERN = FontSet(
         id = "modern",
-        displayName = "Modern",
+        displayNameRes = R.string.render_font_set_modern,
         readingRegular = R.font.atkinson_hyperlegible_regular,
         readingBold = R.font.atkinson_hyperlegible_bold,
         monoRegular = R.font.jetbrains_mono_regular,

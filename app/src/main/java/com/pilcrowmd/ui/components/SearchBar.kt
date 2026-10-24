@@ -23,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pilcrowmd.R
 import com.pilcrowmd.ui.theme.PilcrowSpacing
 import com.pilcrowmd.ui.theme.mdColors
 
@@ -104,7 +106,7 @@ fun SearchBar(
                 ) {
                     if (query.isEmpty()) {
                         Text(
-                            text = "Search",
+                            text = stringResource(R.string.search_placeholder),
                             color = c.secondaryText,
                             fontSize = 16.sp,
                         )
@@ -116,7 +118,11 @@ fun SearchBar(
 
         // Match count (center-right)
         Text(
-            text = if (matchCount > 0) "${currentIndex + 1}/$matchCount" else "0/0",
+            text = if (matchCount > 0) {
+                stringResource(R.string.search_match_count, currentIndex + 1, matchCount)
+            } else {
+                stringResource(R.string.search_match_count_none)
+            },
             color = c.secondaryText,
             fontSize = 14.sp,
             modifier = Modifier.widthIn(min = 36.dp),
@@ -130,7 +136,7 @@ fun SearchBar(
         ) {
             Icon(
                 imageVector = Icons.Outlined.KeyboardArrowUp,
-                contentDescription = "Previous match",
+                contentDescription = stringResource(R.string.search_previous_match_description),
                 tint = if (matchCount > 0) {
                     c.primaryText
                 } else {
@@ -147,7 +153,7 @@ fun SearchBar(
         ) {
             Icon(
                 imageVector = Icons.Outlined.KeyboardArrowDown,
-                contentDescription = "Next match",
+                contentDescription = stringResource(R.string.search_next_match_description),
                 tint = if (matchCount > 0) {
                     c.primaryText
                 } else {
@@ -163,7 +169,7 @@ fun SearchBar(
         ) {
             Icon(
                 imageVector = Icons.Outlined.Close,
-                contentDescription = "Close search",
+                contentDescription = stringResource(R.string.search_close_description),
                 tint = c.primaryText,
             )
         }

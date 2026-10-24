@@ -21,6 +21,7 @@ import coil.request.ImageRequest
 import coil.request.Options
 import coil.size.Precision
 import coil.size.Scale
+import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.ImageDestination
 import com.pilcrowmd.repository.ImageLookup
 import com.pilcrowmd.repository.RelativeImageResolver
@@ -100,7 +101,8 @@ internal class MarkdownImageLoader(
         val metrics = context.resources.displayMetrics
         val maxWidth = drawable.lastKnownCanvasWidth.takeIf { it > 0 } ?: metrics.widthPixels
         val alt = (drawable as? AltTextAsyncDrawable)?.altText.orEmpty()
-        val action = ImagePlaceholderDrawable.TAP_TO_SHOW.takeIf { tapToShow }
+            .ifBlank { context.getString(R.string.render_image_label_no_alt) }
+        val action = if (tapToShow) context.getString(R.string.render_image_tap_to_show) else null
         return ImagePlaceholderDrawable(alt, colorScheme, metrics, scale, maxWidth, action)
     }
 

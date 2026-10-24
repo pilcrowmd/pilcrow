@@ -172,6 +172,9 @@ internal class ImagePlaceholderDrawable(
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
     internal companion object {
+        // The English twins of render_image_label_no_alt and render_image_tap_to_show. The reader passes
+        // the localised strings in (MarkdownImageLoader); these stay as the expected values the tests
+        // assert against, and as the fallback for a blank alt text.
         /** Shown for an image written with no alt text, e.g. `![](photo.png)`. */
         const val LABEL_NO_ALT = "Image"
 

@@ -8,6 +8,7 @@ import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
+import com.pilcrowmd.repository.DraftRepository
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FolderAccessRepository
 import com.pilcrowmd.storage.StorageManager
@@ -27,6 +28,9 @@ interface AppContainer {
 
     /** Persistence abstraction. */
     val storageManager: StorageManager
+
+    /** Unsaved edits kept between a keystroke and a save, for recovery after a kill or crash. */
+    val draftRepository: DraftRepository
 
     /** M-93: folder grants and the relative-picture resolver. */
     val folderAccessRepository: FolderAccessRepository

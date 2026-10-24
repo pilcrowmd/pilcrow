@@ -94,7 +94,7 @@ class LatexBlockEntry(
             // Graceful-ignore: if LaTeX parsing fails, show fallback (Safeguard 3).
             // Do NOT crash the adapter on a malformed formula.
             Log.e("LatexBlockEntry", "LaTeX render failed: ${e.message}", e)
-            holder.latexView.text = "[LaTeX block could not be rendered]"
+            holder.latexView.text = context.getString(R.string.render_latex_failed)
             holder.latexView.setTextColor(colorScheme.secondaryText.toArgb())
         }
     }

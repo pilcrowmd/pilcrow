@@ -5,4 +5,430 @@
     <string name="footnote_back_link">Back to the footnote reference</string>
     <!-- TalkBack name of the editor's text box; the file name is appended after a comma (M-265). -->
     <string name="editor_accessibility_name">Markdown text</string>
+
+    <!-- ===== Main screen, toolbar, formatting bar ===== -->
+    <!-- Transient toast at the back press that arms exiting the app; a full sentence. -->
+    <string name="main_press_back_again_to_exit">Press back again to exit</string>
+
+    <!-- Status toast after a successful save. Adjective used as a status word. -->
+    <string name="main_toast_saved">Saved</string>
+    <!-- Status toast after a failed save. Full phrase, status label. -->
+    <string name="main_toast_save_failed">Save failed</string>
+    <!-- Status toast when a save is refused because the file is not UTF-8. Full sentence. -->
+    <string name="main_toast_not_saved_not_utf8">Not saved: this file isn\'t UTF-8</string>
+    <!-- Status toast when a copy is refused because the picked file already has content or is not UTF-8. Full sentence. -->
+    <string name="main_toast_not_saved_pick_new_file">Not saved: pick a new file for the copy</string>
+    <!-- Toast and welcome-screen message when a file fails to open. Full sentence. -->
+    <string name="main_load_failed">Couldn\'t open that file</string>
+    <!-- Status toast after a successful PDF export. Past-tense adjective used as a status word. -->
+    <string name="main_toast_exported">Exported</string>
+    <!-- Status toast after a failed PDF export. Full phrase, status label. -->
+    <string name="main_toast_export_failed">Export failed</string>
+
+    <!-- Banner under the toolbar for a file that is not UTF-8. Two lines (\n); the second is a tappable call to action. -->
+    <string name="main_banner_not_utf8">This file isn\'t UTF-8, so saving would change it.\nTap to Save a copy…</string>
+    <!-- Banner under the toolbar for a file opened from another app with no write permission. Two lines (\n); the second is a tappable call to action. -->
+    <string name="main_banner_transient">Temporary file opened from another app.\nTap to Save a copy…</string>
+
+    <!-- Notice above the reader: the document is too big to format, so it shows as plain text. Full sentence. -->
+    <string name="main_plain_notice_too_large">This document is too large to format on this device, so it is shown as plain text.</string>
+    <!-- Notice above the reader: the document could not be formatted, so it shows as plain text. Full sentence. -->
+    <string name="main_plain_notice_unrenderable">This document could not be formatted, so it is shown as plain text.</string>
+    <!-- Notice in the editor slot: the file is too large to edit, so it stays in read mode. Full sentence. -->
+    <string name="main_editor_too_large">This file is too large to edit here. You can still read and search it.</string>
+
+    <!-- Bar under the toolbar, shown while recovered saves wait for the user. Tappable; opens the recovery dialog. %1$d is the count. -->
+    <plurals name="main_recovered_files_to_save">
+        <item quantity="one">%1$d recovered file to save — tap to resolve</item>
+        <item quantity="other">%1$d recovered files to save — tap to resolve</item>
+    </plurals>
+
+    <!-- Title of the dialog that asks whether to save unsaved edits. Adjective phrase used as a heading. -->
+    <string name="main_dialog_unsaved_title">Unsaved changes</string>
+    <!-- Body of the dialog shown when closing a file with unsaved edits. Question sentence. -->
+    <string name="main_dialog_unsaved_close_text">You have unsaved edits. Save before closing?</string>
+    <!-- Body of the dialog shown when opening another file with unsaved edits. Question sentence. -->
+    <string name="main_dialog_unsaved_open_text">Open the new file? Save your current edits first, or discard them.</string>
+
+    <!-- Button in the unsaved-changes dialogs: save the edits. Verb, button label. -->
+    <string name="main_action_save">Save</string>
+    <!-- Button in the unsaved-changes and recovery dialogs: throw the edits away. Verb, button label. -->
+    <string name="main_action_discard">Discard</string>
+    <!-- Button in the recovery dialog: save one recovered file to a new location. Verb phrase, button label. -->
+    <string name="main_action_save_a_copy">Save a copy</string>
+    <!-- Button in the recovery dialog: dismiss the dialog. Verb, button label. -->
+    <string name="main_action_close">Close</string>
+
+    <!-- Pane name spoken by TalkBack when a document is shown in reading mode. Noun, a screen name. -->
+    <string name="main_pane_reader">Reader</string>
+    <!-- Pane name spoken by TalkBack when a document is shown in editing mode. Noun, a screen name. -->
+    <string name="main_pane_editor">Editor</string>
+    <!-- Pane title spoken by TalkBack: the mode, then the open file name. %1$s is Reader or Editor, %2$s is the file name. -->
+    <string name="main_pane_title">%1$s, %2$s</string>
+
+    <!-- Toolbar overflow item: switch a .txt file to Markdown rendering. Menu item label. -->
+    <string name="main_view_as_markdown">View as Markdown</string>
+    <!-- Toolbar overflow item: switch a .md file to plain-text view. Menu item label. -->
+    <string name="main_view_as_plain_text">View as plain text</string>
+
+    <!-- Title of the dialog offering text the app kept from before it was ended. %1$s is the file name, e.g. "notes.md". -->
+    <string name="main_draft_title">Unsaved changes in %1$s</string>
+    <!-- Body of that dialog. %1$s is the time the text was kept, e.g. "14:32". Then what Restore does, and that the file itself is untouched. -->
+    <string name="main_draft_text">PilcrowMD kept a copy of what you typed at %1$s. Restore puts it back in the editor. Your file stays as it is until you save.</string>
+    <!-- Body of that dialog when the file was changed after the kept text was typed (for example by another app). %1$s is the time the text was kept, e.g. "14:32". -->
+    <string name="main_draft_text_file_changed">This file changed after these edits were made at %1$s. Restore puts the kept text in the editor; your file stays as it is until you save. Or save the kept text as a copy.</string>
+    <!-- Button on that dialog: put the kept text back in the editor. -->
+    <string name="main_draft_restore">Restore</string>
+
+    <!-- Title of the dialog listing unsaved files that could not be written to their own location. Adjective phrase used as a heading. -->
+    <string name="main_recover_title">Recover unsaved files</string>
+    <!-- Body of the recovery dialog. Two sentences, instructs the user to save a copy or discard. -->
+    <string name="main_recover_text">These saves couldn\'t be written to their original location. Save a copy of each to keep it, or discard it.</string>
+    <!-- Shown above the unsaved edits of files that can no longer be opened (deleted, moved) in the recovery dialog. Two sentences. -->
+    <string name="main_recover_orphans_text">These unsaved edits were kept, but their files can no longer be opened. Save a copy of each to keep it, or discard it.</string>
+
+    <!-- Toolbar button (top bar), opens the in-document search. Verb or noun, icon button TalkBack label. -->
+    <string name="toolbar_search">Search</string>
+    <!-- Toolbar button (top bar), opens the table of contents drawer. Noun phrase, icon button TalkBack label. -->
+    <string name="toolbar_table_of_contents">Table of contents</string>
+    <!-- Toolbar button (top bar, editing mode), saves the open file. Verb, icon button TalkBack label. -->
+    <string name="toolbar_save">Save</string>
+    <!-- Toolbar button (top bar) while a save is in progress. Gerund used as a state label. -->
+    <string name="toolbar_saving">Saving</string>
+    <!-- Toolbar button (top bar, editing mode), undoes the last edit. Verb, icon button TalkBack label. -->
+    <string name="toolbar_undo">Undo</string>
+    <!-- Toolbar button (top bar, editing mode), redoes the last undone edit. Verb, icon button TalkBack label. -->
+    <string name="toolbar_redo">Redo</string>
+    <!-- Toolbar button (top bar), closes the open file. Verb phrase, icon button TalkBack label. -->
+    <string name="toolbar_close_file">Close file</string>
+    <!-- Toolbar button (top bar, reading mode), exports the document as a PDF. Verb phrase, icon button TalkBack label. -->
+    <string name="toolbar_export_pdf">Export PDF</string>
+    <!-- Toolbar mode button, shown in editing mode: switches to reading mode. Verb, button label and long-press tooltip. -->
+    <string name="toolbar_read">Read</string>
+    <!-- Toolbar mode button, shown in reading mode: switches to editing mode. Verb, button label and long-press tooltip. -->
+    <string name="toolbar_edit">Edit</string>
+    <!-- Toolbar overflow button and its menu title. Noun phrase: the menu of extra actions. -->
+    <string name="toolbar_more_actions">More actions</string>
+    <!-- Toolbar overflow menu item: saves a copy of the open file to a new location. Verb phrase, menu item label. -->
+    <string name="toolbar_save_a_copy">Save a copy</string>
+    <!-- Toolbar overflow menu item, shown for a note with pictures in a folder not yet allowed. Menu item label. -->
+    <string name="toolbar_show_folder_pictures">Show pictures from this folder</string>
+
+    <!-- Formatting bar button: bold text. Adjective used as a button label. -->
+    <string name="format_bold">Bold</string>
+    <!-- Formatting bar button: italic text. Adjective used as a button label. -->
+    <string name="format_italic">Italic</string>
+    <!-- Formatting bar button: inserts a heading. Noun, button label. -->
+    <string name="format_heading">Heading</string>
+    <!-- Formatting bar button: inserts a bulleted list item. Noun phrase, button label. -->
+    <string name="format_bulleted_list">Bulleted list</string>
+    <!-- Formatting bar button: inserts a task checkbox. Noun, button label. -->
+    <string name="format_checkbox">Checkbox</string>
+    <!-- Formatting bar button: inserts a link. Noun, button label. -->
+    <string name="format_link">Link</string>
+    <!-- Formatting bar button, second row: inline code span. Noun phrase, button label. -->
+    <string name="format_inline_code">Inline code</string>
+    <!-- Formatting bar button, second row: inserts a block quote. Noun, button label. -->
+    <string name="format_quote">Quote</string>
+    <!-- Formatting bar button, second row: inserts a table. Noun, button label. -->
+    <string name="format_table">Table</string>
+    <!-- Formatting bar button, second row: strikes through text. Noun, button label. -->
+    <string name="format_strikethrough">Strikethrough</string>
+    <!-- Formatting bar button, second row: inserts a horizontal rule. Noun, button label. -->
+    <string name="format_divider">Divider</string>
+    <!-- Formatting bar button, second row: removes one indent level. Verb, button label. -->
+    <string name="format_outdent">Outdent</string>
+    <!-- Formatting bar button, second row: adds one indent level. Verb, button label. -->
+    <string name="format_indent">Indent</string>
+    <!-- Formatting bar button: undoes the last edit. Verb, button label. -->
+    <string name="format_undo">Undo</string>
+    <!-- Formatting bar button: redoes the last undone edit. Verb, button label. -->
+    <string name="format_redo">Redo</string>
+    <!-- Formatting bar button that opens or closes the second row of formatting buttons. Noun phrase, button label. -->
+    <string name="format_more_formatting">More formatting</string>
+    <!-- State spoken for the More formatting button while its second row is open. Adjective. -->
+    <string name="format_state_expanded">Expanded</string>
+    <!-- State spoken for the More formatting button while its second row is closed. Adjective. -->
+    <string name="format_state_collapsed">Collapsed</string>
+
+    <!-- The editor's TalkBack name when a file is open: the editor name, then the file name. %1$s is the editor name (Markdown text), %2$s is the file name. -->
+    <string name="editor_accessibility_name_with_file">%1$s, %2$s</string>
+
+    <!-- ===== Welcome screen, banners, search, headings, preview ===== -->
+    <!-- Welcome screen (no document open). -->
+
+    <!-- Progress line under the buttons while the last document is restored. -->
+    <string name="welcome_loading_last_document">Opening your last document…</string>
+    <!-- Subtitle under the wordmark. -->
+    <string name="welcome_tagline">Beautiful Markdown Reading</string>
+    <!-- Primary button (verb phrase, imperative): opens the file picker for a Markdown file. -->
+    <string name="welcome_open_file">Open MD File</string>
+    <!-- Secondary button (verb phrase, imperative): creates a new, empty Markdown file. -->
+    <string name="welcome_create_file">Create MD File</string>
+    <!-- Low-emphasis link below the buttons: opens the file picker unfiltered. Imperative verb phrase at the end. -->
+    <string name="welcome_browse_all_files">Can\'t see your file? Browse all files</string>
+    <!-- Footer line under the divider; ".md" is a file extension and stays as written. -->
+    <string name="welcome_supports_md">Supports .md files</string>
+    <!-- Content description (spoken by TalkBack) of the gear icon that opens app Settings. Noun. -->
+    <string name="welcome_settings_description">Settings</string>
+
+    <!-- Confirm dialog for clearing the Recent list. -->
+    <string name="welcome_clear_recents_title">Clear recent files?</string>
+    <string name="welcome_clear_recents_message">This removes every entry from your Recent list. Your files are not deleted.</string>
+    <!-- Confirm button (verb phrase, imperative): clears the whole Recent list. -->
+    <string name="welcome_clear_recents_confirm">Clear all</string>
+    <!-- Dismiss button (verb, imperative): closes the dialog without clearing. -->
+    <string name="welcome_clear_recents_cancel">Cancel</string>
+
+    <!-- One-time rating card, shown in the prompt slot on the welcome screen. -->
+    <string name="welcome_rating_title">Enjoying PilcrowMD?</string>
+    <!-- Card button (adverb phrase): dismisses the rating card for good. -->
+    <string name="welcome_rating_not_now">Not now</string>
+    <!-- Card button (verb phrase, imperative): opens the Play Store rating page. -->
+    <string name="welcome_rating_rate">Rate on Play</string>
+
+    <!-- Section header above the recent files list. All caps is intentional; a noun, not a verb. -->
+    <string name="welcome_recent_header">RECENT</string>
+    <!-- Button (verb, imperative) that clears every entry in the Recent list. Not the adjective "clear". -->
+    <string name="welcome_recent_clear">Clear</string>
+    <!-- Content description of the × on a recent-file row (verb phrase, imperative). -->
+    <string name="welcome_recent_remove_description">Remove from recents</string>
+    <!-- A recent row's subtitle: %1$s is how long ago it was opened (e.g. "5 minutes ago"). The suffix marks a file that can no longer be found. -->
+    <string name="welcome_recent_unavailable">%1$s · unavailable</string>
+
+    <!-- Update note (M-174), shown in the prompt slot. Store-neutral on purpose. -->
+    <!-- Content description of the × on the update note (verb phrase, imperative): dismisses it for a while. -->
+    <string name="update_note_dismiss_description">Dismiss update note</string>
+    <string name="update_note_text">This version is over 2 months old. A newer one with fixes is probably available where you installed the app.</string>
+
+    <!-- Image folder banner (M-93), under the toolbar. -->
+
+    <!-- Title when a note has pictures in its folder. %1$d is the number of pictures; "one" and "other" are the singular and plural forms. -->
+    <plurals name="banner_note_pictures_in_folder">
+        <item quantity="one">This note has %1$d picture in its folder.</item>
+        <item quantity="other">This note has %1$d pictures in its folder.</item>
+    </plurals>
+    <string name="banner_ask_folder_detail">Allow PilcrowMD to open the folder to show them.</string>
+    <string name="banner_cannot_show_title">Pictures can\'t be shown from this folder.</string>
+    <string name="banner_cannot_show_detail">Move the note and its pictures into a subfolder.</string>
+    <!-- %1$s is the note's file name. -->
+    <string name="banner_pick_folder_detail">Android did not say which folder that is. Pick the folder that holds %1$s to show them.</string>
+    <!-- %1$s is the note's file name, e.g. "notes.md is not in that folder." -->
+    <string name="banner_wrong_folder_title">%1$s is not in that folder.</string>
+    <string name="banner_wrong_folder_detail">Pick the folder that holds it to show its pictures.</string>
+    <!-- Button (verb phrase, imperative): asks for access to the note's folder. -->
+    <string name="banner_allow_folder">Allow folder</string>
+    <!-- Button (verb phrase, imperative): opens the folder picker for the note's folder. -->
+    <string name="banner_pick_folder">Pick folder</string>
+    <!-- Button (verb phrase, imperative): opens the folder picker again, after the wrong folder was chosen. -->
+    <string name="banner_pick_again">Pick again</string>
+    <!-- Button (adverb phrase): dismisses the banner without acting. -->
+    <string name="banner_not_now">Not now</string>
+    <!-- Button: acknowledges the banner that says pictures cannot be shown here. -->
+    <string name="banner_ok">OK</string>
+
+    <!-- In-document search bar (toolbar). -->
+    <!-- Hint shown in the empty search field (noun). -->
+    <string name="search_placeholder">Search</string>
+    <!-- Match position, e.g. "3/12": %1$d is the 1-based current match, %2$d is the total. Numbers only, no words. -->
+    <string name="search_match_count">%1$d/%2$d</string>
+    <!-- Match position when there are no matches. -->
+    <string name="search_match_count_none">0/0</string>
+    <!-- Content description of the arrow that moves to the previous match (adjective phrase). -->
+    <string name="search_previous_match_description">Previous match</string>
+    <!-- Content description of the arrow that moves to the next match (adjective phrase). -->
+    <string name="search_next_match_description">Next match</string>
+    <!-- Content description of the × that closes the search bar (verb phrase, imperative). -->
+    <string name="search_close_description">Close search</string>
+
+    <!-- Table of contents drawer. -->
+    <!-- Drawer title (noun): the list of the document's headings. -->
+    <string name="headings_title">Headings</string>
+
+    <!-- Full-screen Mermaid diagram viewer. -->
+    <!-- Content description of the diagram picture, read by TalkBack (noun phrase). -->
+    <string name="diagram_content_description">Mermaid diagram, full screen</string>
+    <!-- Content description of the × that closes the full-screen diagram (verb phrase, imperative). -->
+    <string name="diagram_close_description">Close diagram</string>
+
+    <!-- Reader scroll controls and the scroll position badge (Preview). -->
+    <!-- Content description of the button that jumps to the top (verb phrase, imperative). -->
+    <string name="preview_scroll_to_top_description">Scroll to top</string>
+    <!-- Content description of the button that jumps to the bottom (verb phrase, imperative). -->
+    <string name="preview_scroll_to_bottom_description">Scroll to bottom</string>
+    <!-- Spoken by TalkBack after a jump to the top. Noun phrase. -->
+    <string name="preview_landed_top">Top of document</string>
+    <!-- Spoken by TalkBack after a jump to the bottom. Noun phrase. -->
+    <string name="preview_landed_bottom">End of document</string>
+    <!-- Scroll position badge: %1$d is how far through the document the reader is, as a whole percentage (e.g. "37%"). -->
+    <string name="preview_scroll_percent">%1$d%%</string>
+
+    <!-- ===== Settings, licences, feedback ===== -->
+    <!-- SettingsScreen: header title, also the pane title TalkBack speaks (noun, screen name). -->
+    <string name="settings_title">Settings</string>
+    <!-- SettingsScreen: one line under the header title (sentence). -->
+    <string name="settings_subtitle">Customize your reading experience</string>
+    <!-- SettingsScreen: content description of the round close button (verb command, not a noun). -->
+    <string name="settings_close">Close Settings</string>
+
+    <!-- SettingsScreen: section heading, shown in capitals by the code (noun). -->
+    <string name="settings_section_appearance">Appearance</string>
+    <!-- SettingsScreen: section heading, shown in capitals by the code (noun). -->
+    <string name="settings_section_feedback">Feedback</string>
+    <!-- SettingsScreen: section heading, shown in capitals by the code (noun). -->
+    <string name="settings_section_rendering">Rendering</string>
+
+    <!-- SettingsScreen: card title for the light/dark/AMOLED choice (noun). -->
+    <string name="settings_theme">Theme</string>
+    <!-- SettingsScreen: card title for the font-set picker (noun phrase). &amp; is a literal ampersand. -->
+    <string name="settings_reading_font">Reading &amp; code font</string>
+    <!-- SettingsScreen: card title for the reading text size slider (noun phrase). -->
+    <string name="settings_preview_text_size">Preview text size</string>
+    <!-- SettingsScreen: card title for the editor text size slider (noun phrase). -->
+    <string name="settings_edit_text_size">Edit text size</string>
+
+    <!-- SettingsScreen: switch title (noun phrase). -->
+    <string name="settings_line_numbers">Line numbers</string>
+    <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
+    <string name="settings_line_numbers_summary">Show line numbers in the editor</string>
+    <!-- SettingsScreen: switch title (verb phrase, the setting is a switch). -->
+    <string name="settings_open_in_edit_mode">Open in edit mode</string>
+    <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
+    <string name="settings_open_in_edit_mode_summary">Open documents ready to write, not to read</string>
+    <!-- SettingsScreen: switch title (verb phrase, the setting is a switch). -->
+    <string name="settings_formatting_bar">Show formatting bar</string>
+    <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
+    <string name="settings_formatting_bar_summary">Buttons for bold, lists and links above the keyboard</string>
+    <!-- SettingsScreen: switch title (verb phrase, the setting is a switch). -->
+    <string name="settings_wrap_code_lines">Wrap long lines in code blocks</string>
+    <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
+    <string name="settings_wrap_code_lines_summary">In reading mode, wrap instead of scrolling sideways</string>
+
+    <!-- SettingsScreen: card title that opens the feature-request screen (verb phrase, imperative). -->
+    <string name="settings_request_feature">Tell us what to build</string>
+    <!-- SettingsScreen: subtitle under the feature-request card (sentence). -->
+    <string name="settings_request_feature_summary">Browsing Markdown from your GitHub repos is one thing people have asked for.</string>
+    <!-- SettingsScreen: card title that opens an email to the developer (verb phrase, imperative). -->
+    <string name="settings_email_us">Email us</string>
+    <!-- SettingsScreen: card title that opens the GitHub issue form (verb phrase, imperative). -->
+    <string name="settings_report_issue">Report an issue on GitHub</string>
+    <!-- SettingsScreen: subtitle of the report-issue card; it opens a browser (sentence). -->
+    <string name="settings_report_issue_summary">Opens in your browser</string>
+    <!-- SettingsScreen: card title, opens the Play Store listing; the brand name stays as written (verb phrase). -->
+    <string name="settings_rate">Rate PilcrowMD</string>
+
+    <!-- SettingsScreen: theme option label (adjective used as a noun: dark colour scheme). -->
+    <string name="settings_theme_dark">Dark</string>
+    <!-- SettingsScreen: theme option label, the name of the pure-black colour scheme (proper noun, technology name). -->
+    <string name="settings_theme_amoled">AMOLED</string>
+    <!-- SettingsScreen: theme option label (adjective used as a noun: light colour scheme). -->
+    <string name="settings_theme_light">Light</string>
+
+    <!-- SettingsScreen: content description of the small-A button that shrinks the text (adjective phrase, read aloud by TalkBack). -->
+    <string name="settings_smaller_text">Smaller text</string>
+    <!-- SettingsScreen: content description of the large-A button that enlarges the text (adjective phrase, read aloud by TalkBack). -->
+    <string name="settings_larger_text">Larger text</string>
+    <!-- SettingsScreen: text-size readout and TalkBack state, e.g. 105%. %1$d is the whole-number percent. Do not translate %% (it prints one %). -->
+    <string name="settings_percent">%1$d%%</string>
+
+    <!-- SettingsScreen: title of the About card, the app name is a brand and stays as written (noun phrase). -->
+    <string name="settings_about_title">About PilcrowMD</string>
+    <!-- SettingsScreen: app version line under the About title. %1$s is the version name, e.g. 1.0.16. -->
+    <string name="settings_about_version">v%1$s</string>
+    <!-- SettingsScreen: one-line description of the app (sentence). &amp; is a literal ampersand. -->
+    <string name="settings_about_description">A native Markdown reader &amp; editor for Android.</string>
+    <!-- SettingsScreen: heading over the list of third-party components (verb phrase: built with the following). -->
+    <string name="settings_built_with">Built with</string>
+    <!-- Settings > About > Built with: one open-source component per line, "Name — what it does (licence)". Names and licence identifiers stay as written. -->
+    <string name="settings_credit_markwon">Markwon — Markdown rendering (Apache-2.0)</string>
+    <string name="settings_credit_prism4j">Prism4j — syntax highlighting (Apache-2.0)</string>
+    <string name="settings_credit_sora">Sora Editor — code editor (LGPL-2.1)</string>
+    <string name="settings_credit_jlatexmath">JLatexMath — math rendering (GPL w/ classpath)</string>
+    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible, JetBrains Mono, IBM Plex Mono (OFL)</string>
+    <!-- Settings > About > Built with: the bullet in front of each line. %1$s is the credit line. -->
+    <string name="settings_credit_bullet" translatable="false">• %1$s</string>
+    <!-- SettingsScreen: row inside the About card that opens the licences screen (noun phrase). -->
+    <string name="settings_open_source_licenses">Open source licenses</string>
+
+    <!-- LicensesScreen: header title of the licences list (noun phrase, title case as shown). -->
+    <string name="licenses_title">Open Source Licenses</string>
+    <!-- LicensesScreen: pane title TalkBack speaks when the licences screen opens (noun phrase, lower case). -->
+    <string name="licenses_pane_title">Open source licenses</string>
+    <!-- LicensesScreen: content description of the back arrow on the list header (verb command, closes the screen). -->
+    <string name="licenses_close">Close</string>
+    <!-- LicensesScreen: content description of the back arrow on the licence detail view (verb command, returns to the list). -->
+    <string name="licenses_back">Back</string>
+    <!-- LicensesScreen: notice about PilcrowMD's own licence, shown above the third-party list (sentence). The licence identifier GPL-3.0-or-later and the copyright line stay as written. -->
+    <string name="licenses_app_notice">© 2026 pleree — free software under the GNU General Public License v3.0 or later (GPL-3.0-or-later). You may redistribute and/or modify it under the terms of the GPL; it comes with NO WARRANTY.</string>
+    <!-- LicensesScreen: sentence under the app notice, introduces the list below (sentence). -->
+    <string name="licenses_third_party_notice">The third-party components below have their own licenses.</string>
+    <!-- LicensesScreen: subtitle of a licence row, version then licence identifier. %1$s is the version, %2$s the licence identifier (e.g. MIT). The bullet is a separator symbol. -->
+    <string name="licenses_version_and_license">%1$s • %2$s</string>
+    <!-- LicensesScreen: note shown under the GPL-with-Classpath-Exception licence text (sentence). Licence names stay as written. -->
+    <string name="licenses_gpl_note">Note: This library is licensed under GPLv2 with the Classpath Exception, which permits linking into non-GPL applications. See the full license text for details.</string>
+    <!-- LicensesScreen: note shown under the Sora Editor licence text (sentence). "LGPL §6" names a section of the licence, keep it. -->
+    <string name="licenses_sora_note">Note: Sora Editor is licensed under LGPL-2.1. As an unmodified binary dependency, it is used in compliance with LGPL §6 (relink terms). The source code and version are published; users may request the object code or rebuild the app with a modified editor if needed.</string>
+    <!-- LicensesScreen: shown in place of a licence text that is missing or unreadable (sentence). LICENSES.md is a file name, keep it. -->
+    <string name="licenses_text_unavailable">License text not available — see LICENSES.md</string>
+    <!-- LicensesScreen: fallback shown when a dependency entry has no project name or no licence (adjective, placeholder). -->
+    <string name="licenses_unknown">Unknown</string>
+
+    <!-- GitHubIntegrationScreen: header and card title, the same words in both places (imperative verb phrase). -->
+    <string name="github_title">Tell us what to build</string>
+    <!-- GitHubIntegrationScreen: first paragraph under the title (sentence). -->
+    <string name="github_intro">What gets built next is decided by what people ask for. This is how you ask.</string>
+    <!-- GitHubIntegrationScreen: second paragraph, names an example request; not a promise (sentence). -->
+    <string name="github_body">Opening Markdown straight from a GitHub repository is one thing people have asked for. If that\'s what you want, say so — or tell us something else entirely. Describing the workflow you have in mind helps most.</string>
+    <!-- GitHubIntegrationScreen: label of the button that opens the email composer (verb phrase, imperative). -->
+    <string name="github_request_button">Send us a request</string>
+    <!-- GitHubIntegrationScreen: small note under the button (sentence). -->
+    <string name="github_send_hint">Opens your email app — nothing is sent unless you tap send.</string>
+    <!-- GitHubIntegrationScreen: toast when no email app can open. %1$s is the developer's email address, which stays as written. -->
+    <string name="github_no_email_app">No email app found — write to %1$s</string>
+    <!-- GitHubIntegrationScreen: content description of the back arrow in the header (verb command, closes the screen). -->
+    <string name="github_close">Close</string>
+
+    <!-- StoreListing: the rating ask under the Rate card, shown on Settings and Welcome (sentence). -->
+    <string name="store_rating_ask">A rating on Google Play helps others find it and keeps this free app going.</string>
+
+    <!-- ContactLinks: toast when no email app can open. %1$s is the developer's email address, which stays as written. -->
+    <string name="contact_no_email_app">No email app found. Write to %1$s</string>
+    <!-- ContactLinks: toast when no browser can open. %1$s is the issue page address, shown as text. -->
+    <string name="contact_no_browser">No browser found. The address is %1$s</string>
+
+    <!-- ===== Rendered document (code blocks, images, details) ===== -->
+    <!-- Button on a code block, pinned top-right, that copies the block's text to the clipboard. Verb, imperative. -->
+    <string name="render_code_copy">Copy</string>
+    <!-- Toast shown after a code block has been copied to the clipboard. Past-tense confirmation. -->
+    <string name="render_code_copied">Copied</string>
+    <!-- Shown in place of a code block whose text could not be drawn (graceful degradation). The brackets are part of the text. -->
+    <string name="render_code_block_failed">[code block could not be rendered]</string>
+    <!-- Shown in place of a LaTeX block that could not be drawn. The brackets are part of the text. -->
+    <string name="render_latex_failed">[LaTeX block could not be rendered]</string>
+    <!-- Shown in place of a table that could not be drawn. The brackets are part of the text. -->
+    <string name="render_table_failed">[table could not be rendered]</string>
+    <!-- Shown in place of a front-matter block that could not be drawn. The brackets are part of the text. -->
+    <string name="render_frontmatter_failed">[frontmatter could not be rendered]</string>
+    <!-- Shown in place of a prose or footnote block that could not be drawn. The brackets are part of the text. -->
+    <string name="render_content_failed">[content could not be rendered]</string>
+    <!-- TalkBack description of the picture of a drawn Mermaid diagram. Noun phrase. -->
+    <string name="render_mermaid_diagram">Mermaid diagram</string>
+    <!-- Caption under a Mermaid block shown as its source because the diagram could not be drawn. Full sentence. -->
+    <string name="render_mermaid_fallback_caption">Diagram could not be drawn. Showing its source.</string>
+    <!-- TalkBack action on a drawn Mermaid diagram. TalkBack puts "double-tap to" before it, so keep it lowercase, a verb phrase, no full stop. -->
+    <string name="render_mermaid_open_full_screen">open full screen</string>
+    <!-- Stand-in text for a picture written with no alt text, in a placeholder box and in a table cell. Noun. -->
+    <string name="render_image_label_no_alt">Image</string>
+    <!-- Action label after a picture the reader can show only once the user taps it. Imperative verb phrase; drawn after a separator. -->
+    <string name="render_image_tap_to_show">Tap to show</string>
+    <!-- TalkBack state of an expandable details block while it is open. Adjective. -->
+    <string name="render_details_expanded">Expanded</string>
+    <!-- TalkBack state of an expandable details block while it is closed. Adjective. -->
+    <string name="render_details_collapsed">Collapsed</string>
+    <!-- Name of the Classic reading font set, shown on its option in Settings. Proper name, may be kept as is. -->
+    <string name="render_font_set_classic">Classic</string>
+    <!-- Name of the Book reading font set, shown on its option in Settings. Proper name, may be kept as is. -->
+    <string name="render_font_set_book">Book</string>
+    <!-- Name of the Modern reading font set, shown on its option in Settings. Adjective, a font-set name. -->
+    <string name="render_font_set_modern">Modern</string>
 </resources>

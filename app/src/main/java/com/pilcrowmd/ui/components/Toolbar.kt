@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -115,13 +116,13 @@ fun PilcrowToolbar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ActionIcon(
                     icon = Icons.Outlined.Search,
-                    contentDescription = "Search",
+                    contentDescription = stringResource(R.string.toolbar_search),
                     onClick = onSearch,
                     enabled = !isSaving,
                 )
                 ActionIcon(
                     icon = Icons.AutoMirrored.Outlined.Toc,
-                    contentDescription = "Table of contents",
+                    contentDescription = stringResource(R.string.toolbar_table_of_contents),
                     onClick = onTOC,
                     enabled = !isSaving,
                 )
@@ -129,7 +130,11 @@ fun PilcrowToolbar(
                 if (currentMode == ViewMode.EDITOR) {
                     ActionIcon(
                         icon = Icons.Outlined.Save,
-                        contentDescription = if (isSaving) "Saving" else "Save",
+                        contentDescription = if (isSaving) {
+                            stringResource(R.string.toolbar_saving)
+                        } else {
+                            stringResource(R.string.toolbar_save)
+                        },
                         onClick = onSave,
                         enabled = !isSaving,
                         tint = if (isSaving) {
@@ -150,7 +155,7 @@ fun PilcrowToolbar(
                 if (onUndo != null) {
                     ActionIcon(
                         icon = Icons.AutoMirrored.Outlined.Undo,
-                        contentDescription = "Undo",
+                        contentDescription = stringResource(R.string.toolbar_undo),
                         onClick = onUndo,
                     )
                 }
@@ -158,7 +163,7 @@ fun PilcrowToolbar(
                 if (onRedo != null) {
                     ActionIcon(
                         icon = Icons.AutoMirrored.Outlined.Redo,
-                        contentDescription = "Redo",
+                        contentDescription = stringResource(R.string.toolbar_redo),
                         onClick = onRedo,
                     )
                 }
@@ -174,7 +179,7 @@ fun PilcrowToolbar(
                 // Close (X) — always the rightmost action.
                 ActionIcon(
                     icon = Icons.Outlined.Close,
-                    contentDescription = "Close file",
+                    contentDescription = stringResource(R.string.toolbar_close_file),
                     onClick = onClose,
                     enabled = !isSaving,
                     tint = c.secondaryText,
@@ -204,7 +209,7 @@ fun PilcrowToolbar(
 private fun ModeButton(currentMode: ViewMode, onModeSelected: (ViewMode) -> Unit) {
     val c = mdColors()
     val editing = currentMode == ViewMode.EDITOR
-    val label = if (editing) "Read" else "Edit"
+    val label = stringResource(if (editing) R.string.toolbar_read else R.string.toolbar_edit)
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
         tooltip = {
@@ -271,7 +276,7 @@ private fun PdfExportActionIcon(onClick: () -> Unit, enabled: Boolean = true) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(R.drawable.ic_pdf_export),
-                contentDescription = "Export PDF",
+                contentDescription = stringResource(R.string.toolbar_export_pdf),
                 tint = mdColors().primaryText,
                 modifier = Modifier.size(24.dp),
             )
@@ -314,11 +319,12 @@ private fun OverflowMenu(
     onShowFolderPictures: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val moreActions = stringResource(R.string.toolbar_more_actions)
     Box {
         IconButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.size(42.dp)) {
             Icon(
                 imageVector = Icons.Outlined.MoreVert,
-                contentDescription = "More actions",
+                contentDescription = moreActions,
                 tint = mdColors().primaryText,
                 modifier = Modifier.size(22.dp),
             )
@@ -327,11 +333,11 @@ private fun OverflowMenu(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.semantics { paneTitle = "More actions" },
+            modifier = Modifier.semantics { paneTitle = moreActions },
         ) {
-            PopupWindowTitle("More actions")
+            PopupWindowTitle(moreActions)
             DropdownMenuItem(
-                text = { Text("Save a copy") },
+                text = { Text(stringResource(R.string.toolbar_save_a_copy)) },
                 onClick = {
                     expanded = false
                     onSaveACopy()
@@ -348,7 +354,7 @@ private fun OverflowMenu(
             }
             if (onShowFolderPictures != null) {
                 DropdownMenuItem(
-                    text = { Text("Show pictures from this folder") },
+                    text = { Text(stringResource(R.string.toolbar_show_folder_pictures)) },
                     onClick = {
                         expanded = false
                         onShowFolderPictures()

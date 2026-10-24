@@ -21,9 +21,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pilcrowmd.R
 import com.pilcrowmd.ui.theme.mdColors
 import com.pilcrowmd.viewmodel.ImageFolderBanner
 
@@ -42,21 +45,21 @@ fun ImageFolderBannerView(
     val c = mdColors()
     val (title, detail) = when (banner) {
         is ImageFolderBanner.AskForFolder ->
-            "This note has ${picturesOf(banner.pictureCount)} in its folder." to
-                "Allow PilcrowMD to open the folder to show them."
+            picturesInFolder(banner.pictureCount) to stringResource(R.string.banner_ask_folder_detail)
         ImageFolderBanner.CannotShowHere ->
-            "Pictures can't be shown from this folder." to "Move the note and its pictures into a subfolder."
+            stringResource(R.string.banner_cannot_show_title) to stringResource(R.string.banner_cannot_show_detail)
         is ImageFolderBanner.PickNoteFolder ->
-            "This note has ${picturesOf(banner.pictureCount)} in its folder." to
-                "Android did not say which folder that is. Pick the folder that holds ${banner.noteName} to show them."
+            picturesInFolder(banner.pictureCount) to
+                stringResource(R.string.banner_pick_folder_detail, banner.noteName)
         is ImageFolderBanner.WrongFolder ->
-            "${banner.noteName} is not in that folder." to "Pick the folder that holds it to show its pictures."
+            stringResource(R.string.banner_wrong_folder_title, banner.noteName) to
+                stringResource(R.string.banner_wrong_folder_detail)
     }
     // The button that opens the picker; null for the can't-show banner, which only has "OK".
     val allowLabel = when (banner) {
-        is ImageFolderBanner.AskForFolder -> "Allow folder"
-        is ImageFolderBanner.PickNoteFolder -> "Pick folder"
-        is ImageFolderBanner.WrongFolder -> "Pick again"
+        is ImageFolderBanner.AskForFolder -> stringResource(R.string.banner_allow_folder)
+        is ImageFolderBanner.PickNoteFolder -> stringResource(R.string.banner_pick_folder)
+        is ImageFolderBanner.WrongFolder -> stringResource(R.string.banner_pick_again)
         ImageFolderBanner.CannotShowHere -> null
     }
     Column(modifier = modifier.fillMaxWidth().background(c.border)) {
@@ -83,14 +86,19 @@ fun ImageFolderBannerView(
                 ) {
                     if (allowLabel != null) {
                         TextButton(onClick = onDismiss) {
-                            Text("Not now", color = c.secondaryText, fontSize = 14.sp)
+                            Text(stringResource(R.string.banner_not_now), color = c.secondaryText, fontSize = 14.sp)
                         }
                         TextButton(onClick = onAllow) {
                             Text(allowLabel, color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     } else {
                         TextButton(onClick = onDismiss) {
-                            Text("OK", color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                stringResource(R.string.banner_ok),
+                                color = c.accent,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                 }
@@ -101,4 +109,7 @@ fun ImageFolderBannerView(
     }
 }
 
-private fun picturesOf(count: Int) = if (count == 1) "1 picture" else "$count pictures"
+/** "This note has N pictures in its folder.", with the plural form picked by [count]. */
+@Composable
+private fun picturesInFolder(count: Int): String =
+    pluralStringResource(R.plurals.banner_note_pictures_in_folder, count, count)

@@ -77,6 +77,7 @@ internal class ReaderHarness(
         val container = object : com.pilcrowmd.di.AppContainer {
             override val fileRepository: FileRepository = FakeRepo(mapOf(), content)
             override val storageManager = storage
+            override val draftRepository = com.pilcrowmd.repository.DraftRepository.None
             override val folderAccessRepository: FolderAccessRepository = mockk(relaxed = true)
             override val markwonRenderer by lazy { renderer }
             override val mermaidRenderer: MermaidDiagramRenderer = NullMermaidRenderer

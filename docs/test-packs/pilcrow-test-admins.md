@@ -24,7 +24,7 @@ keys do not exist.
   Makefile, HTTP and CSV. The `text`, `nginx` and `log` blocks show as plain, readable monospace.
 - Search for *ERROR*. It appears in the log section.
 
-**Known gaps in version 1.0.16** – we know about these, no need to report them:
+**Known gaps in version 1.0.17** – we know about these, no need to report them:
 
 - A web address written without angle brackets is not a link.
 - Opening very large log files: see the Big file pack.

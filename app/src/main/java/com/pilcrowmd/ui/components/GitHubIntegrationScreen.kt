@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pilcrowmd.R
 import com.pilcrowmd.ui.theme.mdColors
 
 /**
@@ -61,12 +63,13 @@ import com.pilcrowmd.ui.theme.mdColors
 fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) {
     val c = mdColors()
     val context = LocalContext.current
+    val screenTitle = stringResource(R.string.github_title)
 
     Column(
         modifier = modifier
             .fillMaxSize()
             // M-309: TalkBack speaks the pane title when the screen appears.
-            .semantics { paneTitle = "Tell us what to build" }
+            .semantics { paneTitle = screenTitle }
             .systemBarsPadding()
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
@@ -80,14 +83,14 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "Tell us what to build",
+                text = screenTitle,
                 color = c.primaryText,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Icon(
                 imageVector = Icons.Outlined.ArrowBack,
-                contentDescription = "Close",
+                contentDescription = stringResource(R.string.github_close),
                 tint = c.secondaryText,
                 modifier = Modifier
                     .size(24.dp)
@@ -106,23 +109,20 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
             Text(
-                text = "Tell us what to build",
+                text = stringResource(R.string.github_title),
                 color = c.primaryText,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "What gets built next is decided by what people ask for. This is how you " +
-                    "ask.",
+                text = stringResource(R.string.github_intro),
                 color = c.secondaryText,
                 fontSize = 14.sp,
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Opening Markdown straight from a GitHub repository is one thing people " +
-                    "have asked for. If that's what you want, say so — or tell us something else " +
-                    "entirely. Describing the workflow you have in mind helps most.",
+                text = stringResource(R.string.github_body),
                 color = c.secondaryText,
                 fontSize = 14.sp,
             )
@@ -130,7 +130,7 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
             RequestFeatureButton(onClick = { sendFeatureRequest(context) })
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Opens your email app — nothing is sent unless you tap send.",
+                text = stringResource(R.string.github_send_hint),
                 color = c.secondaryText,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center,
@@ -145,7 +145,7 @@ fun GitHubIntegrationScreen(modifier: Modifier = Modifier, onClose: () -> Unit) 
 private fun RequestFeatureButton(onClick: () -> Unit) {
     val c = mdColors()
     Text(
-        text = "Send us a request",
+        text = stringResource(R.string.github_request_button),
         color = c.onAccent,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
@@ -182,7 +182,8 @@ private fun sendFeatureRequest(context: android.content.Context) {
     try {
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "No email app found — write to $FEEDBACK_EMAIL", Toast.LENGTH_LONG).show()
+        val message = context.getString(R.string.github_no_email_app, FEEDBACK_EMAIL)
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }
 }
 

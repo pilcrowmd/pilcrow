@@ -39,12 +39,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import com.pilcrowmd.R
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRequest
 import com.pilcrowmd.rendering.mermaid.MermaidStyle
@@ -90,7 +92,7 @@ fun DiagramViewer(picture: ImageBitmap, onClose: () -> Unit) {
             // The pointer input sits outside the graphics layer, so gesture positions are viewport positions.
             Image(
                 bitmap = picture,
-                contentDescription = "Mermaid diagram, full screen",
+                contentDescription = stringResource(R.string.diagram_content_description),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
@@ -117,7 +119,11 @@ fun DiagramViewer(picture: ImageBitmap, onClose: () -> Unit) {
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(8.dp),
             ) {
-                Icon(Icons.Outlined.Close, contentDescription = "Close diagram", tint = colors.primaryText)
+                Icon(
+                    Icons.Outlined.Close,
+                    contentDescription = stringResource(R.string.diagram_close_description),
+                    tint = colors.primaryText,
+                )
             }
         }
     }

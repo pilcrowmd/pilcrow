@@ -23,6 +23,8 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
+private const val PREFIX_CHUNK = 64 * 1024
+
 /**
  * SAF-based file repository. Handles read/write via ContentResolver.
  *
@@ -66,7 +68,10 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
         journalMutex.withLock {
             try {
                 journal.recoverableContentFor(uri)?.let { staged ->
-                    return@withLock FileInputStream(staged).use { Result.success(decodeUtf8(it.readBytes())) }
+                    // A staged copy another app has since written over is not the file's content (G5).
+                    if (verdictFor(uri, journal.keyOf(uri), staged) != RecoveryVerdict.CONFLICT) {
+                        return@withLock FileInputStream(staged).use { Result.success(decodeUtf8(it.readBytes())) }
+                    }
                 }
 
                 val pfd = contentResolver.openFileDescriptor(uri, "r")
@@ -99,7 +104,9 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
         journalMutex.withLock {
             try {
                 val bytes = content.toByteArray(Charsets.UTF_8)
-                val key = journal.stage(uri, bytes)
+                parkSlotThatCouldNotBeApplied(uri)
+                // What the target is now, recorded before it can be truncated (G5). Null if unreadable.
+                val key = journal.stage(uri, bytes, baseline = fingerprintOfTarget(uri))
 
                 val pfd = try {
                     // DEBUG-ONLY one-shot fault: throw at the exact point a real target-open I/O
@@ -112,13 +119,13 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
                     }
                     contentResolver.openFileDescriptor(uri, "wt")
                 } catch (e: Exception) {
-                    journal.discard(key) // target untouched → no recovery needed, no stale slot
+                    journal.abort(key) // target untouched → no recovery needed; an older pending copy stays (G6)
                     return@withContext Result.failure(
                         IOException("Failed to open target for writing: ${e.message}", e),
                     )
                 }
                 if (pfd == null) {
-                    journal.discard(key)
+                    journal.abort(key)
                     return@withContext Result.failure(IOException("Failed to open file descriptor for writing"))
                 }
 
@@ -157,9 +164,18 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
                 var recovered = 0
                 for (entry in journal.recoverableEntries()) {
                     try {
-                        commitFileToTarget(entry.uri, entry.file)
-                        journal.discard(entry.key)
-                        recovered++
+                        when (verdictFor(entry.uri, entry.key, entry.file)) {
+                            // Another app changed the file since the save began: keep the slot, so it
+                            // is offered as Save a copy / Discard and the other app's text is not overwritten (G5).
+                            RecoveryVerdict.CONFLICT -> continue
+                            // The write had finished; only the slot's clean-up was missed.
+                            RecoveryVerdict.DONE -> journal.discard(entry.key)
+                            RecoveryVerdict.APPLY -> {
+                                commitFileToTarget(entry.uri, entry.file)
+                                journal.discard(entry.key)
+                                recovered++
+                            }
+                        }
                     } catch (_: Exception) {
                         // Leave the slot in place; retry on the next launch.
                     }
@@ -273,7 +289,8 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
         }
         journalMutex.withLock {
             try {
-                journal.stage(uri, content.toByteArray(Charsets.UTF_8)) // WAL durably committed (content + marker)
+                // WAL durably committed (content + marker), with what the target held before.
+                journal.stage(uri, content.toByteArray(Charsets.UTF_8), baseline = fingerprintOfTarget(uri))
                 // Truncate the target to simulate process death DURING the target write — after the
                 // WAL is committed but before the target write completes and the slot is discarded.
                 contentResolver.openFileDescriptor(uri, "wt")?.close()
@@ -297,6 +314,69 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
         FileText(strict.decode(ByteBuffer.wrap(bytes)).toString(), isUtf8 = true)
     } catch (_: CharacterCodingException) {
         FileText(bytes.toString(Charsets.UTF_8), isUtf8 = false)
+    }
+
+    /**
+     * A pending slot another app's change kept from being applied (G5) stays pending when this save
+     * succeeds: its text is not what this save writes, and only the user may let it go.
+     */
+    private fun parkSlotThatCouldNotBeApplied(uri: Uri) {
+        val staged = journal.recoverableContentFor(uri) ?: return
+        if (verdictFor(uri, journal.keyOf(uri), staged) == RecoveryVerdict.CONFLICT) journal.park(uri)
+    }
+
+    /** What recovering a staged slot onto its target would do (G5). */
+    private enum class RecoveryVerdict { APPLY, DONE, CONFLICT }
+
+    /** Length and SHA-256 of what [uri] holds now, or null when it cannot be read. */
+    private fun fingerprintOfTarget(uri: Uri): String? = withTargetStream(uri) { ByteFingerprint.of(it) }
+
+    /**
+     * Decide whether the staged bytes in [staged] may be written over [uri] (G5). The target is
+     * recovered onto only if it is still what the save began with, is empty or part-written by that
+     * save (a prefix of the staged bytes), or already holds the staged bytes. Anything else is a file
+     * another app changed in between. A target that cannot be read is left to the write, which fails
+     * and keeps the slot, as before.
+     */
+    private fun verdictFor(uri: Uri, key: String, staged: File): RecoveryVerdict {
+        val targetPrint = fingerprintOfTarget(uri) ?: return RecoveryVerdict.APPLY
+        val stagedPrint = FileInputStream(staged).use { ByteFingerprint.of(it) }
+        return when {
+            targetPrint == stagedPrint -> RecoveryVerdict.DONE
+            targetPrint == journal.baselineOf(key) -> RecoveryVerdict.APPLY
+            targetPrint.startsWith("0:") -> RecoveryVerdict.APPLY
+            isPrefixOfStaged(uri, staged) -> RecoveryVerdict.APPLY
+            else -> RecoveryVerdict.CONFLICT
+        }
+    }
+
+    /** Whether the target's bytes are the first bytes of [staged]: a write of it that was cut short. */
+    private fun isPrefixOfStaged(uri: Uri, staged: File): Boolean =
+        withTargetStream(uri) { target -> FileInputStream(staged).use { hasSamePrefix(target, it) } } ?: false
+
+    /** Run [block] over a read stream of [uri]; null when it cannot be opened or read. */
+    private fun <T> withTargetStream(uri: Uri, block: (java.io.InputStream) -> T): T? = try {
+        contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+            FileInputStream(pfd.fileDescriptor).use(block)
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun hasSamePrefix(target: java.io.InputStream, expected: java.io.InputStream): Boolean {
+        val a = ByteArray(PREFIX_CHUNK)
+        val b = ByteArray(PREFIX_CHUNK)
+        while (true) {
+            val n = target.read(a)
+            if (n < 0) return true
+            var got = 0
+            while (got < n) {
+                val m = expected.read(b, got, n - got)
+                if (m < 0) return false // the target is longer than the staged bytes
+                got += m
+            }
+            if (!a.copyOfRange(0, n).contentEquals(b.copyOfRange(0, n))) return false
+        }
     }
 
     /** Write [bytes] to the SAF target "wt" and fsync, then close. */

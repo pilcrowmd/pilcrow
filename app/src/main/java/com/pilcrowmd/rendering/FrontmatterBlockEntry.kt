@@ -115,7 +115,7 @@ class FrontmatterBlockEntry(
             // the key/value text (not the tab/newline separators), so unspanned chars must not inherit
             // a sibling's (or the catch-path's) colour.
             holder.codeView.setTextColor(colorScheme.primaryText.toArgb())
-            holder.codeView.setText(buildCardText(node.literal ?: ""), android.widget.TextView.BufferType.SPANNABLE)
+            holder.codeView.setText(buildCardText(node.literal.orEmpty()), android.widget.TextView.BufferType.SPANNABLE)
             // Highlight search matches inside the card (single TextView → base 0).
             SearchHighlighter.highlight(
                 holder.codeView,
@@ -129,7 +129,7 @@ class FrontmatterBlockEntry(
             // The reading font is what failed to load, so fall back to the system face rather than
             // keep whatever this shared holder last showed — a code block's mono. M-108.
             holder.codeView.typeface = Typeface.DEFAULT
-            holder.codeView.text = node.literal ?: "[frontmatter could not be rendered]"
+            holder.codeView.text = node.literal ?: context.getString(R.string.render_frontmatter_failed)
             holder.codeView.setTextColor(colorScheme.secondaryText.toArgb())
         }
     }

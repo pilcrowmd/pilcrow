@@ -135,7 +135,7 @@ class FootnoteBlockEntry(
         } catch (e: Exception) {
             // Same degradation shape as the prose lane: show something readable, never propagate.
             Log.e("FootnoteBlockEntry", "footnote render failed: ${e.message}", e)
-            holder.body.text = ProseBlockEntry.RENDER_FALLBACK_TEXT
+            holder.body.text = context.getString(R.string.render_content_failed)
         }
         holder.body.enableBlockSelection() // M-157
     }
