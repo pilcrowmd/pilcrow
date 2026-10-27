@@ -1,0 +1,7 @@
+- Notes folders: add a folder and browse it in My folders. New or changed notes are marked.
+- Links between notes: tap a link to open the other note, press Back to return.
+- Full-screen reading: a Settings switch hides the bars while you read.
+- The open file's name shows above the text.
+- Formulas inside a line now sit on the line.
+- Very large files no longer crash the app.
+- Tidier Settings, and the temporary-file notice can be closed.

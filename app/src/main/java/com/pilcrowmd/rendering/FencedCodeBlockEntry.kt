@@ -29,6 +29,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.CodeBlockPiece
+import com.pilcrowmd.domain.markdown.CodeBlockSplitter
 import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
 import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
@@ -161,7 +162,9 @@ class FencedCodeBlockEntry(
             // Highlight search matches inside the code (single TextView → occurrenceBase 0). Not in a
             // Mermaid fence: its code is only ever a broken diagram's source, and search does not
             // count text a diagram is drawn from (M-228), so painting it would show uncounted matches.
-            if (fenceLanguage(node.info) != MERMAID_LANGUAGE) {
+            // A piece of a Mermaid fence past the diagram limit is the exception: it is never drawn as a
+            // diagram, search counts its source as code, so it must paint it.
+            if (piece != null || fenceLanguage(node.info) != MERMAID_LANGUAGE) {
                 SearchHighlighter.highlight(
                     holder.codeView,
                     searchHighlight,
@@ -255,6 +258,8 @@ class FencedCodeBlockEntry(
     fun bindMermaid(markwon: Markwon, holder: Holder, node: FencedCodeBlock) {
         val mermaid = mermaid ?: return showSource(markwon, holder, node)
         val source = node.literal ?: ""
+        // Past Mermaid's own limit it cannot be drawn: no key is hashed over it and no page is loaded.
+        if (source.length > CodeBlockSplitter.MERMAID_MAX_CHARS) return showSource(markwon, holder, node)
         showDiagramPanel(holder)
         holder.mermaidImage.setImageDrawable(null)
         val style = MermaidStyle.from(colorScheme)

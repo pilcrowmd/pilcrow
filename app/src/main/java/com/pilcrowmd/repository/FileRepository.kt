@@ -4,6 +4,20 @@
 package com.pilcrowmd.repository
 
 import android.net.Uri
+import java.io.IOException
+
+/**
+ * The largest file [FileRepository.readFile] will read: 20 MiB.
+ *
+ * Peak heap during a read is about 6 to 7 times the byte length: the read buffer, its copy, the
+ * strict-decode CharBuffer (2 bytes per char) and the String. 20 MiB therefore costs about 140 MB,
+ * safely under the 256 MB heap limits of typical devices, and it sits above the 10M-char reader
+ * ceiling (`PrepareReaderModelUseCase`), which already degrades large documents that do fit.
+ */
+const val MAX_FILE_BYTES: Int = 20 * 1024 * 1024
+
+/** A file is larger than [MAX_FILE_BYTES], or reading it ran out of memory. Carried in a failed `Result`. */
+class FileTooLargeException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
 /**
  * A WAL save that could not be committed and remains stranded after launch recovery — the target URI

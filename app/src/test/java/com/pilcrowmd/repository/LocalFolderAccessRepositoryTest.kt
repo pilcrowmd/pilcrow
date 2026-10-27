@@ -74,6 +74,9 @@ class LocalFolderAccessRepositoryTest {
             }.map { TreeChild(it.key, it.value.name, it.value.isFolder, it.value.size) }
         }
 
+        override fun childrenOrNull(treeUri: Uri, folderId: String, waitWhileLoading: Boolean): List<TreeChild> =
+            children(treeUri, folderId)
+
         override fun documentUri(treeUri: Uri, documentId: String): Uri =
             DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
 
@@ -87,6 +90,13 @@ class LocalFolderAccessRepositoryTest {
         override fun releaseTree(treeUri: Uri) {
             grants -= treeUri
         }
+
+        // Notes folders (M-162b) only; picture lookup never calls these.
+        override fun takeTreeReadWrite(treeUri: Uri) = takeTree(treeUri)
+        override fun displayName(treeUri: Uri, documentId: String): String? = docs[documentId]?.name
+        override fun providerLabel(authority: String): String? = null
+        override fun watch(treeUri: Uri, folderId: String, onChange: () -> Unit) = AutoCloseable {}
+        override fun documentStats(documentUri: Uri): DocumentStats? = null
     }
 
     private val tree = FakeTree().apply {

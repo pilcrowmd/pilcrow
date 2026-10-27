@@ -4,6 +4,7 @@
 package com.pilcrowmd.ui.components
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,6 +68,9 @@ import org.json.JSONArray
 fun LicensesScreen(modifier: Modifier = Modifier, onClose: () -> Unit) {
     val context = LocalContext.current
     var selectedLicense by rememberSaveable { mutableStateOf<License?>(null) }
+    // S8-A38: system Back from a licence's page goes to the list, as its arrow does. Registered here,
+    // after MainScreen's handler, so it answers first; off on the list, where MainScreen's answers.
+    BackHandler(enabled = selectedLicense != null) { selectedLicense = null }
 
     if (selectedLicense != null) {
         LicenseDetailView(
@@ -119,70 +124,84 @@ fun LicensesListView(
             .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .background(c.primaryBackground),
     ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = stringResource(R.string.licenses_title),
-                color = c.primaryText,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Icon(
-                imageVector = Icons.Outlined.ArrowBack,
-                contentDescription = stringResource(R.string.licenses_close),
-                tint = c.secondaryText,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable { onClose() },
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // The app's OWN license (GPL-3.0-or-later) — kept distinct from the third-party notices below.
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(c.secondarySurface)
-                .padding(horizontal = 12.dp, vertical = 11.dp),
-        ) {
-            Text(
-                text = "PilcrowMD",
-                color = c.primaryText,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = stringResource(R.string.licenses_app_notice),
-                color = c.secondaryText,
-                fontSize = 12.sp,
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.licenses_third_party_notice),
-                color = c.secondaryText,
-                fontSize = 12.sp,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Scrollable list of dependencies and curated entries
+        // One scrolling list holds the title, the app's own notice, the section 7 permission and the rows,
+        // so a large font or landscape cannot leave the rows without a viewport.
         LazyColumn(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = stringResource(R.string.licenses_title),
+                        color = c.primaryText,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Icon(
+                        imageVector = Icons.Outlined.ArrowBack,
+                        contentDescription = stringResource(R.string.licenses_close),
+                        tint = c.secondaryText,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { onClose() },
+                    )
+                }
+            }
+
+            // The app's OWN license (GPL-3.0-or-later) — kept distinct from the third-party notices below.
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(c.secondarySurface)
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                ) {
+                    Text(
+                        text = "PilcrowMD",
+                        color = c.primaryText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = stringResource(R.string.licenses_app_notice),
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.licenses_third_party_notice),
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+
+            // The GPLv3 section 7 permission for EPL-2.0 libraries, as the repo file words it.
+            item {
+                val exception = remember(context) { loadLicenseException(context) }
+                if (exception.isNotEmpty()) {
+                    Text(
+                        text = exception,
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(c.secondarySurface)
+                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                    )
+                }
+            }
             items(dependencies) { license ->
                 LicenseRowItem(
                     license = license,
@@ -529,7 +548,7 @@ fun loadDependencies(context: Context): List<License> {
             } else {
                 context.getString(R.string.licenses_unknown)
             }
-            License(name = name, version = version, license = license)
+            License(name = name, version = version, license = EPL_RELICENSED[name] ?: license)
         }
     }.getOrDefault(emptyList())
 
@@ -549,6 +568,20 @@ fun licenseTextFor(context: Context, license: License): String {
 }
 
 /**
+ * Libraries whose POM names a licence other than the one their source files carry (LICENSES.md):
+ * language-textmate's POM says LGPL-2.1, its Eclipse TM4E code is EPL-2.0.
+ */
+private val EPL_RELICENSED = mapOf("language-textmate" to "EPL-2.0")
+
+/** The GPLv3 section 7 additional permission, a copy of the repository's `LICENSE-EXCEPTION`. */
+private const val LICENSE_EXCEPTION_ASSET = "licenses/LICENSE-EXCEPTION.txt"
+
+/** The additional-permission text, or empty if the asset cannot be read (Safeguard 3). */
+fun loadLicenseException(context: Context): String =
+    runCatching { context.assets.open(LICENSE_EXCEPTION_ASSET).bufferedReader().use { it.readText().trim() } }
+        .getOrDefault("")
+
+/**
  * Load license text from assets.
  * Gracefully handles missing/malformed files (shows fallback text, Safeguard 3).
  */
@@ -557,6 +590,7 @@ fun loadLicenseText(context: Context, licenseName: String): String {
     // LGPL must be matched before GPL (LGPL strings also contain "GPL").
     val fileName = when {
         licenseName.contains("OFL", ignoreCase = true) -> "licenses/OFL-1.1.txt"
+        licenseName.contains("EPL", ignoreCase = true) -> "licenses/EPL-2.0.txt"
         licenseName.contains("Apache", ignoreCase = true) -> "licenses/Apache-2.0.txt"
         licenseName.contains("MIT", ignoreCase = true) -> "licenses/MIT.txt"
         licenseName.contains("LGPL", ignoreCase = true) -> "licenses/LGPL-2.1.txt"

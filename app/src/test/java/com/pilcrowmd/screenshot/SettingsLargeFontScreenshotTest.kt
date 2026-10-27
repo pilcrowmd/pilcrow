@@ -32,8 +32,7 @@ import org.robolectric.annotation.GraphicsMode
  * Visual-regression goldens for the whole Settings screen at the system's largest font scale
  * (2.0), in Dark, AMOLED and Light, each with its own theme selected. They guard the large-text
  * layout: the size readouts stay on one line, the reading-font pills grow to show their whole label,
- * and the three theme options fit their row. The 1.0 look is guarded separately by
- * `settings_github_card_*` in [GitHubTeaserScreenshotTest].
+ * and the three theme options fit their row.
  *
  * PIXEL goldens: a re-record makes any change "pass", so re-recorded PNGs must be looked at.
  *

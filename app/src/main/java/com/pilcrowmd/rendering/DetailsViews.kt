@@ -222,7 +222,12 @@ internal class DetailsDecoration(
         if (inBox.isEmpty()) return null
         // A header scrolled off the top: start the box above the viewport so no corner shows.
         val headerShown = inBox.any { parent.getChildAdapterPosition(it) == section.header }
-        val top = if (headerShown) inBox.minOf { layoutManager.getDecoratedTop(it) }.toFloat() else -radius * 2
+        // The box starts at the header's own top, not above the room the reader reserves over block 0.
+        val top = if (headerShown) {
+            inBox.minOf { layoutManager.getDecoratedTop(it) + layoutManager.getTopDecorationHeight(it) }.toFloat()
+        } else {
+            -radius * 2
+        }
         val bottom = inBox.maxOf { ownBottom(it, parent, state) }.toFloat()
         val depth = details.depth(section.header)
         return RectF(

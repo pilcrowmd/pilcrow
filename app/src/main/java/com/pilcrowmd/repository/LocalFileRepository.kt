@@ -7,6 +7,7 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import com.pilcrowmd.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -14,10 +15,12 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.io.SyncFailedException
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
@@ -70,20 +73,52 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
                 journal.recoverableContentFor(uri)?.let { staged ->
                     // A staged copy another app has since written over is not the file's content (G5).
                     if (verdictFor(uri, journal.keyOf(uri), staged) != RecoveryVerdict.CONFLICT) {
-                        return@withLock FileInputStream(staged).use { Result.success(decodeUtf8(it.readBytes())) }
+                        return@withLock FileInputStream(staged).use {
+                            Result.success(decodeUtf8(readCapped(it, staged.length())))
+                        }
                     }
                 }
 
                 val pfd = contentResolver.openFileDescriptor(uri, "r")
                     ?: return@withLock Result.failure(Exception("Failed to open file descriptor for reading"))
                 try {
-                    FileInputStream(pfd.fileDescriptor).use { fis -> Result.success(decodeUtf8(fis.readBytes())) }
+                    FileInputStream(pfd.fileDescriptor).use { fis ->
+                        Result.success(decodeUtf8(readCapped(fis, pfd.statSize)))
+                    }
                 } finally {
                     pfd.close()
                 }
             } catch (e: Exception) {
                 Result.failure(e)
+            } catch (e: OutOfMemoryError) {
+                // A read that is within the cap can still lose the race for a heap another thread has
+                // filled. Everything it allocated is unreachable once this frame unwinds, so this is a
+                // failed open, not a dead process (and not a crash on every cold start).
+                Result.failure(FileTooLargeException("Out of memory reading $uri", e))
             }
+        }
+    }
+
+    /**
+     * Read [stream] to its end, but never more than [MAX_FILE_BYTES]. [sizeHint] is the size the
+     * provider reports (`statSize`: -1, or 0 on some providers, when it cannot say); a stated size
+     * over the cap fails before a byte is read, and a stream that states none is simply stopped one
+     * byte past the cap. A pipe or an endless provider stream therefore ends in
+     * [FileTooLargeException] instead of filling the heap.
+     */
+    private fun readCapped(stream: InputStream, sizeHint: Long): ByteArray {
+        if (sizeHint > MAX_FILE_BYTES) {
+            throw FileTooLargeException("File is $sizeHint bytes; the limit is $MAX_FILE_BYTES")
+        }
+        val out = ByteArrayOutputStream(if (sizeHint > 0) sizeHint.toInt() else PREFIX_CHUNK)
+        val buffer = ByteArray(PREFIX_CHUNK)
+        var total = 0
+        while (true) {
+            val n = stream.read(buffer)
+            if (n < 0) return out.toByteArray()
+            total += n
+            if (total > MAX_FILE_BYTES) throw FileTooLargeException("File is over $MAX_FILE_BYTES bytes")
+            out.write(buffer, 0, n)
         }
     }
 
@@ -213,10 +248,24 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
     }
 
     override fun hasPersistedPermission(uri: Uri): Boolean =
-        contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+        contentResolver.persistedUriPermissions.any { it.isReadPermission && covers(it.uri, uri) }
 
     override fun hasPersistedWritePermission(uri: Uri): Boolean =
-        contentResolver.persistedUriPermissions.any { it.uri == uri && it.isWritePermission }
+        contentResolver.persistedUriPermissions.any { it.isWritePermission && covers(it.uri, uri) }
+
+    /**
+     * Whether a grant on [granted] covers [uri]: the same URI, or (M-162b) a note opened from a notes
+     * folder, whose tree-based URI has no grant of its own but sits under the folder's tree grant
+     * (same provider, same tree document ID). The provider itself refuses a document outside the tree.
+     */
+    private fun covers(granted: Uri, uri: Uri): Boolean = granted == uri ||
+        (granted.authority == uri.authority && treeIdOf(granted)?.let { it == treeIdOf(uri) } == true)
+
+    private fun treeIdOf(uri: Uri): String? = if (DocumentsContract.isTreeUri(uri)) {
+        runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+    } else {
+        null
+    }
 
     /**
      * List stranded WAL slots (Safeguard 1 escape hatch). Acquires [journalMutex] — the same lock

@@ -8,7 +8,7 @@
 
 **Tier legend (compatibility with a GPL-3.0-or-later combined work):**
 - **PERMISSIVE** (MIT/Apache-2.0/BSD/ISC/OFL/zlib/CC0/TextMate Bundle License) → GPL-3.0-compatible; combines freely.
-- **WEAK COPYLEFT** (LGPL/MPL-2.0/EPL) → GPL-compatible with per-component conditions (attribution, unmodified use, corresponding source available).
+- **WEAK COPYLEFT** (LGPL/MPL-2.0/EPL) → per-component conditions (attribution, unmodified use, corresponding source available). EPL-2.0 components are covered by the additional permission in `LICENSE-EXCEPTION`.
 - **STRONG COPYLEFT** (GPL/AGPL) → same copyleft family as the project license; aligned by construction, since the whole app is GPL.
 - **UNKNOWN** → investigate.
 
@@ -34,10 +34,10 @@ Because Pilcrow itself is GPL-3.0-or-later, copyleft dependencies are *aligned w
 **GPLv2 with Classpath Exception – 1:**
 - ✅ **`ru.noties:jlatexmath-android:0.2.0`** – Declared **GPL-2.0** in its POM, but the upstream source ships under **GPLv2 *with* Classpath Exception**. The Classpath Exception removes the linking restriction, so the library combines freely into Pilcrow's GPL-3.0-or-later work. The exception text is bundled in the app at `licenses/JLaTeXMath-GPLv2-Classpath-Exception.txt` and shown in the in-app Open-source Licenses screen. See §2 and §4a.
 
-**WEAK COPYLEFT (compatible with conditions) – 3:**
+**WEAK COPYLEFT – 3:**
 - 🟡 **`io.github.rosemoe:editor:0.24.5`** – **LGPL-2.1** (Sora Editor core). LGPL-2.1 is GPL-compatible and explicitly permits combination into a GPL-licensed work. Because Pilcrow ships as open source under GPL-3.0-or-later with its corresponding source available, LGPL §6's relink provision is satisfied by construction (users have the source and the published dependency coordinate/version, and can rebuild with a substituted editor). Used as an unmodified binary artifact, with LGPL-2.1 attribution and license text retained.
-- 🟡 **`io.github.rosemoe:language-textmate:0.24.5`** – **LGPL-2.1** (same project, same handling as above).
-- 🟡 **`org.eclipse.jdt:org.eclipse.jdt.annotation:2.4.100`** – **EPL-2.0**, transitive compile-time nullness annotations (via Sora). EPL is *file-level* copyleft: obligations attach only to modified EPL files. The artifact is used unmodified with its notice retained – listed for completeness.
+- 🟡 **`io.github.rosemoe:language-textmate:0.24.5`** – **EPL-2.0** (Eclipse TM4E code). The POM says LGPL-2.1, but the source files are EPL-2.0. Covered by the additional permission in `LICENSE-EXCEPTION`.
+- 🟡 **`org.eclipse.jdt:org.eclipse.jdt.annotation:2.4.100`** – **EPL-2.0**, transitive compile-time nullness annotations (via Sora). Covered by the additional permission in `LICENSE-EXCEPTION`; used unmodified with its notice retained.
 
 **UNKNOWN / UNDECLARED:** none found – the plugin resolved a declared license for all 121 dependencies.
 
@@ -53,16 +53,22 @@ Because Pilcrow itself is GPL-3.0-or-later, copyleft dependencies are *aligned w
 - **Handling:** The Classpath Exception is documented verbatim in `licenses/JLaTeXMath-GPLv2-Classpath-Exception.txt`, bundled in the APK, and surfaced in the in-app Open-source Licenses screen when the user views the jlatexmath license text. The exception permits linking into Pilcrow's GPL-3.0-or-later combined work; modifications to JLaTeXMath itself remain under its own terms.
 - **Bundled fonts:** the AAR ships math fonts under `assets/org/scilab/forge/jlatexmath/fonts/licences/`: `Knuth_License.txt`, `License_for_dsrom.txt`, `OFL.txt` (and, per upstream docs, some Greek glyphs are GPLv2). These ship inside the APK and carry their own (mostly permissive) terms.
 
-### 🟡 Sora Editor – `io.github.rosemoe:editor` + `:language-textmate` (LGPL-2.1)
+### 🟡 Sora Editor – `io.github.rosemoe:editor` (LGPL-2.1)
 
-- **How it enters the build:** declared directly as the chosen native code-editor engine. Consumed as **unmodified binary Maven artifacts** via `editor-bom:0.24.5`.
+- **How it enters the build:** declared directly as the chosen native code-editor engine (the `:language-textmate` module is EPL-2.0, see next entry). Consumed as **unmodified binary Maven artifacts** via `editor-bom:0.24.5`.
 - **GPL compatibility:** LGPL-2.1 is compatible with the GPL and may be combined into a GPL-licensed work. Since Pilcrow is distributed as open source under GPL-3.0-or-later with corresponding source available, the LGPL §6 relink obligation is inherently met – users have the full source plus the exact dependency coordinate/version and can rebuild the app with their own editor build.
 - **Compliance:** used unmodified, kept as a separate `.aar` dependency at a published coordinate/version, with LGPL-2.1 license text + attribution included (and shown in-app).
+
+### 🟡 `io.github.rosemoe:language-textmate:0.24.5` (EPL-2.0)
+
+- **How it enters the build:** declared directly, with the Sora editor, as an unmodified binary Maven artifact.
+- **Licence:** the POM declares LGPL-2.1, but the source files are EPL-2.0 (Eclipse TM4E code). Treated as EPL-2.0.
+- **Handling:** covered by the additional permission under GPL section 7 in `LICENSE-EXCEPTION`.
 
 ### 🟡 `org.eclipse.jdt:org.eclipse.jdt.annotation:2.4.100` (EPL-2.0)
 
 - **How it enters the build:** transitive, compile-time nullness annotations pulled via Sora `language-textmate`.
-- **EPL-2.0** is per-file weak copyleft; obligations attach only to *modified* EPL files. The artifact is unmodified and its notice is retained – listed for completeness.
+- **EPL-2.0**, covered by the additional permission in `LICENSE-EXCEPTION`. The artifact is unmodified and its notice is retained.
 
 ---
 

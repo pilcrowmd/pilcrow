@@ -63,6 +63,19 @@ interface StorageManager {
     suspend fun clearLastFileUri()
 
     /**
+     * Whether a cold-start restore of [lastFileUri] was begun and has not yet been marked finished.
+     * If the process dies in between, the flag is still set on the next start, which is how a
+     * remembered file that crashes the app is told apart from one that opened (crash-loop guard).
+     */
+    suspend fun isRestoreInProgress(): Boolean
+
+    /**
+     * Set or clear the restore-in-progress flag. Returns once the write is committed, so a caller
+     * that sets it and then reads the remembered file has the flag on disk before the read starts.
+     */
+    suspend fun setRestoreInProgress(inProgress: Boolean)
+
+    /**
      * Persist the line-numbers toggle state.
      */
     suspend fun setLineNumbersEnabled(enabled: Boolean)
@@ -160,6 +173,12 @@ interface StorageManager {
 
     /** Persist the formatting-bar setting. */
     suspend fun setFormattingBarEnabled(enabled: Boolean)
+
+    /** Flow of the "Full-screen reading" setting. Default: false (S8-A41). */
+    val fullScreenReading: Flow<Boolean>
+
+    /** Persist the full-screen reading setting. */
+    suspend fun setFullScreenReading(enabled: Boolean)
 
     /**
      * Flow of the selected theme mode. Default: ThemeMode.DARK (ensures Dark remains default).

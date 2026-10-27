@@ -25,7 +25,8 @@ class NoHardcodedUiStringsTest {
             """onClickLabel|subject|summary|message)\s*=\s*"[^"]*[A-Za-z]""",
     )
     private val call = Regex(
-        """\b(Text|Toast\.makeText|setText|createChooser|announceForAccessibility|launch)\(.*"[^"]*[A-Za-z]""",
+        """\b(Text|Toast\.makeText|setText|createChooser|announceForAccessibility|launch|""" +
+            """showMessage)\(.*"[^"]*[A-Za-z]""",
     )
 
     /** `contentDescription = if (x) "A" else "B"` and the like: a literal after the `=`, not right at it. */
@@ -75,7 +76,6 @@ class NoHardcodedUiStringsTest {
             "LicensesScreen.kt" to "text = \"PilcrowMD\"",
             // Subject lines of e-mails to the developer, who filters on them; not shown in the app.
             "ContactLinks.kt" to "Uri.encode(\"PilcrowMD\")",
-            "GitHubIntegrationScreen.kt" to "Uri.encode(FEEDBACK_SUBJECT)",
         )
     }
 }

@@ -16,10 +16,11 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 - **Edit and save.** Switch to Edit, change a word, save, and reopen: the file must come back
   exactly as you left it, with nothing reflowed or reformatted.
 
-**Known gaps in version 1.0.17** – we know about these, no need to report them:
+**Known gaps in version 1.1.0** – we know about these, no need to report them:
 
 - A picture in a table cell is dropped.
-- A link to another note (`./notes.md`) does nothing when tapped.
+- A link to another note (`./notes.md`) opens only when the note you are reading is inside a folder
+  you added. Otherwise it does nothing, with no message.
 - A callout inside a list shows as a plain quote with the marker visible.
 - A callout marked as folded (`> [!TIP]-`) is always shown open.
 - `==highlight==`, `~subscript~` and `^superscript^` show as typed.

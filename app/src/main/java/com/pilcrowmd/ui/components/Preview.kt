@@ -69,6 +69,8 @@ import androidx.core.view.doOnPreDraw
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.folders.OpenFileLine
+import com.pilcrowmd.domain.markdown.HeadingAnchors
 import com.pilcrowmd.domain.markdown.ParagraphSeams
 import com.pilcrowmd.domain.markdown.ReaderModel
 import com.pilcrowmd.domain.markdown.ScrollPercent
@@ -79,6 +81,7 @@ import com.pilcrowmd.rendering.DetailsDecoration
 import com.pilcrowmd.rendering.DetailsState
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.MermaidDiagrams
+import com.pilcrowmd.rendering.NoteLinkHandler
 import com.pilcrowmd.rendering.ParagraphSeamState
 import com.pilcrowmd.rendering.ReaderLayoutManager
 import com.pilcrowmd.rendering.RecyclerAdapterEntries
@@ -131,6 +134,9 @@ import kotlin.math.roundToInt
  * notifyDataSetChanged when the search state changes.
  */
 @Composable
+// Baselined before S8-A40; the signature is the baseline key, so the new openFile
+// parameter needs this suppress.
+@Suppress("LongParameterList", "CyclomaticComplexMethod")
 fun MarkdownPreview(
     modifier: Modifier = Modifier,
     // What to paint, prepared off the main thread by the ViewModel (M-172): this composable never
@@ -167,18 +173,31 @@ fun MarkdownPreview(
     documentUri: Uri? = null,
     imageAccessKey: String = "",
     onImageTap: () -> Unit = {},
+    // M-160: a tap on a scheme-less link; true when the screen handles it (a note in an added folder).
+    onNoteLink: (String) -> Boolean = { false },
+    // M-160: this note was opened by a followed link: land on this heading (raw fragment), or at the
+    // top when it is empty or names no heading (K3). [onLanded] is called once it has been applied.
+    landOn: String? = null,
+    onLanded: () -> Unit = {},
+    // The line that names the open file, above the first block; scrolls away with the text. Null shows none.
+    openFile: OpenFileLine? = null,
 ) {
     val currentOnImageTap = rememberUpdatedState(onImageTap)
+    val currentOnNoteLink = rememberUpdatedState(onNoteLink)
     val currentOnJumpHandled = rememberUpdatedState(onJumpHandled)
     val currentOnCaretRevealHandled = rememberUpdatedState(onCaretRevealHandled)
     val currentImeVisible = rememberUpdatedState(imeVisible)
     val currentOnReaderMoved = rememberUpdatedState(onReaderMoved)
     val currentOnReaderMiddleChanged = rememberUpdatedState(onReaderMiddleChanged)
     // Captured once per composition-entry, so re-entering Reader mode (or rotating) restores the
-    // saved offset without fighting live scroll updates.
-    val initialScroll = remember { scrollPosition }
+    // saved offset without fighting live scroll updates. Again for each document (M-160): a note opened
+    // in place of another (a followed link, Back) restores ITS saved place, not the first note's.
+    val initialScroll = remember(documentUri) { scrollPosition }
     // The model the adapter currently shows, by identity (a model is never compared by value).
     val lastModel = remember { mutableStateOf<ReaderModel?>(null) }
+    // M-160: a restore or landing posted but not yet run. The model of the same text being swapped
+    // (the bare links arriving) re-applies it; once it has run, the swap keeps the live position.
+    val pendingRestore = remember { PendingRestore() }
 
     // Shared with ProseBlockEntry; colors come from the token layer (Safeguard 4).
     val c = mdColors()
@@ -296,6 +315,7 @@ fun MarkdownPreview(
                     setTag(R.id.details_state, detailsState)
                     setTag(R.id.anchor_targets, anchorTargets)
                     setImageTapHandler { currentOnImageTap.value() }
+                    setTag(R.id.note_link_handler, NoteLinkHandler { currentOnNoteLink.value(it) })
                     addItemDecoration(DetailsDecoration(context, detailsState, c))
                     adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         context,
@@ -417,9 +437,10 @@ fun MarkdownPreview(
                             scaleDetector.onTouchEvent(e)
                         }
                     })
-                }
+                }.let { list -> ReaderFrame(context, list) } // the list, with the open-file line over its top
             },
-            update = { rv ->
+            update = { frame ->
+                val rv = frame.list
                 // M-93: set before any render below, so a relative image binds against this note.
                 renderer.imageBase.noteUri = documentUri
                 // Sync the persisted scale INTO the live render scale ONLY when the param itself
@@ -483,9 +504,17 @@ fun MarkdownPreview(
                     rv.swapAdapter(newAdapter, false)
                     (rv.layoutManager as? LinearLayoutManager)
                         ?.scrollToPositionWithOffset(restore.index, restore.offset)
+                    // M-160: until the first layout, the list cannot report this place itself.
+                    if (firstBuild) pendingRestore.post(rv, restore)
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
                     rv.post { canScroll.value = documentOverflowsViewport(rv) }
                 }
+
+                // After the rebuild above has read the anchor: the line's room above block 0 follows the text
+                // size, and the anchor counts from the top of that room (see currentScrollAnchor), so it must
+                // be read while the room still has the size the list was laid out with. The place the rebuild
+                // asked for is the top of the room, so it lands right once the room has its new size.
+                frame.showOpenFile(openFile, c, liveFontScale.value)
 
                 val adapter = rv.adapter as MarkwonAdapter
 
@@ -495,19 +524,36 @@ fun MarkdownPreview(
                 // settles; scrollToPositionWithOffset survives block-height changes that an absolute
                 // pixel offset could not.
                 if (model !== lastModel.value) {
+                    // M-160: the same text built again (the note's bare links arriving) is not a new
+                    // document: stay where the reader is, or where a restore was posted and not yet run.
+                    val previous = lastModel.value
+                    val sameText = previous is ReaderModel.Markdown &&
+                        model is ReaderModel.Markdown &&
+                        previous.content === model.content
+                    val restore = if (sameText) pendingRestore.anchor ?: rv.currentScrollAnchor() else initialScroll
                     lastModel.value = model
                     // A tint is an index into the blocks being replaced (M-06).
                     clearReaderHighlight(rv)
                     val markwon = renderer.markwonFor(c, liveFontScale.value)
                     adapter.show(markwon, model, detailsState, anchorTargets, seamState)
                     adapter.notifyDataSetChanged()
-                    val lm = rv.layoutManager as? LinearLayoutManager
-                    rv.post {
-                        cancelReaderJump(rv)
-                        lm?.scrollToPositionWithOffset(initialScroll.index, initialScroll.offset)
-                    }
+                    pendingRestore.post(rv, restore)
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
                     rv.post { canScroll.value = documentOverflowsViewport(rv) }
+                }
+
+                // (1b) M-160: a note opened by a followed link opens at its heading or at the top, never at
+                // the place it was last read. Posted after (0)/(1), so it lands after their restore. Only
+                // with this note's model on screen: the heading is looked up in the model's own anchors.
+                // Once per landing: this block runs on every update until the caller drops [landOn].
+                if (landOn == null) {
+                    pendingRestore.landed = false
+                } else if (model != null && !pendingRestore.landed) {
+                    pendingRestore.landed = true
+                    val anchors = (model as? ReaderModel.Markdown)?.anchors.orEmpty()
+                    val index = HeadingAnchors.blockIndexOf(anchors, "#$landOn") ?: 0
+                    pendingRestore.post(rv, ScrollAnchor(index, 0))
+                    onLanded()
                 }
 
                 // (2) Update search highlights only when the search state changes.
@@ -648,6 +694,26 @@ private fun pinchFocalAnchorUnder(rv: RecyclerView, x: Float, y: Float): PinchFo
     val position = rv.getChildAdapterPosition(block)
     if (position == RecyclerView.NO_POSITION || block.height <= 0) return null
     return PinchFocalAnchor(position, (y - block.top) / block.height)
+}
+
+/**
+ * M-160: the scroll target last posted for the reader, until it has run and the list has laid out
+ * again, so a model swapped in between re-applies it instead of reading a position not yet reached.
+ */
+private class PendingRestore {
+    var anchor: ScrollAnchor? = null
+
+    /** The current landing has been applied and reported; reset when the caller drops it. */
+    var landed = false
+
+    fun post(rv: RecyclerView, target: ScrollAnchor) {
+        anchor = target
+        rv.post {
+            cancelReaderJump(rv) // a jump's glide would carry the list off the place restored here
+            (rv.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(target.index, target.offset)
+            rv.post { if (anchor == target) anchor = null }
+        }
+    }
 }
 
 /**

@@ -19,6 +19,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pilcrowmd.ui.screen.MainScreen
 import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
+import com.pilcrowmd.viewmodel.NoteLinksViewModel
+import com.pilcrowmd.viewmodel.NotesFoldersViewModel
 import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
 
 /** Bounded minimum the branded splash stays up so its lines→¶ morph plays. */
@@ -221,6 +223,9 @@ fun PilcrowApp(
             mermaidRenderer = container.mermaidRenderer,
             // M-93: the banner and folder picker for a note's pictures.
             imageFolderViewModel = viewModel(factory = ImageFolderViewModel.provideFactory(container)),
+            // M-162b: the Files screen and its New and Updated marks.
+            notesFoldersViewModel = viewModel(factory = NotesFoldersViewModel.provideFactory(container)),
+            noteLinksViewModel = viewModel(factory = NoteLinksViewModel.provideFactory(container)),
         )
     }
 }

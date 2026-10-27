@@ -393,6 +393,43 @@ class MarkdownViewModelSaveAsTest {
     }
 
     @Test
+    fun closedTransientNoticeComesBackWhenAnotherTemporaryFileOpens() = runTest {
+        val first = Uri.parse("content://test/first.md")
+        val second = Uri.parse("content://test/second.md")
+        val vm = vmWith(FakeRepo("t\n")) // neither URI is writable: both are transient
+        vm.loadFile(first)
+        vm.awaitLoaded(first)
+        vm.closeTransientNotice()
+        assertTrue("the close took effect", vm.transientNoticeClosed.value)
+
+        vm.loadFile(second)
+        vm.awaitLoaded(second) // waits on the identity this load publishes; the flag is reset before it
+
+        assertTrue("the second file is temporary too", vm.transient.value)
+        assertFalse("the second temporary file opened with its notice closed", vm.transientNoticeClosed.value)
+    }
+
+    @Test
+    fun closedTransientNoticeComesBackAfterSaveACopy() = runTest {
+        // takePermSucceeds = false and the copy is not writable, so the adopted copy is STILL
+        // transient: only the reset on adoption can reopen the notice here.
+        val transientUri = Uri.parse("content://test/temp2.md")
+        val copyUri = Uri.parse("content://test/copy2.md")
+        val vm = vmWith(FakeRepo("t\n", takePermSucceeds = false))
+        vm.loadFile(transientUri)
+        vm.awaitLoaded(transientUri)
+        vm.closeTransientNotice()
+        assertTrue("the close took effect", vm.transientNoticeClosed.value)
+
+        vm.saveActiveDocumentAs(copyUri)
+        vm.awaitSaveSettled()
+
+        assertEquals("the copy was adopted", copyUri, vm.currentDocument.value!!.uri)
+        assertTrue("the copy is still transient", vm.transient.value)
+        assertFalse(vm.transientNoticeClosed.value)
+    }
+
+    @Test
     fun takePersistablePermissionFailureDoesNotAbortTheWrite() = runTest {
         // The created-document URI is already SAF-auto-persisted; takePersistableUriPermission is
         // best-effort and may fail on some providers. Its failure must NOT abort saveFile.

@@ -5,6 +5,7 @@ package com.pilcrowmd.domain.usecase
 
 import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.CalloutBlock
+import com.pilcrowmd.domain.markdown.CodeBlockPiece
 import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.markdown.EmojiShortcodeMatch
 import com.pilcrowmd.domain.markdown.EmojiShortcodes
@@ -229,10 +230,9 @@ class SearchMarkdownUseCase(
                     appendLiteral(node.literal, sb, offsets, Source.CODE_SPAN, skipMath = opensInMath)
                 }
                 // A top-level Mermaid fence is drawn as a picture, so its source is not on screen (M-228).
-                // One nested in a list or quote is painted as text inside that block, so it still counts.
-                is FencedCodeBlock -> if (node.parent !is Document || fenceLanguage(node.info) != MERMAID_LANGUAGE) {
-                    appendLiteral(node.literal, sb, offsets)
-                }
+                // One nested in a list or quote is painted as text inside that block, so it still counts, and so
+                // does a piece of a fence cut for being too long to draw (S8-A31): that is shown as source.
+                is FencedCodeBlock -> if (!isDrawnAsPicture(node)) appendLiteral(node.literal, sb, offsets)
                 is IndentedCodeBlock -> appendLiteral(node.literal, sb, offsets)
                 is HtmlBlock -> appendHtmlBlock(node, sb, offsets)
                 // M-161: a callout paints its title where its marker was, then its content. M-227 /
@@ -566,3 +566,7 @@ private fun forEachCellInRow(row: TableRow, action: (TableCell) -> Unit) {
         cell = cell.next
     }
 }
+
+/** Whether [block] is a top-level Mermaid fence, which the reader draws as a picture, not as text. */
+private fun isDrawnAsPicture(block: FencedCodeBlock): Boolean =
+    block !is CodeBlockPiece && block.parent is Document && fenceLanguage(block.info) == MERMAID_LANGUAGE

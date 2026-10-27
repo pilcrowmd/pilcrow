@@ -11,7 +11,8 @@ package com.pilcrowmd.ui.screen
  * then via a double-back guard.
  *
  * Precedence (most specific first) mirrors the visible z-order in [MainScreen]:
- * search bar → TOC drawer → Licenses → GitHub teaser → Settings → open document → root.
+ * Files → search bar → TOC drawer → Licenses → Settings → open document → root.
+ * Files (M-162b) comes first because it covers everything else, the reader's search bar included.
  * (Compose [androidx.compose.material3.AlertDialog]s consume Back in their own window, so the
  * unsaved-close / stranded-slot dialogs are handled by the framework before this runs.)
  */
@@ -19,6 +20,9 @@ package com.pilcrowmd.ui.screen
 const val EXIT_CONFIRM_WINDOW_MS = 2000L
 
 sealed interface BackIntent {
+    /** Close the Files screen (M-162b), back to whatever it was opened over. */
+    data object CloseFiles : BackIntent
+
     /** Close the in-document search bar. */
     data object CloseSearch : BackIntent
 
@@ -28,9 +32,6 @@ sealed interface BackIntent {
     /** Leave the Licenses sub-screen back to Settings (where it was opened from). */
     data object LicensesToSettings : BackIntent
 
-    /** Leave the GitHub-integration sub-screen back to Settings. */
-    data object GitHubToSettings : BackIntent
-
     /** Leave Settings back to the home/Welcome screen. */
     data object CloseSettings : BackIntent
 
@@ -39,6 +40,12 @@ sealed interface BackIntent {
      * Close (X) gives. Not `Exit`: swallowing Back for the duration of a save is the point.
      */
     data object None : BackIntent
+
+    /**
+     * K10 (M-160): back to the note the last followed link was in. Through the reader's normal open,
+     * so a note with unsaved edits still gets the unsaved-changes prompt first (K11).
+     */
+    data object LinkBack : BackIntent
 
     /** Open document has unsaved edits — show the existing Save/Discard close prompt (no new dialog). */
     data object PromptUnsavedClose : BackIntent
@@ -55,10 +62,11 @@ sealed interface BackIntent {
 
 /** Immutable snapshot of the navigation state Back depends on. */
 data class BackNavState(
+    /** The Files screen (M-162b) is shown. */
+    val showFiles: Boolean,
     val searchVisible: Boolean,
     val drawerOpen: Boolean,
     val showLicenses: Boolean,
-    val showGitHub: Boolean,
     val showSettings: Boolean,
     val hasDocument: Boolean,
     /**
@@ -69,18 +77,30 @@ data class BackNavState(
     val isSaving: Boolean,
     val documentDirty: Boolean,
     val exitArmed: Boolean,
+    /** K10 (M-160): the open note was opened by a followed link, and Back returns to the note it was in. */
+    val canGoBackLink: Boolean = false,
 )
 
 /** Resolve the single [BackIntent] for a Back press given the current [state]. */
-fun resolveBackIntent(state: BackNavState): BackIntent = when {
+fun resolveBackIntent(state: BackNavState): BackIntent = overlayIntent(state) ?: documentIntent(state)
+
+/** The surfaces drawn over the document or home screen, most specific first; null when none is open. */
+private fun overlayIntent(state: BackNavState): BackIntent? = when {
+    state.showFiles -> BackIntent.CloseFiles
     state.searchVisible -> BackIntent.CloseSearch
     state.drawerOpen -> BackIntent.CloseDrawer
     state.showLicenses -> BackIntent.LicensesToSettings
-    state.showGitHub -> BackIntent.GitHubToSettings
     state.showSettings -> BackIntent.CloseSettings
+    else -> null
+}
+
+/** The open document, then the root screen. */
+private fun documentIntent(state: BackNavState): BackIntent = when {
     // M-148: ordered ABOVE both close branches. A write is in flight, so neither closing nor
     // prompting to close is allowed — Back does nothing, exactly as the disabled X does nothing.
     state.isSaving -> BackIntent.None
+    // K10: after following a link, Back returns to the previous note instead of closing this one.
+    state.hasDocument && state.canGoBackLink -> BackIntent.LinkBack
     state.hasDocument && state.documentDirty -> BackIntent.PromptUnsavedClose
     state.hasDocument -> BackIntent.CloseFile
     state.exitArmed -> BackIntent.Exit

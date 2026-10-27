@@ -19,7 +19,6 @@ import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.pilcrowmd.domain.model.HeadingNode
-import com.pilcrowmd.ui.components.GitHubIntegrationScreen
 import com.pilcrowmd.ui.components.HeadingsDrawer
 import com.pilcrowmd.ui.components.License
 import com.pilcrowmd.ui.components.LicenseDetailView
@@ -92,10 +91,6 @@ class DisplayCutoutPaddingTest {
     fun licenseDetailKeepsItsTitleOutOfTheCutout() = assertMovedByCutout("Example Library") {
         LicenseDetailView(license = License(name = "Example Library", version = "1.0", license = "MIT"), onBack = {})
     }
-
-    @Test
-    fun gitHubScreenKeepsItsTitleOutOfTheCutout() =
-        assertMovedByCutout("Tell us what to build") { GitHubIntegrationScreen(onClose = {}) }
 
     @Test
     fun anEmptyCutoutInsetDoesNotMoveTheContent() {

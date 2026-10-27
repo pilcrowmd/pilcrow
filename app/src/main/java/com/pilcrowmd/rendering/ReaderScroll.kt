@@ -241,8 +241,9 @@ fun documentOverflowsViewport(recyclerView: RecyclerView): Boolean {
     // review. Decorations are NOT part of the document: the only one here is the spacer, which is
     // headroom — counting it would report every document as overflowing, which is the first bug
     // this function ever had and the one six goldens caught.
+    // The open-file line above block 0 is reserved as a top decoration and IS the document's: it scrolls.
     val documentHeight = (lastBlock.bottom + lastBlock.bottomMarginPx()) -
-        (firstBlock.top - firstBlock.topMarginPx())
+        (firstBlock.top - firstBlock.topMarginPx() - layoutManager.getTopDecorationHeight(firstBlock))
     return documentHeight > recyclerView.height
 }
 

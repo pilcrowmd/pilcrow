@@ -309,6 +309,14 @@ constructor(
     // Per-file scroll-position memory (keyed by document URI)
     private val _fileScrollPositions = mutableMapOf<String, Int>()
 
+    // The user closed the temporary-file notice. Held in the slot, so another file, a reload or a
+    // Save a copy brings the notice back; never persisted.
+    val transientNoticeClosed: StateFlow<Boolean> = slot.transientNoticeClosed
+
+    fun closeTransientNotice() {
+        slot.transientNoticeClosed.value = true
+    }
+
     // Edit to Read: the reader block the caret was in. Each switch to the reader takes a new seq.
     private var caretRevealSeq = 0
     private val _caretReveal = MutableStateFlow<CaretReveal?>(null)
@@ -421,6 +429,10 @@ constructor(
     val formattingBarEnabled: StateFlow<Boolean> = storage.formattingBarEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    // Hide the top bar and system bars while reading (default off, S8-A41).
+    val fullScreenReading: StateFlow<Boolean> = storage.fullScreenReading
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     // Theme mode selection (Dark or Light). Persisted in DataStore.
     val themeMode: StateFlow<ThemeMode> = storage.themeMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.DARK)
@@ -438,6 +450,17 @@ constructor(
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
     val exportState: StateFlow<ExportState> = _exportState.asStateFlow()
 
+    // Crash-loop guard. The remembered file's pointer is written when it loads, but a file that
+    // kills the process while it is read or first drawn (an endless stream, a poison table) would
+    // be reopened at every start, before the user could reach Close. So a durable flag is set
+    // BEFORE the read and cleared once the document has been shown ([onRestoredDocumentShown], called
+    // by the UI after its first frames) or the restore ended without one. A start that finds the
+    // flag still set does not reopen: it forgets the pointer (the file stays in Recent) and tells
+    // the start screen why nothing opened. Without the pointer cleared, the next start would
+    // alternate between crashing and not crashing.
+    private val _lastFileNotReopened = MutableStateFlow(false)
+    val lastFileNotReopened: StateFlow<Boolean> = _lastFileNotReopened.asStateFlow()
+
     // Restore the last-opened file ONCE on startup.
     // This must NOT keep collecting lastFileUri. DataStore re-emits the whole
     // Preferences on any write (e.g. saving a scroll position when switching to Reader),
@@ -453,7 +476,62 @@ constructor(
     private val restoreJob: Job = viewModelScope.launch {
         val claim = slot.claim()
         val lastUri = storage.lastFileUri.first()
-        if (lastUri != null) loadDocument(lastUri, claim, ReplacePolicy.IF_CLEAN)
+        if (storage.isRestoreInProgress()) {
+            // A flag left with no pointer (the file was closed before the flag was cleared) has
+            // nothing to skip and nothing to say.
+            if (lastUri != null) guardWrite("forget the remembered file") { storage.clearLastFileUri() }
+            guardWrite("clear the restore flag") { storage.setRestoreInProgress(false) }
+            if (lastUri != null) _lastFileNotReopened.value = true // last: the screen reads the rest as settled
+            return@launch
+        }
+        if (lastUri == null) return@launch
+        try {
+            // Committed before the file is touched. A write that fails (a full disk) leaves the file
+            // unguarded, but the restore is only a convenience: it still opens, as before this guard.
+            guardWrite("set the restore flag") { storage.setRestoreInProgress(true) }
+            loadDocument(lastUri, claim, ReplacePolicy.IF_CLEAN)
+        } finally {
+            // Only a document this restore put on screen keeps the flag, for the UI to clear once it
+            // has drawn. A failed, superseded, refused or cancelled restore ends it here, and the
+            // cancelled one must still be able to write.
+            if (!slot.isLatestPublished(claim)) {
+                withContext(kotlinx.coroutines.NonCancellable) {
+                    guardWrite("clear the restore flag") { storage.setRestoreInProgress(false) }
+                }
+            }
+        }
+    }
+
+    /**
+     * A write of the crash-loop guard's own state. It runs outside [loadDocument]'s catch, at launch,
+     * so a DataStore write that throws (a full disk) must not take the app down: it is logged and the
+     * restore goes on, since the guard is a safety net and not part of opening the file.
+     */
+    private suspend fun guardWrite(what: String, write: suspend () -> Unit) {
+        try {
+            write()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            android.util.Log.e("MarkdownViewModel", "restore guard: could not $what", e)
+        }
+    }
+
+    /** The start screen has said why nothing was reopened; do not say it again. */
+    fun resetLastFileNotReopened() {
+        _lastFileNotReopened.value = false
+    }
+
+    /**
+     * The UI drew the open document (a few frames after it, so a crash in the first bind has
+     * already killed the process): the restore's flag can go. Idempotent; a no-op when none is set.
+     */
+    fun onRestoredDocumentShown() {
+        viewModelScope.launch {
+            guardWrite("clear the marker once shown") {
+                if (storage.isRestoreInProgress()) storage.setRestoreInProgress(false)
+            }
+        }
     }
 
     fun loadFile(uri: Uri) = open(uri, ReplacePolicy.IF_CLEAN)
@@ -473,6 +551,7 @@ constructor(
      */
     private fun open(uri: Uri, policy: ReplacePolicy, takePermission: Boolean = false) {
         val claim = slot.claim()
+        _lastFileNotReopened.value = false
         viewModelScope.launch {
             restoreJob.cancel()
             if (takePermission) repository.takePersistableUriPermission(uri)
@@ -553,7 +632,14 @@ constructor(
         _fileLoadState.value = FileLoadState.Loading
         val file = repository.readFile(uri).getOrElse { error ->
             if (loadingClaim == claim) slot.markLoadFailure(true)
-            finishLoad(claim, FileLoadState.Error(error.message ?: "Unknown error"))
+            finishLoad(
+                claim,
+                // Fully qualified: an import would shift the ktlint baseline's pinned line number.
+                FileLoadState.Error(
+                    error.message ?: "Unknown error",
+                    tooLarge = error is com.pilcrowmd.repository.FileTooLargeException,
+                ),
+            )
             return
         }
         val content = file.content
@@ -671,6 +757,19 @@ constructor(
     // preparation of a document opened straight into the editor, whose TOC is needed there too.
     private var readerModelPreparedFor: DocumentId? = null
 
+    // M-160 (K13/K14): the bare note links of the open note that name a note, worked out off Main by
+    // the screen's NoteLinksViewModel and handed over through [setBareLinks]. Part of the model's
+    // key: the arrival of a set is a new model of the same text (see [refreshReaderModel]).
+    private val bareLinks = MutableStateFlow(NoteBareLinks(null, emptySet()))
+
+    // The set the current model was built with.
+    private var readerModelBareLinks: Set<String> = emptySet()
+
+    /** The bare note links of the note [links] names. Another note's set is never applied to this one. */
+    fun setBareLinks(links: NoteBareLinks) {
+        bareLinks.value = links
+    }
+
     init {
         // Issue #15: a newly opened document has no switch behind it. Its reader position is not the
         // editor's, so a first Edit lands on the reader's middle line, unless the caret was kept from
@@ -685,14 +784,41 @@ constructor(
             }
         }
         viewModelScope.launch {
-            kotlinx.coroutines.flow.combine(slot.document, slot.renderMode, slot.mode, ::Triple)
+            kotlinx.coroutines.flow.combine(
+                slot.document,
+                slot.renderMode,
+                slot.mode,
+                bareLinks,
+            ) { doc, renderMode, mode, bare ->
+                ReaderKey(doc, renderMode, mode, bare.destinations.takeIf { bare.uri == doc?.uri }.orEmpty())
+            }
+                // The same text, modes and applicable set again (another note's set being cleared when
+                // this one opens) must not cancel a parse that cannot be interrupted and start it over.
+                .distinctUntilChanged { old, new ->
+                    old.doc === new.doc &&
+                        old.renderMode == new.renderMode &&
+                        old.mode == new.mode &&
+                        old.bareLinks == new.bareLinks
+                }
                 // Latest wins: a newer text or mode cancels a preparation in flight (which is joined
                 // first, so at most one parse runs at a time) and its result is never published.
-                .collectLatest { (doc, renderMode, mode) -> refreshReaderModel(doc, renderMode, mode) }
+                .collectLatest { refreshReaderModel(it.doc, it.renderMode, it.mode, it.bareLinks) }
         }
     }
 
-    private suspend fun refreshReaderModel(doc: Document?, renderMode: RenderMode, mode: ViewMode) {
+    private fun ReaderModel.isReusableFor(doc: Document, renderMode: RenderMode, mode: ViewMode, bare: Set<String>) =
+        content === doc.content &&
+            this.renderMode == renderMode &&
+            (this is ReaderModel.Plain || mode == ViewMode.EDITOR || readerModelBareLinks == bare)
+
+    private data class ReaderKey(
+        val doc: Document?,
+        val renderMode: RenderMode,
+        val mode: ViewMode,
+        val bareLinks: Set<String>,
+    )
+
+    private suspend fun refreshReaderModel(doc: Document?, renderMode: RenderMode, mode: ViewMode, bare: Set<String>) {
         // FIRST, before any branch: this can be called INLINE from inside `DocumentSlot.publish`
         // (Main.immediate resumes the collector synchronously when the document is set), and publish
         // still has the rest of its fields to write — the render mode, and an empty TOC. Yielding lets
@@ -705,7 +831,9 @@ constructor(
             // The same text (Save-As adopting a new identity, or a reload serving the same String):
             // reuse the model — but re-publish its TOC for this document, because a load's publish
             // resets the TOC to empty and nothing else would fill it again.
-            current != null && current.content === doc.content && current.renderMode == renderMode -> {
+            // M-160: and the same bare links. A plain model has no tree to link, and the editor does not
+            // care which set the reader's tree was built with: it keeps the model for the round trip.
+            current != null && current.isReusableFor(doc, renderMode, mode, bare) -> {
                 readerModelPreparedFor = doc.id
                 slot.setRendering(doc.id, headings = current.tocHeadings)
             }
@@ -713,9 +841,13 @@ constructor(
             // text (M-154); the reader prepares a fresh one when it comes back.
             mode == ViewMode.EDITOR && readerModelPreparedFor == doc.id -> _readerModel.value = null
             else -> {
-                _readerModel.value = null // drop the old tree before the new one is built
-                val model = withContext(cpuDispatcher) { prepareReaderModel.prepare(doc.content, renderMode) }
+                // The same text with only the bare links changed keeps the old model on screen until
+                // the new one is ready, so the reader does not blank while they arrive (M-160).
+                val sameText = current != null && current.content === doc.content && current.renderMode == renderMode
+                if (!sameText) _readerModel.value = null // drop the old tree before the new one is built
+                val model = withContext(cpuDispatcher) { prepareReaderModel.prepare(doc.content, renderMode, bare) }
                 readerModelPreparedFor = doc.id
+                readerModelBareLinks = bare
                 slot.setRendering(doc.id, headings = model.tocHeadings)
                 _readerModel.value = model
             }
@@ -1757,6 +1889,10 @@ constructor(
         viewModelScope.launch { storage.setWrapCodeLines(enabled) }
     }
 
+    fun setFullScreenReading(enabled: Boolean) {
+        viewModelScope.launch { storage.setFullScreenReading(enabled) }
+    }
+
     fun setFormattingBarEnabled(enabled: Boolean) {
         viewModelScope.launch { storage.setFormattingBarEnabled(enabled) }
     }
@@ -1985,7 +2121,9 @@ sealed class FileLoadState {
     object Success : FileLoadState()
     object Saving : FileLoadState()
     object SaveSuccess : FileLoadState(), SaveOutcome
-    data class Error(val message: String) : FileLoadState()
+
+    /** A load failed. [tooLarge]: the file is over the read limit, which the UI says in words of its own. */
+    data class Error(val message: String, val tooLarge: Boolean = false) : FileLoadState()
     data class SaveError(val message: String) :
         FileLoadState(),
         SaveOutcome

@@ -54,7 +54,7 @@ class SettingsContactRowsTest {
     fun `contact rows show their title and subtitle`() {
         setSettings()
         composeRule.onNodeWithText("Email us").performScrollTo().assertExists()
-        composeRule.onNodeWithText("pilcrowmd@gmail.com").performScrollTo().assertExists()
+        composeRule.onNodeWithText("Tell us what to build").performScrollTo().assertExists()
         composeRule.onNodeWithText("Report an issue on GitHub").performScrollTo().assertExists()
         composeRule.onNodeWithText("Opens in your browser").performScrollTo().assertExists()
     }
@@ -68,9 +68,9 @@ class SettingsContactRowsTest {
     }
 
     @Test
-    fun `tapping the email address row calls only onEmailUs`() {
+    fun `tapping the email subtitle calls only onEmailUs`() {
         setSettings()
-        composeRule.onNodeWithText("pilcrowmd@gmail.com").performScrollTo().performClick()
+        composeRule.onNodeWithText("Tell us what to build").performScrollTo().performClick()
         assertEquals(1, emailTaps)
         assertEquals(0, issueTaps)
     }

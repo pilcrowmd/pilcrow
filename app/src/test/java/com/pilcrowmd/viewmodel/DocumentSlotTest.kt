@@ -22,10 +22,10 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DocumentSlotTest {
 
-    private fun publication(content: String, uri: Uri? = null) = Publication(
+    private fun publication(content: String, uri: Uri? = null, transient: Boolean = false) = Publication(
         document = Document(uri = uri, content = content, displayName = "d.md"),
         lineEnding = "LF",
-        transient = false,
+        transient = transient,
         switchToEditor = false,
         renderMode = RenderMode.MARKDOWN,
         plainToggleAvailable = false,
@@ -107,6 +107,51 @@ class DocumentSlotTest {
         val target = Uri.parse("content://t/copy.md")
         assertFalse(slot.adoptIdentity(written, "a", target, "copy.md", transient = false))
         assertNull("B took the copy's URI", slot.document.value!!.uri)
+    }
+
+    // The closed flag starts false, so each test below first proves it is TRUE (the close took
+    // effect) and only then that the door under test put it back.
+    private fun DocumentSlot.openTransientAndClose(): DocumentId {
+        publish(claim(), publication("a", Uri.parse("content://t/a.md"), transient = true), ReplacePolicy.IF_CLEAN)
+        transientNoticeClosed.value = true
+        assertTrue("the close did not take effect", transientNoticeClosed.value)
+        return document.value!!.id
+    }
+
+    @Test
+    fun `closing the temporary-file notice sets the flag for the open document`() {
+        val slot = DocumentSlot()
+        slot.publish(slot.claim(), publication("a", transient = true), ReplacePolicy.IF_CLEAN)
+        assertFalse("the notice starts open", slot.transientNoticeClosed.value)
+        slot.transientNoticeClosed.value = true
+        assertTrue(slot.transientNoticeClosed.value)
+    }
+
+    @Test
+    fun `publishing another document brings the notice back`() {
+        val slot = DocumentSlot()
+        slot.openTransientAndClose()
+        val next = publication("b", Uri.parse("content://t/b.md"), transient = true)
+        slot.publish(slot.claim(), next, ReplacePolicy.IF_CLEAN)
+        assertFalse("the next temporary file opened with its notice closed", slot.transientNoticeClosed.value)
+    }
+
+    @Test
+    fun `closing the document brings the notice back`() {
+        val slot = DocumentSlot()
+        slot.openTransientAndClose()
+        slot.publishClose(slot.claim(), ReplacePolicy.IF_CLEAN)
+        assertFalse(slot.transientNoticeClosed.value)
+    }
+
+    @Test
+    fun `adopting a new file brings the notice back, even when the copy is still temporary`() {
+        // transient = true on the adopted file, so the banner would show again: only the reset in
+        // adoptIdentity can open it, not the document ceasing to be transient.
+        val slot = DocumentSlot()
+        val id = slot.openTransientAndClose()
+        assertTrue(slot.adoptIdentity(id, "a", Uri.parse("content://t/copy.md"), "copy.md", transient = true))
+        assertFalse(slot.transientNoticeClosed.value)
     }
 
     @Test

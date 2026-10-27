@@ -8,6 +8,8 @@ import android.util.LruCache
 import androidx.annotation.VisibleForTesting
 import io.noties.markwon.MarkwonPlugin
 import io.noties.markwon.MarkwonVisitor
+import io.noties.markwon.ext.latex.InlineMathBaselineSpan
+import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
 import io.noties.markwon.ext.latex.JLatexMathBlock
 import io.noties.markwon.ext.latex.JLatexMathNode
 import io.noties.markwon.ext.latex.JLatexMathPlugin
@@ -51,11 +53,28 @@ internal class MathSourceFallbackPlugin(private val math: JLatexMathPlugin) : Ma
         MarkwonVisitor.NodeVisitor<N> { visitor, node ->
             val latex = (node as? JLatexMathBlock)?.latex() ?: (node as? JLatexMathNode)?.latex()
             if (latex == null || parses(latex)) {
-                rendered.visit(visitor, node)
+                rendered.visit(if (node is JLatexMathNode) onBaseline(visitor) else visitor, node)
             } else {
                 appendSource(visitor, node, latex)
             }
         }
+
+    /** S8-A42: the plugin's inline span is swapped for one that aligns the formula's baseline. */
+    private fun onBaseline(visitor: MarkwonVisitor): MarkwonVisitor = object : MarkwonVisitor by visitor {
+        override fun setSpans(start: Int, spans: Any?) {
+            // The library's block span is a plain JLatexAsyncDrawableSpan; its inline one is a package-private
+            // subclass that cannot be named here, so "a subclass" is how an inline span is told from a block one.
+            val inline = spans as? JLatexAsyncDrawableSpan
+            if (inline == null || inline.javaClass == JLatexAsyncDrawableSpan::class.java) {
+                visitor.setSpans(start, spans)
+            } else {
+                visitor.setSpans(
+                    start,
+                    InlineMathBaselineSpan(visitor.configuration().theme(), inline),
+                )
+            }
+        }
+    }
 
     private fun appendSource(visitor: MarkwonVisitor, node: Node, latex: String) {
         if (node is Block) visitor.blockStart(node)

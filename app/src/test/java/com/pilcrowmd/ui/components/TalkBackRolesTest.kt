@@ -91,12 +91,6 @@ class TalkBackRolesTest {
         assertEquals(1, selected)
     }
 
-    @Test
-    fun sendUsARequestIsALabelledButton() {
-        show { GitHubIntegrationScreen(onClose = {}) }
-        button("Send us a request").assertExists()
-    }
-
     /** M-307: the X was a bare `clickable`, so TalkBack read "Close Settings" with no role. */
     @Test
     fun settingsCloseIsALabelledButton() {
@@ -112,7 +106,7 @@ class TalkBackRolesTest {
     fun settingsSectionLabelsAreHeadings() {
         show { SettingsScreen(appVersion = "1.0.0") }
         val isHeading = SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)
-        listOf("APPEARANCE", "FEEDBACK", "RENDERING").forEach { label ->
+        listOf("APPEARANCE", "FEEDBACK").forEach { label ->
             composeRule.onAllNodes(isHeading and hasText(label)).assertCountEquals(1)
         }
     }

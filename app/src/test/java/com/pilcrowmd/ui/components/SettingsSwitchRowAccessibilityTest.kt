@@ -62,6 +62,8 @@ class SettingsSwitchRowAccessibilityTest {
                         onWrapCodeLinesChanged = { toggled[WRAP] = it },
                         formattingBarEnabled = true,
                         onFormattingBarChanged = { toggled[FORMATTING_BAR] = it },
+                        fullScreenReading = false,
+                        onFullScreenReadingChanged = { toggled[FULL_SCREEN] = it },
                         appVersion = "1.0.0",
                     )
                 }
@@ -92,6 +94,9 @@ class SettingsSwitchRowAccessibilityTest {
     fun openInEditModeRowIsOneLabelledSwitch() = assertRowToggles(OPEN_IN_EDIT, OPEN_IN_EDIT, expected = true)
 
     @Test
+    fun fullScreenReadingRowIsOneLabelledSwitch() = assertRowToggles(FULL_SCREEN, FULL_SCREEN, expected = true)
+
+    @Test
     fun wrapCodeLinesRowIsOneLabelledSwitch() = assertRowToggles(WRAP, WRAP, expected = true)
 
     @Test
@@ -101,7 +106,7 @@ class SettingsSwitchRowAccessibilityTest {
     fun noToggleableNodeLacksALabel() {
         show()
         val nodes = composeRule.onAllNodes(isToggleable()).fetchSemanticsNodes()
-        assertEquals("one toggleable node per switch setting", 4, nodes.size)
+        assertEquals("one toggleable node per switch setting", 5, nodes.size)
         nodes.forEach { node ->
             val label = node.config.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }.orEmpty()
             assertTrue("toggleable node ${node.id} has no label", label.isNotBlank())
@@ -113,5 +118,6 @@ class SettingsSwitchRowAccessibilityTest {
         const val OPEN_IN_EDIT = "Open in edit mode"
         const val WRAP = "Wrap long lines in code blocks"
         const val FORMATTING_BAR = "Show formatting bar"
+        const val FULL_SCREEN = "Full-screen reading"
     }
 }

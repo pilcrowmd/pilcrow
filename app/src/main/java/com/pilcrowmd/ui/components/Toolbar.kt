@@ -37,10 +37,12 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +69,7 @@ import com.pilcrowmd.viewmodel.ViewMode
  * Home screen: the folder icon was removed so the remaining actions can hit a 42dp touch target
  * within phone width; Close returns to Home, where Open lives.
  */
+@Suppress("LongParameterList") // one callback per toolbar action
 @Composable
 fun PilcrowToolbar(
     modifier: Modifier = Modifier,
@@ -86,6 +89,10 @@ fun PilcrowToolbar(
     onTogglePlainView: () -> Unit = {},
     // M-93: present only when a folder grant would show the note's pictures.
     onShowFolderPictures: (() -> Unit)? = null,
+    // M-162b: opens the Files screen; no menu item when null.
+    onOpenFiles: (() -> Unit)? = null,
+    // S8-A43: told when the ⋮ menu opens or closes, so full-screen reading keeps the bar while it is open.
+    onMenuOpenChanged: (Boolean) -> Unit = {},
 ) {
     val c = mdColors()
     Column(
@@ -174,6 +181,8 @@ fun PilcrowToolbar(
                     plainToggleLabel = plainToggleLabel,
                     onTogglePlainView = onTogglePlainView,
                     onShowFolderPictures = onShowFolderPictures,
+                    onOpenFiles = onOpenFiles,
+                    onOpenChanged = onMenuOpenChanged,
                 )
                 // Settings moved off the toolbar to the Welcome screen.
                 // Close (X) — always the rightmost action.
@@ -310,6 +319,7 @@ private fun PopupWindowTitle(title: String) {
  * ("View as Markdown" ⇄ "View as plain text"). A 42dp target / 22dp glyph to match the
  * neighbouring [ActionIcon]s; the menu anchors to it.
  */
+@Suppress("LongParameterList") // one optional item per parameter
 @Composable
 private fun OverflowMenu(
     onSaveACopy: () -> Unit,
@@ -317,8 +327,17 @@ private fun OverflowMenu(
     plainToggleLabel: String? = null,
     onTogglePlainView: () -> Unit = {},
     onShowFolderPictures: (() -> Unit)? = null,
+    onOpenFiles: (() -> Unit)? = null,
+    onOpenChanged: (Boolean) -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val reportOpen by rememberUpdatedState(onOpenChanged)
+    val open = expanded
+    DisposableEffect(open) {
+        reportOpen(open)
+        // The bar can leave while the menu is open; then nothing is open any more.
+        onDispose { if (open) reportOpen(false) }
+    }
     val moreActions = stringResource(R.string.toolbar_more_actions)
     Box {
         IconButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.size(42.dp)) {
@@ -358,6 +377,15 @@ private fun OverflowMenu(
                     onClick = {
                         expanded = false
                         onShowFolderPictures()
+                    },
+                )
+            }
+            if (onOpenFiles != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.files_title)) },
+                    onClick = {
+                        expanded = false
+                        onOpenFiles()
                     },
                 )
             }

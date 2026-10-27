@@ -106,6 +106,7 @@ class LocalStorageManager(
 ) : StorageManager {
 
     private val lastFileUriKey = stringPreferencesKey("last_file_uri")
+    private val restoreInProgressKey = booleanPreferencesKey("restore_in_progress")
     private val lineNumbersEnabledKey = booleanPreferencesKey("line_numbers_enabled")
     private val openInEditModeKey = booleanPreferencesKey("open_in_edit_mode")
     private val recentFilesKey = stringPreferencesKey("recent_files")
@@ -116,6 +117,7 @@ class LocalStorageManager(
     private val editorFontScaleKey = floatPreferencesKey("editor_font_scale")
     private val fontSetIdKey = stringPreferencesKey("font_set_id")
     private val wrapCodeLinesKey = booleanPreferencesKey("wrap_code_lines")
+    private val fullScreenReadingKey = booleanPreferencesKey("full_screen_reading")
     private val formattingBarEnabledKey = booleanPreferencesKey("formatting_bar_enabled")
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val dismissedImageFoldersKey = stringSetPreferencesKey("dismissed_image_folders")
@@ -175,6 +177,10 @@ class LocalStorageManager(
         prefs[wrapCodeLinesKey] ?: false // Default: OFF — long lines side-scroll (M-134)
     }.distinctUntilChanged()
 
+    override val fullScreenReading: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[fullScreenReadingKey] ?: false // Default: OFF (S8-A41)
+    }
+
     override val formattingBarEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[formattingBarEnabledKey] ?: true // Default: ON (M-217)
     }.distinctUntilChanged()
@@ -196,6 +202,14 @@ class LocalStorageManager(
     override val updateNoteDismissedAt: Flow<Long?> = dataStore.data.map { prefs ->
         prefs[updateNoteDismissedAtKey]
     }.distinctUntilChanged()
+
+    override suspend fun isRestoreInProgress(): Boolean = dataStore.data.first()[restoreInProgressKey] ?: false
+
+    override suspend fun setRestoreInProgress(inProgress: Boolean) {
+        dataStore.edit { prefs ->
+            if (inProgress) prefs[restoreInProgressKey] = true else prefs.remove(restoreInProgressKey)
+        }
+    }
 
     override suspend fun saveLastFileUri(uri: Uri) {
         dataStore.edit { prefs -> prefs[lastFileUriKey] = uri.toString() }
@@ -299,6 +313,10 @@ class LocalStorageManager(
 
     override suspend fun setWrapCodeLines(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[wrapCodeLinesKey] = enabled }
+    }
+
+    override suspend fun setFullScreenReading(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[fullScreenReadingKey] = enabled }
     }
 
     override suspend fun setFormattingBarEnabled(enabled: Boolean) {

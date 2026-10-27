@@ -15,6 +15,7 @@ import com.pilcrowmd.domain.markdown.TooDeepDocument
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.rendering.PlainTextBlocks
 import com.pilcrowmd.rendering.calloutTitleSource
+import com.pilcrowmd.rendering.linkBareNotes
 import org.commonmark.node.Node
 
 /**
@@ -38,15 +39,19 @@ class PrepareReaderModelUseCase(
     /**
      * The model for [content] in [renderMode]. Never throws for a document it cannot render as
      * Markdown: it answers with the plain model and says why ([PlainReason]).
+     *
+     * [bareLinks] (M-160, K13/K14): the bare note names of this note that the resolver found a note
+     * for. They become links in the parsed tree, here, so a change of the set is a new model. A
+     * plain model has no tree, so it takes none.
      */
     // Safeguard 3: any parser failure degrades to plain text, and the reason is carried in the model
     // (PlainReason.UNRENDERABLE) for the screen to state — so nothing is swallowed silently.
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
-    fun prepare(content: String, renderMode: RenderMode): ReaderModel = when {
+    fun prepare(content: String, renderMode: RenderMode, bareLinks: Set<String> = emptySet()): ReaderModel = when {
         renderMode == RenderMode.PLAIN -> plain(content, renderMode, PlainReason.PLAIN_TEXT)
         content.length > markdownCeilingChars -> plain(content, renderMode, PlainReason.TOO_LARGE)
         else -> try {
-            markdown(content, renderMode)
+            markdown(content, renderMode, bareLinks)
         } catch (e: OutOfMemoryError) {
             // Sound only because the parse is one discardable computation: everything it allocated
             // is unreachable once this frame unwinds. A second line only — an allocation on another
@@ -64,7 +69,7 @@ class PrepareReaderModelUseCase(
     fun showsAsPlain(content: String, renderMode: RenderMode): Boolean =
         renderMode == RenderMode.PLAIN || content.length > markdownCeilingChars
 
-    private fun markdown(content: String, renderMode: RenderMode): ReaderModel {
+    private fun markdown(content: String, renderMode: RenderMode, bareLinks: Set<String>): ReaderModel {
         val parsed = parse(content)
         // A tree nested past NestingLimit.MAX_DEPTH comes back as an empty TooDeepDocument (NEW-11):
         // rendering it as Markdown would overflow the stack, so the source is shown as plain text.
@@ -75,15 +80,21 @@ class PrepareReaderModelUseCase(
         // M-227: a callout's title reads a formula or emoji as its source, as the PDF does (ReaderTree),
         // so the title painted here is the text search finds in it.
         // Issue #17: long code blocks are cut here too, by the same default search and the drawer take.
+        // S8-A31: so are long tables, for the same reason.
         val document = ReaderDocument.transform(
             parsed,
             splitLongParagraphs = false,
             inlineSource = ::calloutTitleSource,
             splitLongCodeBlocks = true,
+            splitLongTables = true,
         )
         // Everything that walks the tree runs before [detach] unlinks its blocks.
         val details = Details.sections(document)
         val anchors = HeadingAnchors.targets(document)
+        // M-160: after the anchors, so a heading's slug is made from its text as written (GitHub's rule)
+        // and a `#link` to it keeps working once the bare links arrive; before the blocks are cut loose,
+        // so the blocks, search and the TOC read the links.
+        linkBareNotes(document, bareLinks)
         val blocks = detach(document)
         return ReaderModel.Markdown(content, blocks, details, anchors, headings.headingsOf(blocks, inlineText), seams)
     }

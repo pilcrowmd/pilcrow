@@ -17,8 +17,8 @@ import org.junit.Test
  * Issue #17: [CodeBlockSplitter] cuts a long top-level code block into [CodeBlockPiece]s. What these
  * tests guard: no character is lost or moved by a cut (Safeguard 2), a cut falls only at a line end,
  * the size thresholds sit exactly where the constants say, the blocks that must stay whole stay whole
- * (front matter, Mermaid, anything not top-level), and a prefix of a block is cut where the whole block
- * is (the Edit to Read caret mapping relies on it).
+ * (front matter, a Mermaid fence within the gate, anything not top-level), and a prefix of a block is
+ * cut where the whole block is (the Edit to Read caret mapping relies on it).
  *
  * The documents are built through the parity parser, the same one search and the headings drawer use, or
  * by hand where only the splitter is under test.
@@ -205,16 +205,45 @@ class CodeBlockSplitterTest {
         assertEquals(2, blocks.size)
     }
 
+    /**
+     * S8-A31 lead 4: a Mermaid fence is drawn as a picture, so it stays whole, but only up to Mermaid's
+     * own maxTextSize. Past [CodeBlockSplitter.MERMAID_MAX_CHARS] it cannot be drawn, so it is shown as
+     * source and is cut like any long block (one TextView holding 100 KB took over a second to lay out).
+     * The fixture is 5,000 lines, over LONG_BLOCK_LINES and LONG_BLOCK_CHARS, so the gate is the only
+     * thing that can keep it whole at the limit, and one extra char is the only thing that cuts it.
+     */
     @Test
-    fun `a mermaid block is never cut, however long`() {
-        val literal = "graph TD\n" + (1..2_100).joinToString("") { "  A$it --> B$it\n" }
+    fun `a mermaid block is cut only past MERMAID_MAX_CHARS, to the char`() {
+        val atGate = lines(5_000, width = 10)
+        assertEquals("fixture: exactly the gate", CodeBlockSplitter.MERMAID_MAX_CHARS, atGate.length)
+        assertTrue("fixture: over the plain limits", lineCount(atGate) > CodeBlockSplitter.LONG_BLOCK_LINES)
+
         listOf("mermaid", "Mermaid {.wide}").forEach { info ->
-            val blocks = blocksOf(parser.parseDocument(fenced(literal, info))!!)
-            assertEquals(info, 1, blocks.size)
-            assertFalse(info, blocks.single() is CodeBlockPiece)
+            val whole = documentOf(atGate, info).also { CodeBlockSplitter.split(it) }
+            assertEquals("$info at the gate", 1, blocksOf(whole).size)
+            assertFalse("$info at the gate", blocksOf(whole).single() is CodeBlockPiece)
+
+            val over = atGate + "x"
+            val cut = documentOf(over, info).also { CodeBlockSplitter.split(it) }
+            val pieces = blocksOf(cut).map { it as CodeBlockPiece }
+            assertTrue("$info one char over the gate is cut: ${pieces.size}", pieces.size > 1)
+            assertEquals(over, pieces.joinToString("") { it.literal })
+            assertTrue(pieces.all { it.literal.length <= CodeBlockSplitter.LONG_BLOCK_CHARS })
+            assertTrue("a piece keeps the fence info", pieces.all { it.info == info })
         }
-        // The same text under another language is cut: the fixture is long enough on its own.
-        assertTrue(blocksOf(parser.parseDocument(fenced(literal, "text"))!!).all { it is CodeBlockPiece })
+    }
+
+    @Test
+    fun `a small mermaid block is untouched, and so is one nested in a list`() {
+        val small = "graph TD\n" + (1..20).joinToString("") { "  A$it --> B$it\n" }
+        val blocks = blocksOf(parser.parseDocument(fenced(small, "mermaid"))!!)
+        assertEquals(1, blocks.size)
+        assertFalse(blocks.single() is CodeBlockPiece)
+
+        // Over the gate but not top-level: the reader never routes it to the diagram, so it is not cut here.
+        val big = lines(5_100, width = 10).lines().joinToString("\n") { if (it.isEmpty()) it else "  $it" }
+        val nested = parser.parseDocument("- item\n\n  ```mermaid\n$big  ```\n")!!
+        assertFalse(containsPiece(nested))
     }
 
     @Test

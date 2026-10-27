@@ -150,6 +150,57 @@ class ReaderLinkResolverTest {
         assertEquals(emptyList<String>(), recording.links)
     }
 
+    // --- M-160: the screen's note-link handler ---
+
+    private fun inReader(handler: NoteLinkHandler?): TextView {
+        val list = RecyclerView(activity)
+        list.layoutManager = LinearLayoutManager(activity)
+        handler?.let { list.setTag(R.id.note_link_handler, it) }
+        val textView = TextView(activity)
+        list.addView(textView)
+        return textView
+    }
+
+    @Test
+    fun `a handler that takes a scheme-less link keeps it from the delegate`() {
+        val recording = Recording()
+        val seen = mutableListOf<String>()
+        val view = inReader {
+            seen += it
+            true
+        }
+        ReaderLinkResolver(recording).resolve(view, "projects/plan.md")
+        ReaderLinkResolver(recording).resolve(view, "www.example.com")
+        assertEquals(listOf("projects/plan.md", "www.example.com"), seen)
+        assertEquals(emptyList<String>(), recording.links)
+    }
+
+    @Test
+    fun `a handler that declines, or none, leaves today's behaviour`() {
+        for (handler in listOf<NoteLinkHandler?>(NoteLinkHandler { false }, null)) {
+            val recording = Recording()
+            val view = inReader(handler)
+            ReaderLinkResolver(recording).resolve(view, "other.md")
+            ReaderLinkResolver(recording).resolve(view, "www.example.com")
+            assertEquals("a note path still does nothing", listOf("www.example.com"), recording.links)
+        }
+    }
+
+    @Test
+    fun `heading, file and web links never reach the handler`() {
+        val seen = mutableListOf<String>()
+        val view = inReader {
+            seen += it
+            true
+        }
+        val recording = Recording()
+        for (link in listOf("#x", "file:///x.md", "https://example.com", "mailto:a@example.com")) {
+            ReaderLinkResolver(recording).resolve(view, link)
+        }
+        assertEquals(emptyList<String>(), seen)
+        assertEquals(listOf("https://example.com", "mailto:a@example.com"), recording.links)
+    }
+
     // --- a refusal from the platform ---
 
     @Test

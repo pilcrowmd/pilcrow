@@ -227,7 +227,10 @@ private class RowCounter : AbstractVisitor() {
     }
 
     override fun visit(fencedCodeBlock: FencedCodeBlock) {
-        if (fenceLanguage(fencedCodeBlock.info) != MERMAID_LANGUAGE) lines += linesIn(fencedCodeBlock.literal)
+        // A piece of a Mermaid fence cut for being too long to draw is shown as source, so it has lines.
+        if (fencedCodeBlock is CodeBlockPiece || fenceLanguage(fencedCodeBlock.info) != MERMAID_LANGUAGE) {
+            lines += linesIn(fencedCodeBlock.literal)
+        }
     }
 
     override fun visit(indentedCodeBlock: IndentedCodeBlock) {

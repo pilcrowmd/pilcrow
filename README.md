@@ -56,10 +56,21 @@ that looks designed rather than dumped.
   Markdown highlighting, a line-number gutter, and soft wrap.
 - **In-document search** with match highlighting and next/previous navigation.
 - **Table of contents** drawer generated from your headings, with tap-to-jump.
+- **Notes folders** – add a folder of notes and browse it in My folders; new or changed notes are
+  marked until you open them. Browsing never changes, renames or deletes your files.
+- **Links between notes** – in a notes folder, tap a link to another note to open it (at its
+  heading, if the link names one) and press Back to return.
+- **Full-screen reading** – an optional switch hides the top bar, status bar and navigation bar while
+  you read; swipe in from the edge to bring them back.
+- **Open file name** – a small line above the text names the open file, and for a note inside a
+  folder you added, the folders it sits in.
 - **YAML frontmatter** rendered as a tidy metadata card.
 - **Export to PDF** – paginated and print-styled, on white pages.
 - **Three themes** – a default dark theme, a true-black AMOLED theme and a warm-cream light theme.
 - **Per-file memory** – reopens your last file at the position you left it; keeps a recents list.
+- **Crash recovery** – while you type, a private copy of your edits is kept on the phone; if the app
+  is closed or crashes before you save, it offers to put your text back the next time you open the
+  file.
 - **Adjustable type** – independent font scaling for reader and editor.
 - **Mermaid diagrams, offline** – drawn on the phone, following the app's theme, and in
   PDF exports too. Nothing is sent anywhere. See [why there is a WebView](#why-there-is-a-webview-and-only-one).
@@ -182,7 +193,7 @@ full gate from a clean build:
   (`MarkwonRendererLargeFileTest`).
 - **Visual-regression goldens** via [Roborazzi](https://github.com/takahirom/roborazzi) – every
   Markdown sample × 3 font scales × Dark and Light, each sample in AMOLED, plus the Welcome, search
-  and GitHub-teaser screens, rendered under Robolectric and pinned to a fixed device config. Any layout or typography drift
+  and Settings screens, rendered under Robolectric and pinned to a fixed device config. Any layout or typography drift
   fails the build.
 - **Static analysis & style** – [ktlint](https://github.com/JLLeitschuh/ktlint-gradle) and
   [detekt](https://github.com/detekt/detekt), both baselined and run in the gate.
@@ -212,7 +223,6 @@ full gate from a clean build:
 PilcrowMD v1 is intentionally focused – read and edit Markdown beautifully and safely, offline.
 Directions under consideration for future releases:
 
-- Document collections / multi-file libraries.
 - Additional export targets and richer print options.
 - Wider syntax coverage (footnotes, definition lists).
 
@@ -231,6 +241,10 @@ you care about can still reach the app. Please also read our
 
 PilcrowMD is **free software**, licensed under the **GNU General Public License v3.0 or later
 (GPL-3.0-or-later)**. Copyright © 2026 pleree.
+
+PilcrowMD is GPL-3.0-or-later with an additional permission for EPL-2.0 libraries (the TextMate
+grammar engine from Eclipse TM4E and the Eclipse JDT annotations); the wording is in
+[LICENSE-EXCEPTION](LICENSE-EXCEPTION).
 
 It comes with **no warranty**. See [LICENSE](LICENSE) for the full text or
 <https://www.gnu.org/licenses/>. The copyleft license is deliberate: it keeps PilcrowMD and its

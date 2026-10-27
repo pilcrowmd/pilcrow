@@ -17,8 +17,9 @@ import com.pilcrowmd.rendering.MarkwonRenderer
 internal fun MarkwonRenderer.readerModelFor(
     content: String,
     renderMode: RenderMode = RenderMode.MARKDOWN,
+    bareLinks: Set<String> = emptySet(),
 ): ReaderModel = PrepareReaderModelUseCase(
     parse = ::parseForReader,
     headings = ParseMarkdownHeadingsUseCase(),
     inlineText = ::readerInlineText,
-).prepare(content, renderMode)
+).prepare(content, renderMode, bareLinks)

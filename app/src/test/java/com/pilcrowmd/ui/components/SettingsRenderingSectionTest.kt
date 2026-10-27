@@ -22,11 +22,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The Rendering section lists only real settings. LaTeX renders natively and cannot be switched,
- * so a static "LaTeX Math ... Built-in" row there was noise, not a setting.
+ * Settings lists only real settings. LaTeX renders natively and cannot be switched, so a static
+ * "LaTeX Math ... Built-in" row was noise, not a setting.
  *
- * The section itself and the wrap-lines row are asserted PRESENT first, so an absent "LaTeX Math"
- * cannot be the result of the section simply not being composed.
+ * The wrap-lines row is asserted PRESENT first, so an absent "LaTeX Math" cannot be the result of
+ * the screen simply not being composed.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w411dp-h891dp-night-xxhdpi")
@@ -36,7 +36,7 @@ class SettingsRenderingSectionTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun `rendering section has no static LaTeX Math row`() {
+    fun `settings has no static LaTeX Math row`() {
         composeRule.setContent {
             Box(Modifier.fillMaxSize().background(DarkColorScheme.primaryBackground)) {
                 CompositionLocalProvider(LocalMDColors provides DarkColorScheme) {
@@ -55,8 +55,6 @@ class SettingsRenderingSectionTest {
             }
         }
         composeRule.onNodeWithText("Wrap long lines in code blocks", substring = true).assertExists()
-        composeRule.onAllNodesWithText("RENDERING", substring = true, useUnmergedTree = true)
-            .assertCountEquals(1)
         composeRule.onAllNodesWithText("LaTeX Math", substring = true, useUnmergedTree = true)
             .assertCountEquals(0)
         composeRule.onAllNodesWithText("Built-in", substring = true, useUnmergedTree = true)

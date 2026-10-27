@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Settings
@@ -270,6 +271,12 @@ fun WelcomeScreen(
      * the same construction `isLoading` uses above.
      */
     loadErrorMessage: String? = null,
+    /**
+     * Why the last document was not reopened at launch, or null. Set when the previous reopen never
+     * finished (crash-loop guard); said once. Defaults to null, so every existing call site and
+     * golden renders as before.
+     */
+    notReopenedMessage: String? = null,
     onOpenFile: () -> Unit = {},
     onCreateFile: () -> Unit = {},
     onOpenAnyFile: () -> Unit = {},
@@ -290,6 +297,8 @@ fun WelcomeScreen(
      */
     showUpdateNote: Boolean = false,
     onDismissUpdateNote: () -> Unit = {},
+    // M-162b: the Files screen, for the notes folders the user added.
+    onOpenFiles: () -> Unit = {},
 ) {
     val c = mdColors()
     // Guard the destructive "Clear recents" with a confirm dialog (QA #5). rememberSaveable so the
@@ -433,6 +442,9 @@ fun WelcomeScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
+                                    // M-162b: the notes folders. Under the block, not in it: M-196 gives
+                                    // the block one position, and a row inside it would move Open.
+                                    BrowseFoldersRow(isLoading, onOpenFiles)
                                     // M-115: the restore is running and the actions above are inert —
                                     // say so, rather than leaving taps silently doing nothing. Token
                                     // colour only (Safeguard 4); rendered only while loading, so the
@@ -469,6 +481,7 @@ fun WelcomeScreen(
                                             textAlign = TextAlign.Center,
                                         )
                                     }
+                                    NotReopenedNote(notReopenedMessage)
                                     // M-177/M-174: between the fallback link and RECENT. In the slot below
                                     // the block, like the recents, so it cannot move the block (M-196).
                                     PromptSlot(
@@ -764,6 +777,22 @@ fun WelcomeScreen(
  * M-177: "Enjoying PilcrowMD?" — a card in the page, never a dialog. Both buttons hide it for good.
  * Colours from the token layer only (Safeguard 4).
  */
+/**
+ * The restore skipped the last file because it did not open cleanly last time. Plain secondary text:
+ * nothing has failed just now. Nothing is drawn, and nothing takes room, when [message] is null.
+ */
+@Composable
+private fun NotReopenedNote(message: String?) {
+    if (message == null) return
+    Spacer(Modifier.height(16.dp))
+    Text(
+        text = message,
+        color = mdColors().secondaryText,
+        fontSize = 13.sp,
+        textAlign = TextAlign.Center,
+    )
+}
+
 @Composable
 private fun RatingCard(onNotNow: () -> Unit, onRate: () -> Unit) {
     val c = mdColors()
@@ -879,6 +908,38 @@ private fun UpdateNote(onDismiss: () -> Unit) {
                 modifier = Modifier.size(18.dp),
             )
         }
+    }
+}
+
+/** M-162b: the way into the Files screen, an outline row like Create MD File. Inert while a restore runs (M-115). */
+@Composable
+private fun BrowseFoldersRow(isLoading: Boolean, onOpenFiles: () -> Unit) {
+    val c = mdColors()
+    Spacer(Modifier.height(12.dp))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .dimmedWhen(isLoading)
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, c.border, RoundedCornerShape(16.dp))
+            .clickable(enabled = !isLoading) { onOpenFiles() }
+            .padding(vertical = 14.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Folder,
+            contentDescription = null,
+            tint = c.primaryText,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = stringResource(R.string.welcome_browse_folders),
+            color = c.primaryText,
+            fontWeight = FontWeight.Medium,
+            fontSize = 16.sp,
+        )
     }
 }
 

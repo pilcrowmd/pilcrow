@@ -22,7 +22,7 @@ internal const val ISSUE_REPORT_URL = "https://github.com/pilcrowmd/pilcrow/issu
  * address instead.
  *
  * The subject is in the URI as well as in `EXTRA_SUBJECT` because Gmail ignores `EXTRA_SUBJECT` on
- * `ACTION_SENDTO` (same as `sendFeatureRequest` in GitHubIntegrationScreen). This is a try/catch and
+ * `ACTION_SENDTO`. This is a try/catch and
  * NOT a `resolveActivity` check on purpose: from API 30 package visibility makes `resolveActivity`
  * return null without a `<queries>` entry (see [openStoreListing]).
  */

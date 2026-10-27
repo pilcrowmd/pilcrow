@@ -25,6 +25,7 @@ import androidx.core.content.res.ResourcesCompat
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.EmojiShortcode
 import com.pilcrowmd.domain.markdown.FootnoteReference
+import com.pilcrowmd.domain.markdown.drawnRows
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -35,9 +36,7 @@ import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
 import io.noties.markwon.image.AsyncDrawableSpan
 import io.noties.markwon.recycler.MarkwonAdapter
 import org.commonmark.ext.gfm.tables.TableBlock
-import org.commonmark.ext.gfm.tables.TableBody
 import org.commonmark.ext.gfm.tables.TableCell
-import org.commonmark.ext.gfm.tables.TableHead
 import org.commonmark.node.Code
 import org.commonmark.node.HardLineBreak
 import org.commonmark.node.HtmlInline
@@ -45,7 +44,6 @@ import org.commonmark.node.Image
 import org.commonmark.node.Node
 import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
-import org.commonmark.ext.gfm.tables.TableRow as MdTableRow
 
 /**
  * MarkwonAdapter.Entry for GFM tables. Markwon's default TableRowSpan fits the table to the
@@ -72,6 +70,8 @@ class TableBlockEntry(
         context.resources.displayMetrics,
     ).toInt()
 
+    private val fallback = TableFallback(context, colorScheme, fontScale)
+
     override fun createHolder(inflater: LayoutInflater, parent: ViewGroup): Holder {
         val root = inflater.inflate(R.layout.adapter_table_block, parent, false)
         // root IS the HorizontalScrollView — let a wide table pan sideways inside the RecyclerView.
@@ -89,25 +89,14 @@ class TableBlockEntry(
             // would only clip formulas in print, so every formula is built there.
             val onMainThread = Looper.myLooper() == Looper.getMainLooper()
             val mathBudget = MathBudget(if (onMainThread) MAX_SYNC_FORMULAS_PER_TABLE else Int.MAX_VALUE)
-            var section: Node? = node.firstChild
-            while (section != null) {
-                val header = section is TableHead
-                if (section is TableHead || section is TableBody) {
-                    var rowNode: Node? = section.firstChild
-                    while (rowNode != null) {
-                        if (rowNode is MdTableRow) {
-                            val cells = mutableListOf<TextView>()
-                            var cellNode: Node? = rowNode.firstChild
-                            while (cellNode != null) {
-                                if (cellNode is TableCell) cells.add(buildCell(markwon, cellNode, header, mathBudget))
-                                cellNode = cellNode.next
-                            }
-                            rows.add(RowCells(cells))
-                        }
-                        rowNode = rowNode.next
-                    }
+            for (drawn in node.drawnRows()) {
+                val cells = mutableListOf<TextView>()
+                var cellNode: Node? = drawn.row.firstChild
+                while (cellNode != null) {
+                    if (cellNode is TableCell) cells.add(buildCell(markwon, cellNode, drawn.header, mathBudget))
+                    cellNode = cellNode.next
                 }
-                section = section.next
+                rows.add(RowCells(cells, drawn.repeated))
             }
             if (rows.isEmpty()) return
             highlightSearchMatches(rows, holder.bindingAdapterPosition)
@@ -126,21 +115,12 @@ class TableBlockEntry(
         } catch (e: Exception) {
             // Graceful-ignore: never crash on a malformed table (Safeguard 3).
             Log.e("TableBlockEntry", "render failed: ${e.message}", e)
-            table.removeAllViews()
-            table.addView(
-                TextView(context).apply {
-                    text = context.getString(R.string.render_table_failed)
-                    setTextColor(colorScheme.secondaryText.toArgb())
-                    // The degraded path takes the font scale like every other block. Without this it
-                    // renders at the theme default, so at any zoom other than 100% a failed table
-                    // sits at a visibly different size from the document around it — and during a
-                    // pinch it is scaled and then snaps back when the rebuild re-creates it.
-                    setTextSize(
-                        TypedValue.COMPLEX_UNIT_SP,
-                        PilcrowTypography.TABLE_FONT_SIZE_SP * fontScale,
-                    )
-                },
-            )
+            fallback.show(holder.table, node, ::plainText)
+        } catch (e: OutOfMemoryError) {
+            // An Error, so the catch above does not see it, and on the main thread it ends the process.
+            // The partly built cells are unreachable once the try is left; the text below is small.
+            Log.e("TableBlockEntry", "render ran out of memory: ${e.message}", e)
+            fallback.show(holder.table, node, ::plainText)
         }
     }
 
@@ -177,13 +157,15 @@ class TableBlockEntry(
         val blockFocused = blockPosition == searchHighlight.focusedPosition
         var occurrenceBase = 0
         for (r in rows) {
+            // Search counts a header once, in the table's first piece; a repeat is drawn, never marked.
+            if (r.repeatedHeader) continue
             for (tv in r.cells) {
                 occurrenceBase += SearchHighlighter.highlight(tv, searchHighlight, blockFocused, occurrenceBase)
             }
         }
     }
 
-    private class RowCells(val cells: List<TextView>)
+    private class RowCells(val cells: List<TextView>, val repeatedHeader: Boolean)
 
     /** How many more formulas this bind may still build on the main thread. */
     private class MathBudget(var remaining: Int)

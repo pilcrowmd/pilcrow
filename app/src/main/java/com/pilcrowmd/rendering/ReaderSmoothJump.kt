@@ -145,12 +145,15 @@ private class ReaderJump(private val recyclerView: RecyclerView) {
      * scrollbar makes, and all that a far jump needs, since it only has to tell near from far.
      */
     private fun distanceToTop(layoutManager: LinearLayoutManager, position: Int): Int? {
-        layoutManager.findViewByPosition(position)?.let { return it.top - recyclerView.paddingTop }
+        layoutManager.findViewByPosition(position)?.let {
+            return it.top - layoutManager.getTopDecorationHeight(it) - recyclerView.paddingTop
+        }
         val first = layoutManager.findFirstVisibleItemPosition()
         val firstChild = layoutManager.findViewByPosition(first) ?: return null
         val children = (0 until recyclerView.childCount).map { recyclerView.getChildAt(it) }
         val average = children.sumOf { it.height + it.verticalMarginsPx() }.toFloat() / children.size
-        return ((position - first) * average).roundToInt() + firstChild.top - recyclerView.paddingTop
+        val firstTop = firstChild.top - layoutManager.getTopDecorationHeight(firstChild)
+        return ((position - first) * average).roundToInt() + firstTop - recyclerView.paddingTop
     }
 
     private fun startNear(layoutManager: LinearLayoutManager, position: Int, estimate: Int) {

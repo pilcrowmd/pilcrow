@@ -6,6 +6,7 @@ package com.pilcrowmd.rendering
 import android.content.Context
 import com.pilcrowmd.domain.markdown.CodeBlockPiece
 import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
+import com.pilcrowmd.domain.markdown.TablePiece
 import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.domain.markdown.isFrontmatter
 import com.pilcrowmd.ui.theme.DarkColorScheme
@@ -90,6 +91,7 @@ object RecyclerAdapterEntries {
         fun <N : org.commonmark.node.Node, H : MarkwonAdapter.Holder> hideable(entry: MarkwonAdapter.Entry<N, H>) =
             if (details == null) entry else HideableEntry(entry, details)
 
+        val tables = hideable(TableBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight))
         val codeBlocks = hideable(
             ConditionalCodeBlockEntry(
                 context,
@@ -116,10 +118,9 @@ object RecyclerAdapterEntries {
             // class, so the subclass is registered too, to the same entry.
             .include(CodeBlockPiece::class.java, codeBlocks)
             // Register custom entry for table blocks (renders into HorizontalScrollView)
-            .include(
-                TableBlock::class.java,
-                hideable(TableBlockEntry(context, fontScale, fontSet, colorScheme, searchHighlight)),
-            )
+            .include(TableBlock::class.java, tables)
+            // S8-A31: the pieces of a long table, registered to the same entry for the same reason.
+            .include(TablePiece::class.java, tables)
             // Plain-text chunks: only PlainTextBlocks.build emits these (the Markdown
             // parser never does), so this entry is inert for every .md document.
             .include(
@@ -206,11 +207,12 @@ object RecyclerAdapterEntries {
             // bind routes to. The lanes below never reset it themselves.
             holder.resetMermaid()
             // Front matter → styled card; mermaid → diagram drawn on the device; everything else →
-            // normal code block, by the fence's language. All bind into the same holder.
+            // normal code block, by the fence's language. All bind into the same holder. A piece of a
+            // Mermaid fence cut for being too long to draw (S8-A31) is source: it never reaches the renderer.
             val info = fenceLanguage(node.info)
             when {
                 node.isFrontmatter() -> yamlEntry.bindHolder(markwon, holder, node)
-                info == MERMAID_LANGUAGE -> codeEntry.bindMermaid(markwon, holder, node)
+                info == MERMAID_LANGUAGE && node !is CodeBlockPiece -> codeEntry.bindMermaid(markwon, holder, node)
                 else -> codeEntry.bindHolder(markwon, holder, node)
             }
         }

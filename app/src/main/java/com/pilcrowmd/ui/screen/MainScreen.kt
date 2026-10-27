@@ -39,13 +39,21 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -86,7 +94,6 @@ import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.ui.components.AccessibleCodeEditor
 import com.pilcrowmd.ui.components.EditorController
 import com.pilcrowmd.ui.components.FileNameText
-import com.pilcrowmd.ui.components.GitHubIntegrationScreen
 import com.pilcrowmd.ui.components.HeadingsDrawer
 import com.pilcrowmd.ui.components.ImageFolderBannerView
 import com.pilcrowmd.ui.components.LicensesScreen
@@ -109,10 +116,13 @@ import com.pilcrowmd.viewmodel.FileLoadState
 import com.pilcrowmd.viewmodel.ImageFolderViewModel
 import com.pilcrowmd.viewmodel.MarkdownViewModel
 import com.pilcrowmd.viewmodel.NEW_DOCUMENT_NAME
+import com.pilcrowmd.viewmodel.NoteLinksViewModel
+import com.pilcrowmd.viewmodel.NotesFoldersViewModel
 import com.pilcrowmd.viewmodel.OrphanDraft
 import com.pilcrowmd.viewmodel.RecoveryOffer
 import com.pilcrowmd.viewmodel.ViewMode
 import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
+import com.pilcrowmd.viewmodel.openFileLine
 import kotlinx.coroutines.launch
 
 /**
@@ -130,7 +140,7 @@ import kotlinx.coroutines.launch
  * - Scroll position preserved in ViewModel (previewScroll/editorScroll)
  * - [prompts] carries the rating cards' state (M-176/M-177), kept apart from the document ViewModel
  */
-@Suppress("LongParameterList") // The screen's dependencies, each handed down from the Activity.
+@Suppress("CyclomaticComplexMethod", "LongParameterList") // the screen chain; dependencies from the Activity
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
@@ -141,6 +151,10 @@ fun MainScreen(
     mermaidRenderer: MermaidDiagramRenderer,
     // M-93: the folder banner and picker for a note's pictures. Null: no banner (tests that do not need it).
     imageFolderViewModel: ImageFolderViewModel? = null,
+    // M-162b: the Files screen (notes folders). Null: no Files entry (tests that do not need it).
+    notesFoldersViewModel: NotesFoldersViewModel? = null,
+    // M-160: links between notes in an added folder. Null: links behave as before (tests).
+    noteLinksViewModel: NoteLinksViewModel? = null,
 ) {
     // Collect state from ViewModel (collectAsStateWithLifecycle returns State<T>)
     val currentDocument = viewModel.currentDocument.collectAsStateWithLifecycle()
@@ -150,6 +164,8 @@ fun MainScreen(
     val writeInFlight = viewModel.writeInFlight.collectAsStateWithLifecycle()
     // Transient = no persisted write grant (read-only "Open with"): show a banner + route Save→Save-As.
     val transient = viewModel.transient.collectAsStateWithLifecycle()
+    // The user closed that banner for this document (in the slot: another file or Save a copy resets it).
+    val transientNoticeClosed = viewModel.transientNoticeClosed.collectAsStateWithLifecycle()
     // Stranded WAL slots (escape hatch): non-empty → persistent indicator; dialog when visible.
     val strandedSlots = viewModel.strandedSlots.collectAsStateWithLifecycle()
     val strandedDialogVisible = viewModel.strandedDialogVisible.collectAsStateWithLifecycle()
@@ -158,6 +174,7 @@ fun MainScreen(
     val recoveryOffer = viewModel.recoveryOffer.collectAsStateWithLifecycle()
     val lineNumbersEnabled = viewModel.lineNumbersEnabled.collectAsStateWithLifecycle()
     val openInEditMode = viewModel.openInEditMode.collectAsStateWithLifecycle()
+    val fullScreenReading = viewModel.fullScreenReading.collectAsStateWithLifecycle()
     // Separate preview/editor scales and selected font set.
     val previewFontScale = viewModel.previewFontScale.collectAsStateWithLifecycle()
     // How the reader renders the current document + whether the .txt toggle is offered.
@@ -240,6 +257,9 @@ fun MainScreen(
     // document was open); this layer only supplies the words, and being ViewModel state it also
     // survives rotation, which a `remember` here would not.
     val loadFailedWithNoDocument = viewModel.loadFailedWithNoDocument.collectAsStateWithLifecycle()
+    // Set when the cold-start restore skipped the remembered file because the last attempt never
+    // finished (crash-loop guard); the welcome screen says so.
+    val lastFileNotReopened = viewModel.lastFileNotReopened.collectAsStateWithLifecycle()
     var statusToastError by remember { mutableStateOf(false) }
     var statusToastVisible by remember { mutableStateOf(false) }
 
@@ -250,8 +270,24 @@ fun MainScreen(
     // Licenses screen visibility (mirror of showSettings for independent modal).
     var showLicenses by rememberSaveable { mutableStateOf(false) }
 
-    // GitHub-integration teaser sub-screen visibility (mirror of showLicenses).
-    var showGitHub by rememberSaveable { mutableStateOf(false) }
+    // M-162b: the Files screen, opened from Welcome or from the reader's menu.
+    var showFiles by rememberSaveable { mutableStateOf(false) }
+    // S8-A38: a note opened from My folders closes back to it.
+    val filesReturn = FilesReturnEffect(currentDocument.value?.uri) { showFiles = true }
+    NoteSeenEffect(notesFoldersViewModel, currentDocument.value?.uri)
+    val canGoBackLink = noteLinksViewModel?.canGoBack?.collectAsStateWithLifecycle()
+    val linkLanding = noteLinksViewModel?.landing?.collectAsStateWithLifecycle()
+    val noteFolderPath = noteLinksViewModel?.folderPath?.collectAsStateWithLifecycle()
+    NoteLinksEffect(
+        noteLinksViewModel,
+        viewModel,
+        currentDocument.value?.uri,
+        currentDocument.value?.content?.takeIf { mode.value == ViewMode.READER },
+    ) { message ->
+        statusToastText = message
+        statusToastError = true
+        statusToastVisible = true
+    }
 
     // Hoist the CodeEditor instance to MainScreen level so the native undo stack
     // survives a Reader⇄Editor mode toggle (if the CodeEditor were in Editor's remember, it would be
@@ -318,6 +354,26 @@ fun MainScreen(
         drawerState.close()
     }
 
+    // Crash-loop guard: a document counts as shown once the pane that draws it has its content (the
+    // reader its model, the editor its text) and two frames have gone by since. A crash in the first
+    // RecyclerView bind kills the process before this resumes, which is the case the ViewModel's
+    // restore flag exists to catch; only then is the flag cleared.
+    val shownDocumentId = currentDocument.value?.takeIf { doc ->
+        shownViewMode(mode.value, doc.editorSupport) == ViewMode.EDITOR || readerModel.value?.content === doc.content
+    }?.id
+    androidx.compose.runtime.LaunchedEffect(shownDocumentId) {
+        if (shownDocumentId != null) {
+            androidx.compose.runtime.withFrameNanos { }
+            androidx.compose.runtime.withFrameNanos { }
+            viewModel.onRestoredDocumentShown()
+        }
+    }
+
+    // The start screen's "not reopened" line is said once: any document on screen retires it.
+    androidx.compose.runtime.LaunchedEffect(currentDocument.value != null, lastFileNotReopened.value) {
+        if (currentDocument.value != null) viewModel.resetLastFileNotReopened()
+    }
+
     // Auto-disarm the double-back exit guard ~2s after it was armed, so a stray first Back press
     // never silently primes a later accidental exit.
     androidx.compose.runtime.LaunchedEffect(exitArmed) {
@@ -334,32 +390,31 @@ fun MainScreen(
     BackHandler {
         val intent = resolveBackIntent(
             BackNavState(
+                showFiles = showFiles,
                 searchVisible = searchVisible.value,
                 drawerOpen = drawerState.isOpen,
                 showLicenses = showLicenses,
-                showGitHub = showGitHub,
                 showSettings = showSettings,
                 hasDocument = currentDocument.value != null,
                 documentDirty = currentDocument.value?.dirty == true,
                 exitArmed = exitArmed,
                 isSaving = writeInFlight.value, // M-148: the same gate the toolbar X uses
+                canGoBackLink = canGoBackLink?.value == true,
             ),
         )
         when (intent) {
+            BackIntent.CloseFiles -> showFiles = false
             BackIntent.CloseSearch -> viewModel.setSearchVisible(false)
             BackIntent.CloseDrawer -> scope.launch { drawerState.close() }
             BackIntent.LicensesToSettings -> {
                 showLicenses = false
                 showSettings = true
             }
-            BackIntent.GitHubToSettings -> {
-                showGitHub = false
-                showSettings = true
-            }
             BackIntent.CloseSettings -> showSettings = false
             // Reuse the existing unsaved-edits guard — never invent a new save dialog here.
             BackIntent.PromptUnsavedClose -> showCloseConfirm = true
             BackIntent.None -> Unit // M-148: a write is in flight; Back is inert, like the X
+            BackIntent.LinkBack -> followLinkBack(noteLinksViewModel, viewModel, currentDocument.value?.uri)
             BackIntent.CloseFile -> viewModel.closeFile()
             BackIntent.ArmExit -> {
                 exitArmed = true
@@ -454,9 +509,13 @@ fun MainScreen(
             // reader cannot act on or the literal words "Unknown error". A plain sentence is more
             // use to them than either. The cause still reaches the log at the throw site.
             is FileLoadState.Error -> {
-                statusToastText = context.getString(R.string.main_load_failed)
+                val failed = fileLoadState.value as FileLoadState.Error
+                statusToastText = context.getString(
+                    if (failed.tooLarge) R.string.main_load_too_large else R.string.main_load_failed,
+                )
                 statusToastError = true
                 statusToastVisible = true
+                filesReturn.forget() // a note picked in My folders that failed to open is not awaited
                 viewModel.resetLoadErrorState()
             }
             else -> {}
@@ -627,6 +686,24 @@ fun MainScreen(
         saveAsLauncher.launch("Recovered ${baseName ?: "document"}.md")
     }
 
+    // S8-A41: full-screen reading. Bars are hidden only while reading a document with the switch
+    // on and no overlay or dialog up; anything else shows them as always.
+    val readingBarsOn = readingBarsWanted(
+        fullScreen = fullScreenReading.value,
+        mode = currentDocument.value?.let { shownViewMode(mode.value, it.editorSupport) } ?: mode.value,
+        hasDocument = currentDocument.value != null,
+        overlayOpen = showSettings ||
+            showLicenses ||
+            showFiles ||
+            searchVisible.value ||
+            drawerState.isOpen ||
+            showCloseConfirm ||
+            pendingOpenUri.value != null ||
+            (strandedDialogVisible.value && (strandedSlots.value.isNotEmpty() || orphanDrafts.value.isNotEmpty())) ||
+            recoveryOffer.value != null,
+    )
+    val readingBars = rememberReadingBars(readingBarsOn)
+
     // UI hierarchy.
     // background() fills the whole window (incl. behind the status bar) with the dark
     // primary background; systemBarsPadding() then insets the toolbar + content below the
@@ -658,16 +735,91 @@ fun MainScreen(
         },
         modifier = modifier.fillMaxSize(),
     ) {
+        val toolbar: @Composable () -> Unit = {
+            PilcrowToolbar(
+                currentMode = mode.value,
+                onModeSelected = { selected -> viewModel.setMode(selected) },
+                // Neither a transient doc (read-only "Open with") nor a never-saved one
+                // (M-91) can save in place → route Save to Save-As; otherwise the normal
+                // in-place save. The ViewModel refuses both cases too rather than
+                // trusting this routing — a wrong target is a data-loss bug (Safeguard 1).
+                onSave = {
+                    if (savesOnlyAsCopy()) {
+                        launchSaveAs()
+                    } else {
+                        viewModel.saveFile()
+                    }
+                },
+                onSaveACopy = { launchSaveAs() },
+                // Quiet .txt render toggle: item present only for .txt documents;
+                // label names the mode to switch TO. Viewing-only — never touches bytes.
+                plainToggleLabel = if (plainToggleAvailable.value) {
+                    if (renderMode.value == RenderMode.PLAIN) {
+                        stringResource(R.string.main_view_as_markdown)
+                    } else {
+                        stringResource(R.string.main_view_as_plain_text)
+                    }
+                } else {
+                    null
+                },
+                onTogglePlainView = { viewModel.toggleRenderMode() },
+                onShowFolderPictures = if (imageFolder?.value?.canAskForFolder == true &&
+                    mode.value == ViewMode.READER
+                ) {
+                    { imageFolderViewModel?.requestFolderAccess() }
+                } else {
+                    null
+                },
+                onClose = {
+                    // Safeguard against silent data loss: prompt if there are unsaved edits.
+                    if (currentDocument.value?.dirty == true) {
+                        showCloseConfirm = true
+                    } else {
+                        viewModel.closeFile()
+                    }
+                },
+                onSearch = {
+                    searchFocusRequest++
+                    viewModel.setSearchVisible(true)
+                },
+                onTOC = { scope.launch { drawerState.open() } },
+                onExportPdf = {
+                    // Launch SAF CREATE_DOCUMENT dialog for PDF export. Default name = the
+                    // open doc's SAF display name with its extension swapped for .pdf (a
+                    // content-URI lastPathSegment is a doc ID like "msf:47", not a name).
+                    val baseName = currentDocument.value?.displayName
+                        ?.substringBeforeLast('.')
+                        ?.takeIf { it.isNotBlank() }
+                    exportPdfLauncher.launch("${baseName ?: "document"}.pdf")
+                },
+                isSaving = writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
+                onOpenFiles = notesFoldersViewModel?.let { { showFiles = true } },
+                onUndo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.undo() }) else null,
+                onRedo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.redo() }) else null,
+                onMenuOpenChanged = { readingBars.onMenuOpenChanged(it) },
+            )
+        }
+
         // Box wrapper so the "Saved" message can stack ON TOP of the content as a true
         // overlay. (If the message lived in the Column below, its fillMaxSize would steal
         // the weight(1f) content's height and make everything vanish while it showed.)
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().edgeSwipeReveal(readingBarsOn) { readingBars.onEdgeSwipe() }) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(mdColors().primaryBackground)
-                    .systemBarsPadding()
-                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)),
+                    // Full-screen reading: no bar room at all, also while a swiped-in bar overlays the text.
+                    .then(if (readingBarsOn) Modifier else Modifier.systemBarsPadding())
+                    // A top camera hole is no longer covered by the status bar's room: keep text out of it.
+                    .windowInsetsPadding(
+                        WindowInsets.displayCutout.only(
+                            if (readingBarsOn) {
+                                WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                            } else {
+                                WindowInsetsSides.Horizontal
+                            },
+                        ),
+                    ),
             ) {
                 // Persistent stranded-WAL-slot indicator (escape hatch): shows on every screen
                 // (welcome + document) whenever recovery files await action, and opens the dialog
@@ -680,68 +832,9 @@ fun MainScreen(
                     )
                 }
                 // Toolbar only when a file is open — the welcome screen has its own Open
-                // action, so toggle/save/close would be no-ops there.
-                if (currentDocument.value != null) {
-                    PilcrowToolbar(
-                        currentMode = mode.value,
-                        onModeSelected = { selected -> viewModel.setMode(selected) },
-                        // Neither a transient doc (read-only "Open with") nor a never-saved one
-                        // (M-91) can save in place → route Save to Save-As; otherwise the normal
-                        // in-place save. The ViewModel refuses both cases too rather than
-                        // trusting this routing — a wrong target is a data-loss bug (Safeguard 1).
-                        onSave = {
-                            if (savesOnlyAsCopy()) {
-                                launchSaveAs()
-                            } else {
-                                viewModel.saveFile()
-                            }
-                        },
-                        onSaveACopy = { launchSaveAs() },
-                        // Quiet .txt render toggle: item present only for .txt documents;
-                        // label names the mode to switch TO. Viewing-only — never touches bytes.
-                        plainToggleLabel = if (plainToggleAvailable.value) {
-                            if (renderMode.value == RenderMode.PLAIN) {
-                                stringResource(R.string.main_view_as_markdown)
-                            } else {
-                                stringResource(R.string.main_view_as_plain_text)
-                            }
-                        } else {
-                            null
-                        },
-                        onTogglePlainView = { viewModel.toggleRenderMode() },
-                        onShowFolderPictures = if (imageFolder?.value?.canAskForFolder == true &&
-                            mode.value == ViewMode.READER
-                        ) {
-                            { imageFolderViewModel?.requestFolderAccess() }
-                        } else {
-                            null
-                        },
-                        onClose = {
-                            // Safeguard against silent data loss: prompt if there are unsaved edits.
-                            if (currentDocument.value?.dirty == true) {
-                                showCloseConfirm = true
-                            } else {
-                                viewModel.closeFile()
-                            }
-                        },
-                        onSearch = {
-                            searchFocusRequest++
-                            viewModel.setSearchVisible(true)
-                        },
-                        onTOC = { scope.launch { drawerState.open() } },
-                        onExportPdf = {
-                            // Launch SAF CREATE_DOCUMENT dialog for PDF export. Default name = the
-                            // open doc's SAF display name with its extension swapped for .pdf (a
-                            // content-URI lastPathSegment is a doc ID like "msf:47", not a name).
-                            val baseName = currentDocument.value?.displayName
-                                ?.substringBeforeLast('.')
-                                ?.takeIf { it.isNotBlank() }
-                            exportPdfLauncher.launch("${baseName ?: "document"}.pdf")
-                        },
-                        isSaving = writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
-                        onUndo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.undo() }) else null,
-                        onRedo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.redo() }) else null,
-                    )
+                // action, so toggle/save/close would be no-ops there. Files covers it (M-162b).
+                if (currentDocument.value != null && !showFiles) {
+                    if (!readingBarsOn) toolbar()
 
                     // Transient (read-only "Open with") banner: opened from another app, no
                     // persisted write grant → won't stay in Recents and can't save in place. Tapping
@@ -754,10 +847,11 @@ fun MainScreen(
                             enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                             onClick = { launchSaveAs() },
                         )
-                    } else if (transient.value) {
+                    } else if (transient.value && !transientNoticeClosed.value) {
                         TransientBanner(
                             enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                             onClick = { launchSaveAs() },
+                            onClose = { viewModel.closeTransientNotice() },
                         )
                     }
 
@@ -816,6 +910,8 @@ fun MainScreen(
                         onWrapCodeLinesChanged = { viewModel.setWrapCodeLines(it) },
                         formattingBarEnabled = formattingBarEnabled.value,
                         onFormattingBarChanged = { viewModel.setFormattingBarEnabled(it) },
+                        fullScreenReading = fullScreenReading.value,
+                        onFullScreenReadingChanged = { viewModel.setFullScreenReading(it) },
                         themeMode = themeMode.value,
                         onThemeSelected = { viewModel.setThemeMode(it) },
                         appVersion = aboutVersion,
@@ -830,11 +926,6 @@ fun MainScreen(
                             showSettings = false
                             showLicenses = true
                         },
-                        // Same pattern as Licenses: close Settings, open the GitHub teaser.
-                        onOpenGitHub = {
-                            showSettings = false
-                            showGitHub = true
-                        },
                     )
                 } else if (showLicenses) {
                     LicensesScreen(
@@ -847,16 +938,20 @@ fun MainScreen(
                             showSettings = true
                         },
                     )
-                } else if (showGitHub) {
-                    GitHubIntegrationScreen(
+                } else if (showFiles && notesFoldersViewModel != null) {
+                    FilesRoute(
+                        viewModel = notesFoldersViewModel,
+                        openDocumentUri = currentDocument.value?.uri,
+                        // The usual open: a document with unsaved edits asks first.
+                        onOpenNote = { uri ->
+                            filesReturn.picked(uri)
+                            viewModel.loadFile(uri)
+                            showFiles = false
+                        },
+                        onClose = { showFiles = false },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth(),
-                        // Back from the GitHub teaser returns to Settings (where the user came from).
-                        onClose = {
-                            showGitHub = false
-                            showSettings = true
-                        },
                     )
                 } else {
                     // Main content area — weight(1f) gives it exactly the space BELOW the toolbar.
@@ -882,6 +977,9 @@ fun MainScreen(
                                 // the failure actually left the user on this screen.
                                 loadErrorMessage =
                                 stringResource(R.string.main_load_failed).takeIf { loadFailedWithNoDocument.value },
+                                notReopenedMessage =
+                                stringResource(R.string.welcome_last_file_not_reopened)
+                                    .takeIf { lastFileNotReopened.value },
                                 onOpenFile = {
                                     // Default: soft-filter the picker to text/Markdown so document
                                     // files surface and binaries (PNG/PDF) don't. Providers that
@@ -913,6 +1011,7 @@ fun MainScreen(
                                     openStoreListing(context)
                                     prompts.dismissRatingCard()
                                 },
+                                onOpenFiles = { if (notesFoldersViewModel != null) showFiles = true },
                             )
                         } else {
                             // File is open: show preview or editor based on mode
@@ -952,12 +1051,28 @@ fun MainScreen(
                                         caretRevealBlock = caretReveal.value?.blockIndex ?: -1,
                                         caretRevealSeq = caretReveal.value?.seq ?: 0,
                                         onCaretRevealHandled = { viewModel.onCaretRevealHandled(it) },
-                                        onReaderMoved = viewModel::onReaderMoved,
+                                        onReaderMoved = {
+                                            readingBars.onReaderScrolled()
+                                            viewModel.onReaderMoved()
+                                        },
                                         onReaderMiddleChanged = viewModel::updateReaderMiddle,
                                         imeVisible = WindowInsets.isImeVisible,
                                         documentUri = currentDocument.value!!.uri,
                                         imageAccessKey = imageFolder?.value?.accessKey.orEmpty(),
                                         onImageTap = { imageFolderViewModel?.requestFolderAccess() },
+                                        onNoteLink = { destination ->
+                                            // Inside an added folder only; otherwise today's behaviour.
+                                            val uri = currentDocument.value?.uri
+                                            uri != null && noteLinksViewModel?.follow(uri, destination) == true
+                                        },
+                                        landOn = linkLanding?.value?.takeIf { it.uri == currentDocument.value!!.uri }
+                                            ?.let { it.heading.orEmpty() },
+                                        onLanded = { noteLinksViewModel?.onLanded() },
+                                        openFile = openFileLine(
+                                            currentDocument.value!!.displayName,
+                                            currentDocument.value!!.uri,
+                                            noteFolderPath?.value,
+                                        ),
                                     )
                                 }
                                 ViewMode.EDITOR -> {
@@ -1006,6 +1121,11 @@ fun MainScreen(
                                             onRedo = { soraCodeEditor.redo() },
                                             formattingBarEnabled = formattingBarEnabled.value,
                                             syntaxHighlighting = editorSupport == EditorSupport.HIGHLIGHTED,
+                                            openFile = openFileLine(
+                                                editorFileName,
+                                                currentDocument.value?.uri,
+                                                noteFolderPath?.value,
+                                            ),
                                         )
                                     }
                                 }
@@ -1059,7 +1179,11 @@ fun MainScreen(
                 // Save/Discard guard as Close, so switching files can't silently drop edits.
                 if (pendingOpenUri.value != null) {
                     AlertDialog(
-                        onDismissRequest = { viewModel.cancelPendingOpen() },
+                        onDismissRequest = {
+                            filesReturn.forget()
+                            viewModel.cancelPendingOpen()
+                            noteLinksViewModel?.cancelPending()
+                        },
                         containerColor = mdColors().secondarySurface,
                         titleContentColor = mdColors().primaryText,
                         textContentColor = mdColors().secondaryText,
@@ -1121,6 +1245,19 @@ fun MainScreen(
                     }
                 }
             }
+            // Full-screen reading: a swiped-in top bar overlays the text, so nothing moves under the
+            // reader's eyes. It sits below the status bar the system just drew.
+            if (readingBarsOn && readingBars.revealed) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .background(mdColors().primaryBackground)
+                        .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+                        .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+                        .restartsRevealOnTouch(readingBars),
+                ) { toolbar() }
+            }
 
             // Transient centered save-status message. Lives at the Box level (sibling of the
             // Column above) so it overlays the content instead of displacing it. Accent
@@ -1149,33 +1286,61 @@ fun MainScreen(
 
 /**
  * Banner shown below the toolbar when the open document is transient — opened read-only via
- * "Open with", so it holds no persisted write grant: it can't be saved in place. Accent (purple)
- * background with white text so it reads as an actionable prompt; the trailing "…" signals it's
- * tappable. Tapping it (like the Save button and the overflow "Save a copy") launches Save-As; it
- * never auto-pops the picker (deliberate UX decision). Colours come only from the token layer (Safeguard 4).
- * The same banner, with its own [text], marks a document read from a file that is not UTF-8 (NEW-12).
+ * "Open with", so it holds no persisted write grant: it can't be saved in place. A calm strip: the
+ * secondary surface with primary text and an accent info icon, so it informs rather than alarms; the
+ * trailing "…" signals it's tappable. Tapping the text (like the Save button and the overflow
+ * "Save a copy") launches Save-As; it never auto-pops the picker (deliberate UX decision). Colours
+ * come only from the token layer (Safeguard 4).
+ *
+ * [onClose] adds a close button at the end (48 dp target); null leaves it out. The same banner, with
+ * its own [text] and no [onClose], marks a document read from a file that is not UTF-8 (NEW-12): that
+ * one explains why saving in place is refused, so it cannot be dismissed.
  */
 @Composable
-private fun TransientBanner(
+internal fun TransientBanner(
     onClick: () -> Unit,
     enabled: Boolean = true,
     text: String = stringResource(R.string.main_banner_transient),
+    onClose: (() -> Unit)? = null,
 ) {
     val c = mdColors()
-    // Dim the accent + text while disabled (a save is in flight) so the temporarily-inert banner
+    // Dim the icon + text while disabled (a save is in flight) so the temporarily-inert banner
     // reads as deactivated rather than a live tap target.
-    val background = if (enabled) c.accent else c.accent.copy(alpha = TRANSIENT_BANNER_DISABLED_ALPHA)
-    val textColor = if (enabled) c.onAccent else c.onAccent.copy(alpha = TRANSIENT_BANNER_DISABLED_ALPHA)
-    Text(
-        text = text,
-        color = textColor,
-        fontSize = 13.sp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(background)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
+    val dim = if (enabled) 1f else TRANSIENT_BANNER_DISABLED_ALPHA
+    Column(modifier = Modifier.fillMaxWidth().background(c.border)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().background(c.secondarySurface),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .padding(start = 12.dp, end = if (onClose == null) 12.dp else 0.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = c.accent.copy(alpha = dim),
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(text = text, color = c.primaryText.copy(alpha = dim), fontSize = 13.sp)
+            }
+            if (onClose != null) {
+                IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = stringResource(R.string.main_banner_close),
+                        tint = c.secondaryText,
+                    )
+                }
+            }
+        }
+        // The 1 dp line under the strip, in the border token.
+        Spacer(Modifier.height(1.dp))
+    }
 }
 
 private const val TRANSIENT_BANNER_DISABLED_ALPHA = 0.5f

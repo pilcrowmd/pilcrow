@@ -17,10 +17,10 @@ class BackNavigationTest {
 
     // All-false root state; each test starts here and flips only the fields it exercises via copy().
     private val root = BackNavState(
+        showFiles = false,
         searchVisible = false,
         drawerOpen = false,
         showLicenses = false,
-        showGitHub = false,
         showSettings = false,
         hasDocument = false,
         documentDirty = false,
@@ -111,11 +111,6 @@ class BackNavigationTest {
     }
 
     @Test
-    fun gitHubBackToSettings() {
-        assertEquals(BackIntent.GitHubToSettings, resolveBackIntent(root.copy(showGitHub = true)))
-    }
-
-    @Test
     fun searchTakesPrecedenceOverEverything() {
         // Search bar is the most specific surface — even with a dirty document open and the drawer
         // somehow open, Back closes search first.
@@ -143,5 +138,43 @@ class BackNavigationTest {
             BackIntent.CloseSettings,
             resolveBackIntent(root.copy(showSettings = true, hasDocument = true, documentDirty = true)),
         )
+    }
+
+    // ── M-162b: the Files screen ────────────────────────────────────────────────────────────
+
+    @Test
+    fun backFromFilesClosesFiles() {
+        assertEquals(BackIntent.CloseFiles, resolveBackIntent(root.copy(showFiles = true)))
+    }
+
+    @Test
+    fun backFromFilesOverADocumentClosesFilesNotTheDocumentOrItsSearch() {
+        // Files covers the reader, its search bar included: Back closes what is on screen.
+        val overReader = root.copy(showFiles = true, hasDocument = true, documentDirty = true, searchVisible = true)
+        assertEquals(BackIntent.CloseFiles, resolveBackIntent(overReader))
+        assertEquals(
+            "control: with Files closed the same state closes the search bar",
+            BackIntent.CloseSearch,
+            resolveBackIntent(overReader.copy(showFiles = false)),
+        )
+    }
+
+    // ── M-160 K10 ────────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun backAfterFollowingALinkReturnsToThePreviousNoteBeforeClosing() {
+        val followed = root.copy(hasDocument = true, canGoBackLink = true)
+        assertEquals(BackIntent.LinkBack, resolveBackIntent(followed))
+        // A dirty note goes back too: LinkBack opens through the normal open, which prompts (K11).
+        assertEquals(BackIntent.LinkBack, resolveBackIntent(followed.copy(documentDirty = true)))
+        // Control: the same states without a followed link close, or prompt to close.
+        assertEquals(BackIntent.CloseFile, resolveBackIntent(followed.copy(canGoBackLink = false)))
+        assertEquals(
+            BackIntent.PromptUnsavedClose,
+            resolveBackIntent(followed.copy(canGoBackLink = false, documentDirty = true)),
+        )
+        // More specific surfaces and an in-flight write still come first.
+        assertEquals(BackIntent.CloseSearch, resolveBackIntent(followed.copy(searchVisible = true)))
+        assertEquals(BackIntent.None, resolveBackIntent(followed.copy(isSaving = true)))
     }
 }

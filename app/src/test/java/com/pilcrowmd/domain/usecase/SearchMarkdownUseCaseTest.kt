@@ -5,6 +5,7 @@ package com.pilcrowmd.domain.usecase
 
 import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.CodeBlockPiece
+import com.pilcrowmd.domain.markdown.CodeBlockSplitter
 import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.testing.bigParagraph
 import com.pilcrowmd.testing.fencedCode
@@ -626,6 +627,33 @@ class SearchMarkdownUseCaseTest {
         assertEquals("the nested fence and the prose", 2, matches.size)
         assertEquals(listOf(0, 0), matches.map { it.adapterPosition })
         assertEquals(listOf(0, 1), matches.map { it.occurrenceInBlock })
+    }
+
+    /**
+     * S8-A31 lead 4: a Mermaid fence past Mermaid's own size limit is shown as source, in pieces, so its
+     * text IS on screen and search must count it (the screen would otherwise paint matches the counter
+     * skips, or the counter would skip text the user can read). The needle sits in a late line, so it is
+     * in a piece after the first; the same text within the limit stays a picture and is not searchable.
+     */
+    @Test
+    fun mermaidFencePastTheDrawLimitIsSearchableInItsPieces() {
+        fun diagram(lines: Int) = buildString {
+            for (n in 1..lines) append(if (n == 4_000) "  needle$n --> B\n" else "  A$n --> B$n\n")
+        }
+        val over = diagram(5_000)
+        assertTrue("fixture: past the limit", over.length > CodeBlockSplitter.MERMAID_MAX_CHARS)
+
+        val content = "```mermaid\n$over```\n"
+        val matches = useCase.findSearchMatches(content, "needle")
+
+        assertEquals(1, matches.size)
+        assertEquals(content.indexOf("needle"), matches.single().startIndex)
+        val position = matches.single().adapterPosition
+        assertTrue("it is in a piece after the first: $position", position > 0)
+
+        val within = "```mermaid\n" + diagram(500) + "```\n"
+        assertTrue("control: within the limit it is a picture", within.length < 50_000)
+        assertEquals(emptyList<Any>(), useCase.findSearchMatches(within, "needle"))
     }
 
     /**

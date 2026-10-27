@@ -23,7 +23,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * M-309: moving between screens (Welcome, Settings, Licenses, the GitHub teaser) gave TalkBack
+ * M-309: moving between screens (Welcome, Settings, Licenses) gave TalkBack
  * nothing to announce, so a screen change was silent. Each screen's root now carries a pane title.
  *
  * Each check reads EVERY pane title in the unmerged tree and expects exactly the one list, so a
@@ -71,11 +71,5 @@ class TalkBackPaneTitlesTest {
     fun licenseDetailIsTheLicenseName() {
         show { LicenseDetailView(License(name = "IBM Plex Mono", license = "OFL-1.1"), onBack = {}) }
         assertEquals(listOf("IBM Plex Mono"), paneTitles())
-    }
-
-    @Test
-    fun gitHubTeaserIsTellUsWhatToBuild() {
-        show { GitHubIntegrationScreen(onClose = {}) }
-        assertEquals(listOf("Tell us what to build"), paneTitles())
     }
 }

@@ -54,10 +54,11 @@ class CodeBlockPiece internal constructor(val group: CodeBlockGroup, val index: 
  * PDF keeps the block whole.
  *
  * Only a block longer than [LONG_BLOCK_CHARS] or [LONG_BLOCK_LINES] is cut; a shorter one stays one
- * reader block, coloured as before. Front matter (drawn as its own card) and a Mermaid fence (drawn
- * as a picture) are never cut. Cuts fall only at line ends, so a single line longer than a piece stays
- * whole. Every cut is decided from the block's start, so a prefix of a block is cut at the same places
- * as the whole block (the Edit to Read caret mapping relies on this).
+ * reader block, coloured as before. Front matter (drawn as its own card) is never cut. A Mermaid
+ * fence (drawn as a picture) is cut only past [MERMAID_MAX_CHARS], when it is shown as source instead.
+ * Cuts fall only at line ends, so a single line longer than a piece stays whole. Every cut is decided
+ * from the block's start, so a prefix of a block is cut at the same places as the whole block (the
+ * Edit to Read caret mapping relies on this).
  */
 object CodeBlockSplitter {
     /** A block longer than this is cut. Prism4j's colour-at-bind limit ([LONG_BLOCK_CHARS] chars, NEW-99a). */
@@ -65,6 +66,13 @@ object CodeBlockSplitter {
 
     /** A block with more lines than this is cut, whatever its length (the old TextMate line limit). */
     const val LONG_BLOCK_LINES = 2_000
+
+    /**
+     * A Mermaid fence longer than this is not drawn but shown as source, cut like any long block. It is
+     * Mermaid's own default `maxTextSize`, so anything above it fails to render anyway; gating it here
+     * keeps the renderer from hashing, quoting and failing on a source that cannot be drawn.
+     */
+    const val MERMAID_MAX_CHARS = 50_000
 
     /** Lines per piece: about two screens of code on a phone. */
     const val PIECE_LINES = 100
@@ -83,8 +91,9 @@ object CodeBlockSplitter {
     }
 
     private fun isCut(block: FencedCodeBlock): Boolean {
-        if (block.isFrontmatter() || fenceLanguage(block.info) == MERMAID_LANGUAGE) return false
+        if (block.isFrontmatter()) return false
         val literal = block.literal ?: return false
+        if (fenceLanguage(block.info) == MERMAID_LANGUAGE) return literal.length > MERMAID_MAX_CHARS
         return literal.length > LONG_BLOCK_CHARS || lineCount(literal) > LONG_BLOCK_LINES
     }
 

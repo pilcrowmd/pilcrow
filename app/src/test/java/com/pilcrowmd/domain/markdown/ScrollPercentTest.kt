@@ -166,6 +166,19 @@ class ScrollPercentTest {
         assertArrayEquals(intArrayOf(0, 0, 0, 0), c.lines)
     }
 
+    /** S8-A31: past the draw limit a diagram is shown as source in pieces, so it has the lines of any code block. */
+    @Test
+    fun `a diagram too long to draw counts its lines like any code block`() {
+        val source = (1..5_100).joinToString("") { "  A$it --> B$it\n" }
+        assertTrue("fixture: past the limit", source.length > CodeBlockSplitter.MERMAID_MAX_CHARS)
+
+        val diagram = counts("```mermaid\n$source```").lines.sum()
+        val code = counts("```text\n$source```").lines.sum()
+
+        assertTrue("fixture: the control has lines", code > 5_000)
+        assertEquals(code, diagram)
+    }
+
     @Test
     fun `a table counts its rows`() {
         val c = counts("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |")

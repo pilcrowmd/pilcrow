@@ -7,6 +7,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-27
+
+### Added
+
+- **Notes folders.** Add a folder of notes and browse it in the new My folders screen, from Welcome
+  ("My folders") or from the reader's menu. Folders stay in the order you added them, the list
+  updates when files change, and new or updated notes carry a small mark until you open them.
+  Closing a note you opened there takes you back to My folders. Adding or browsing a folder never
+  changes, renames or deletes your files.
+- **Links between notes.** In a notes folder, tap a link to another note to open it, at its heading
+  if the link names one, and press Back to return to the note you came from. Links to files with
+  spaces in their names work too.
+- **The name of the open file now shows above the text.** For a note inside a folder you added,
+  it also shows the folders it sits in.
+- **Full-screen reading.** A new switch in Settings hides the top bar, the status bar and the
+  navigation bar while you read. Swipe in from the top or bottom edge to bring them back for a few
+  seconds; the top bar stays while its ⋮ menu is open. It is off until you turn it on.
+
+### Fixed
+
+- **Formulas inside a line of text now sit on the same line as the words.** Before, a formula such as
+  `$x_1$` or `$\frac{a}{b}$` could be drawn a few pixels lower or higher than the text around it.
+- **Very large files, tables or diagrams no longer crash the app, and a file that crashed it is not
+  reopened at start.** A file over 20 MiB (about 21 MB) now shows "This file is too large to open"
+  instead.
+- **Back on a license page now returns to the list of licenses.**
+
+### Changed
+
+- **Settings: all switches in one place, and one Email us entry for ideas and questions.**
+- **The notice for files opened from another app can now be closed, and looks calmer.**
+- **The Open source licenses screen now shows the Eclipse Public License text, and the extra
+  permission for the EPL libraries.**
+
 ## [1.0.17] - 2026-10-24
 
 ### Added

@@ -31,6 +31,13 @@ READER TOOLS
 - Remembers where you stopped reading, per file
 - Open .md files straight from your file manager or an email attachment
 - Adjustable text size and a choice of reading fonts
+- Full-screen reading: hide the top bar, status bar and navigation bar while you read
+
+NOTES FOLDERS
+
+- Add a folder of notes and browse it in My folders. New or changed notes are marked until you open them
+- Tap a link to another note to open it, and press Back to return
+- Browsing never changes, renames or deletes your files
 
 MADE FOR
 

@@ -15,7 +15,6 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.model.ThemeMode
-import com.pilcrowmd.ui.components.GitHubIntegrationScreen
 import com.pilcrowmd.ui.components.SettingsScreen
 import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
@@ -30,29 +29,23 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Visual-regression goldens for the feature-request surface (view-layer only):
- *  - `settings_github_card_*` — the full Settings screen (tall viewport so the whole column is in
- *    frame), guarding the Feedback section's "Tell us what to build" card and the Rendering
- *    section label. There is deliberately NO badge on the card: no date, no date-shaped badge;
- *  - `github_integration_screen_*` — the request sub-screen (heading, copy, accent button).
- * Both in Dark, AMOLED (M-92) and Light; the Settings golden has the matching theme selected. A
- * future change to the card or screen layout fails the verify task.
+ * Visual-regression goldens for the full Settings screen at 1.0 font scale (tall viewport so the
+ * whole column is in frame), in Dark, AMOLED (M-92) and Light, each with the matching colour scheme:
+ *  - `settings_rate_card_*` — the Feedback section with the Play-only "Rate PilcrowMD" card (M-176);
+ *  - `settings_about_release_month_*` — About with the longest version label (M-174).
+ * Together they also pin the 1.0 look of the whole screen.
  *
  * NOTE: these are PIXEL goldens and assert nothing textually. Re-recording them is what makes a
- * copy change "pass", so a green verify after a re-record proves nothing on its own — the recorded
+ * copy change "pass", so a green verify after a re-record proves nothing on its own: the recorded
  * PNGs must be looked at by a human in the diff (M-56).
  *
  *   Record baseline:  ./gradlew recordRoborazziDebug
  *   Verify (gate):    ./gradlew verifyRoborazziDebug
- *
- * Theme is driven by the provided color scheme (LocalMDColors), not system night mode, so both
- * goldens render under the one pinned config. The tall height keeps the scrolling Settings column
- * fully in the captured viewport.
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w411dp-h1600dp-night-xhdpi")
-class GitHubTeaserScreenshotTest(private val themeMode: ThemeMode) {
+class SettingsScreenshotTest(private val themeMode: ThemeMode) {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -75,27 +68,8 @@ class GitHubTeaserScreenshotTest(private val themeMode: ThemeMode) {
         ThemeMode.LIGHT -> "light"
     }
 
-    @Test
-    fun settingsGithubCard() {
-        val scheme = colorScheme()
-        composeRule.setContent {
-            Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
-                CompositionLocalProvider(LocalMDColors provides scheme) {
-                    SettingsScreen(appVersion = "1.0.0", themeMode = themeMode)
-                }
-            }
-        }
-        drainMainLooper()
-        composeRule.onRoot().captureRoboImage(
-            filePath = "src/test/screenshots/settings_github_card_${suffix()}.png",
-            roborazziOptions = roborazziOptions,
-        )
-    }
-
     /**
-     * M-176: the "Rate PilcrowMD" card under "Tell us what to build", as a Play install sees it.
-     * A NEW golden: [settingsGithubCard] renders with the gate at its default (false) and must stay
-     * byte-identical — if it changes, the gate is wrong.
+     * M-176: the "Rate PilcrowMD" card under the Feedback entries, as a Play install sees it.
      */
     @Test
     fun settingsRateCard() {
@@ -134,23 +108,6 @@ class GitHubTeaserScreenshotTest(private val themeMode: ThemeMode) {
         drainMainLooper()
         composeRule.onRoot().captureRoboImage(
             filePath = "src/test/screenshots/settings_about_release_month_${suffix()}.png",
-            roborazziOptions = roborazziOptions,
-        )
-    }
-
-    @Test
-    fun gitHubIntegrationScreen() {
-        val scheme = colorScheme()
-        composeRule.setContent {
-            Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
-                CompositionLocalProvider(LocalMDColors provides scheme) {
-                    GitHubIntegrationScreen(onClose = {})
-                }
-            }
-        }
-        drainMainLooper()
-        composeRule.onRoot().captureRoboImage(
-            filePath = "src/test/screenshots/github_integration_screen_${suffix()}.png",
             roborazziOptions = roborazziOptions,
         )
     }

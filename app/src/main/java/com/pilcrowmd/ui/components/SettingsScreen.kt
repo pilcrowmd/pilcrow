@@ -45,7 +45,6 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Nightlight
 import androidx.compose.material.icons.outlined.OpenInNew
@@ -116,6 +115,8 @@ fun SettingsScreen(
     onWrapCodeLinesChanged: (Boolean) -> Unit = {},
     formattingBarEnabled: Boolean = true,
     onFormattingBarChanged: (Boolean) -> Unit = {},
+    fullScreenReading: Boolean = false,
+    onFullScreenReadingChanged: (Boolean) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.DARK,
     onThemeSelected: (ThemeMode) -> Unit = {},
     appVersion: String = "",
@@ -124,7 +125,6 @@ fun SettingsScreen(
     onRate: () -> Unit = {},
     onClose: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
-    onOpenGitHub: () -> Unit = {},
     onEmailUs: () -> Unit = {},
     onReportIssue: () -> Unit = {},
 ) {
@@ -331,29 +331,85 @@ fun SettingsScreen(
             }
         }
 
+        CardGap()
+        // M-134: a setting, default OFF, because issue #8 asked for both behaviours — wrapping, and
+        // keeping side-scroll. The default was promised in public; it is not a tuning knob.
+        SettingsCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(value = wrapCodeLines, role = Role.Switch, onValueChange = onWrapCodeLinesChanged),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    CardTitle(stringResource(R.string.settings_wrap_code_lines))
+                    Text(
+                        text = stringResource(R.string.settings_wrap_code_lines_summary),
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(
+                    checked = wrapCodeLines,
+                    onCheckedChange = null,
+                    modifier = Modifier.scale(0.8f),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = c.primaryText,
+                        checkedTrackColor = c.accent,
+                        uncheckedThumbColor = c.secondaryText,
+                        uncheckedTrackColor = c.secondarySurface,
+                    ),
+                )
+            }
+        }
+
+        CardGap()
+        // S8-A41: off by default, so reading looks exactly as before until the reader asks.
+        SettingsCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(
+                        value = fullScreenReading,
+                        role = Role.Switch,
+                        onValueChange = onFullScreenReadingChanged,
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    CardTitle(stringResource(R.string.settings_full_screen_reading))
+                    Text(
+                        text = stringResource(R.string.settings_full_screen_reading_summary),
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(
+                    checked = fullScreenReading,
+                    onCheckedChange = null,
+                    modifier = Modifier.scale(0.8f),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = c.primaryText,
+                        checkedTrackColor = c.accent,
+                        uncheckedThumbColor = c.secondaryText,
+                        uncheckedTrackColor = c.secondarySurface,
+                    ),
+                )
+            }
+        }
+
         Spacer(Modifier.height(18.dp))
 
         // ───────────── FEEDBACK ─────────────
         SectionLabel(stringResource(R.string.settings_section_feedback))
         InfoCard(
-            leadingIcon = Icons.Outlined.Lightbulb,
-            title = stringResource(R.string.settings_request_feature),
-            subtitle = stringResource(R.string.settings_request_feature_summary),
-            onClick = onOpenGitHub,
-            trailing = {
-                Icon(
-                    imageVector = Icons.Outlined.ChevronRight,
-                    contentDescription = null,
-                    tint = c.secondaryText,
-                    modifier = Modifier.size(20.dp),
-                )
-            },
-        )
-        CardGap()
-        InfoCard(
             leadingIcon = Icons.Outlined.MailOutline,
             title = stringResource(R.string.settings_email_us),
-            subtitle = CONTACT_EMAIL,
+            subtitle = stringResource(R.string.settings_email_us_summary),
             onClick = onEmailUs,
             trailing = {
                 Icon(
@@ -397,43 +453,6 @@ fun SettingsScreen(
                     )
                 },
             )
-        }
-
-        Spacer(Modifier.height(18.dp))
-
-        // ───────────── RENDERING ─────────────
-        SectionLabel(stringResource(R.string.settings_section_rendering))
-        // M-134: a setting, default OFF, because issue #8 asked for both behaviours — wrapping, and
-        // keeping side-scroll. The default was promised in public; it is not a tuning knob.
-        SettingsCard {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .toggleable(value = wrapCodeLines, role = Role.Switch, onValueChange = onWrapCodeLinesChanged),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    CardTitle(stringResource(R.string.settings_wrap_code_lines))
-                    Text(
-                        text = stringResource(R.string.settings_wrap_code_lines_summary),
-                        color = c.secondaryText,
-                        fontSize = 12.sp,
-                    )
-                }
-                Switch(
-                    checked = wrapCodeLines,
-                    onCheckedChange = null,
-                    modifier = Modifier.scale(0.8f),
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = c.primaryText,
-                        checkedTrackColor = c.accent,
-                        uncheckedThumbColor = c.secondaryText,
-                        uncheckedTrackColor = c.secondarySurface,
-                    ),
-                )
-            }
         }
 
         Spacer(Modifier.height(18.dp))

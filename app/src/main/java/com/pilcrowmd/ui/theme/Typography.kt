@@ -128,6 +128,14 @@ object PilcrowTypography {
     const val CODE_BLOCK_FONT_SIZE_SP: Float = 14f
 
     /**
+     * Caption font size: the line that names the open file.
+     * Base value: 12sp, the smallest size the screens use for secondary text.
+     * Consumed: OpenFileCaption.kt (the editor's line: a Compose Text, so it follows the system font size
+     * only) and ReaderOpenFileHeader.kt (the reader's line, times the reader's font scale).
+     */
+    const val CAPTION_FONT_SIZE_SP: Float = 12f
+
+    /**
      * Footnote definition font size — one step down from body prose, so a note reads as an aside
      * without becoming unreadable at the 0.85 minimum font scale.
      * Base value: 15sp.

@@ -112,7 +112,8 @@ class JumpControlsTalkBackTest {
         val above = composeRule.onNodeWithText(ABOVE).fetchSemanticsNode().id
         val top = composeRule.onNodeWithContentDescription(SCROLL_TO_TOP).fetchSemanticsNode().id
         val bottom = composeRule.onNodeWithContentDescription(SCROLL_TO_BOTTOM).fetchSemanticsNode().id
-        val list = recyclerView().parent as View
+        // RecyclerView sits in the reader frame (S8-A40); the interop view Compose links is the frame's parent.
+        val list = recyclerView().parent.parent as View
 
         assertEquals("after the text above comes Scroll to top", top, nodeInfo(above).extras.getInt(BEFORE, NONE))
         assertEquals("then Scroll to bottom", bottom, nodeInfo(top).extras.getInt(BEFORE, NONE))

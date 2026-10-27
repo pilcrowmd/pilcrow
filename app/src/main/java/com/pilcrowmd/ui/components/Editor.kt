@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.res.ResourcesCompat
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.folders.OpenFileLine
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -78,6 +79,9 @@ private const val GUTTER_DIVIDER_MARGIN_LEFT_DP = 6f
 private const val GUTTER_DIVIDER_MARGIN_RIGHT_DP = 8f
 
 @Composable
+// Baselined before S8-A40; the signature is the baseline key, so the new openFile
+// parameter needs this suppress.
+@Suppress("LongParameterList", "CyclomaticComplexMethod")
 fun MarkdownEditor(
     modifier: Modifier = Modifier,
     content: String,
@@ -99,6 +103,9 @@ fun MarkdownEditor(
     codeEditorInstance: CodeEditor? = null,
     formattingBarEnabled: Boolean = false,
     syntaxHighlighting: Boolean = true,
+    // The line that names the open file, pinned above the editor (Sora has no header row to scroll
+    // away); null shows none.
+    openFile: OpenFileLine? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -153,6 +160,7 @@ fun MarkdownEditor(
             .background(c.primaryBackground)
             .imePadding(),
     ) {
+        if (openFile != null) OpenFileCaption(openFile)
         AndroidView(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             factory = { context ->

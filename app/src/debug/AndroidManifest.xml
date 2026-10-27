@@ -3,17 +3,22 @@
 <!-- Debug-only manifest. Merged into debug builds ONLY; absent from release. Registers the
      crash-injection receiver (save crash-recovery demo), the fail-next-save receiver
      (failed-save UX demo) and the strand receiver (stranded-WAL-slot escape-hatch demo)
-     used to verify the Essential Safeguards on a device. -->
+     used to verify the Essential Safeguards on a device. Each is guarded by android.permission.DUMP:
+     the adb shell user holds it (so `adb shell am broadcast -n ...` keeps working), third-party
+     apps cannot obtain it. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <receiver
             android:name=".debug.DebugWalReceiver"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <receiver
             android:name=".debug.DebugFailSaveReceiver"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <receiver
             android:name=".debug.DebugStrandReceiver"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>

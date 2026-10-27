@@ -20,6 +20,8 @@
     <string name="main_toast_not_saved_pick_new_file">Not saved: pick a new file for the copy</string>
     <!-- Toast and welcome-screen message when a file fails to open. Full sentence. -->
     <string name="main_load_failed">Couldn\'t open that file</string>
+    <!-- Status toast when a file is over the read limit (20 MiB). Full sentence. -->
+    <string name="main_load_too_large">This file is too large to open.</string>
     <!-- Status toast after a successful PDF export. Past-tense adjective used as a status word. -->
     <string name="main_toast_exported">Exported</string>
     <!-- Status toast after a failed PDF export. Full phrase, status label. -->
@@ -29,6 +31,9 @@
     <string name="main_banner_not_utf8">This file isn\'t UTF-8, so saving would change it.\nTap to Save a copy…</string>
     <!-- Banner under the toolbar for a file opened from another app with no write permission. Two lines (\n); the second is a tappable call to action. -->
     <string name="main_banner_transient">Temporary file opened from another app.\nTap to Save a copy…</string>
+
+    <!-- Content description (TalkBack) of the button that closes the "temporary file" banner. Short imperative. -->
+    <string name="main_banner_close">Close notice</string>
 
     <!-- Notice above the reader: the document is too big to format, so it shows as plain text. Full sentence. -->
     <string name="main_plain_notice_too_large">This document is too large to format on this device, so it is shown as plain text.</string>
@@ -65,6 +70,10 @@
     <string name="main_pane_editor">Editor</string>
     <!-- Pane title spoken by TalkBack: the mode, then the open file name. %1$s is Reader or Editor, %2$s is the file name. -->
     <string name="main_pane_title">%1$s, %2$s</string>
+    <!-- The line above the text that names the open file, spoken by TalkBack. %1$s is the folder names ("Notes, projects"), %2$s the file name. -->
+    <string name="main_open_file_description">File: %1$s, %2$s</string>
+    <!-- Same, for a file that was not opened from My folders. %1$s is the file name. -->
+    <string name="main_open_file_description_plain">File: %1$s</string>
 
     <!-- Toolbar overflow item: switch a .txt file to Markdown rendering. Menu item label. -->
     <string name="main_view_as_markdown">View as Markdown</string>
@@ -159,6 +168,8 @@
 
     <!-- Progress line under the buttons while the last document is restored. -->
     <string name="welcome_loading_last_document">Opening your last document…</string>
+    <!-- Line on the start screen when the last file was not reopened because the previous reopen never finished. Full sentence. -->
+    <string name="welcome_last_file_not_reopened">Your last file was not reopened because it did not open cleanly.</string>
     <!-- Subtitle under the wordmark. -->
     <string name="welcome_tagline">Beautiful Markdown Reading</string>
     <!-- Primary button (verb phrase, imperative): opens the file picker for a Markdown file. -->
@@ -275,8 +286,6 @@
     <string name="settings_section_appearance">Appearance</string>
     <!-- SettingsScreen: section heading, shown in capitals by the code (noun). -->
     <string name="settings_section_feedback">Feedback</string>
-    <!-- SettingsScreen: section heading, shown in capitals by the code (noun). -->
-    <string name="settings_section_rendering">Rendering</string>
 
     <!-- SettingsScreen: card title for the light/dark/AMOLED choice (noun). -->
     <string name="settings_theme">Theme</string>
@@ -304,12 +313,15 @@
     <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
     <string name="settings_wrap_code_lines_summary">In reading mode, wrap instead of scrolling sideways</string>
 
-    <!-- SettingsScreen: card title that opens the feature-request screen (verb phrase, imperative). -->
-    <string name="settings_request_feature">Tell us what to build</string>
-    <!-- SettingsScreen: subtitle under the feature-request card (sentence). -->
-    <string name="settings_request_feature_summary">Browsing Markdown from your GitHub repos is one thing people have asked for.</string>
+    <!-- SettingsScreen: switch title (noun phrase). Full-screen means the top bar and the Android system bars are hidden while reading. -->
+    <string name="settings_full_screen_reading">Full-screen reading</string>
+    <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
+    <string name="settings_full_screen_reading_summary">Hide the top bar and navigation bar while reading</string>
+
     <!-- SettingsScreen: card title that opens an email to the developer (verb phrase, imperative). -->
     <string name="settings_email_us">Email us</string>
+    <!-- SettingsScreen: subtitle of the Email us card; ideas and questions go there (verb phrase, imperative). -->
+    <string name="settings_email_us_summary">Tell us what to build</string>
     <!-- SettingsScreen: card title that opens the GitHub issue form (verb phrase, imperative). -->
     <string name="settings_report_issue">Report an issue on GitHub</string>
     <!-- SettingsScreen: subtitle of the report-issue card; it opens a browser (sentence). -->
@@ -373,21 +385,6 @@
     <!-- LicensesScreen: fallback shown when a dependency entry has no project name or no licence (adjective, placeholder). -->
     <string name="licenses_unknown">Unknown</string>
 
-    <!-- GitHubIntegrationScreen: header and card title, the same words in both places (imperative verb phrase). -->
-    <string name="github_title">Tell us what to build</string>
-    <!-- GitHubIntegrationScreen: first paragraph under the title (sentence). -->
-    <string name="github_intro">What gets built next is decided by what people ask for. This is how you ask.</string>
-    <!-- GitHubIntegrationScreen: second paragraph, names an example request; not a promise (sentence). -->
-    <string name="github_body">Opening Markdown straight from a GitHub repository is one thing people have asked for. If that\'s what you want, say so — or tell us something else entirely. Describing the workflow you have in mind helps most.</string>
-    <!-- GitHubIntegrationScreen: label of the button that opens the email composer (verb phrase, imperative). -->
-    <string name="github_request_button">Send us a request</string>
-    <!-- GitHubIntegrationScreen: small note under the button (sentence). -->
-    <string name="github_send_hint">Opens your email app — nothing is sent unless you tap send.</string>
-    <!-- GitHubIntegrationScreen: toast when no email app can open. %1$s is the developer's email address, which stays as written. -->
-    <string name="github_no_email_app">No email app found — write to %1$s</string>
-    <!-- GitHubIntegrationScreen: content description of the back arrow in the header (verb command, closes the screen). -->
-    <string name="github_close">Close</string>
-
     <!-- StoreListing: the rating ask under the Rate card, shown on Settings and Welcome (sentence). -->
     <string name="store_rating_ask">A rating on Google Play helps others find it and keeps this free app going.</string>
 
@@ -431,4 +428,79 @@
     <string name="render_font_set_book">Book</string>
     <!-- Name of the Modern reading font set, shown on its option in Settings. Adjective, a font-set name. -->
     <string name="render_font_set_modern">Modern</string>
+    <!-- Grey text after a notes folder's name when two added folders share a name and the
+         folder sits at the top of a storage volume. -->
+    <string name="folder_source_internal">Internal storage</string>
+    <string name="folder_source_sd">SD card</string>
+    <!-- M-162b: the Files screen (notes folders, spec sections 2, 3 and 3b). -->
+    <string name="files_title">My folders</string>
+    <string name="files_back">Back</string>
+    <string name="files_add_folder">Add folder</string>
+    <string name="files_more">More actions</string>
+    <string name="files_mark_all_seen">Mark all as seen</string>
+    <string name="files_remove_folder">Remove folder</string>
+    <string name="files_section_folders">Folders</string>
+    <string name="files_section_markdown">Markdown files</string>
+    <string name="files_selected">Selected</string>
+    <string name="files_folder_unavailable">unavailable</string>
+    <string name="files_no_folders_title">No folders added</string>
+    <string name="files_no_folders_body">Add a folder to browse Markdown files.</string>
+    <string name="files_unavailable">Folder unavailable. It moved or its permission was removed.</string>
+    <string name="files_find_again">Find again</string>
+    <string name="files_remove">Remove</string>
+    <string name="files_no_notes">No Markdown files in this folder.</string>
+    <string name="files_loading">Loading</string>
+    <string name="files_message_already_listed">That folder is already in the list.</string>
+    <string name="files_message_not_a_folder">Only folders can be added.</string>
+    <string name="files_message_permission_refused">Android did not allow access to this folder.</string>
+    <!-- The letter inside a note's mark: New, Updated (M1, M2). -->
+    <string name="files_mark_new_letter">N</string>
+    <string name="files_mark_updated_letter">U</string>
+    <!-- The accent line under a marked note (M8, section 6 Android). %1$s: a short time, e.g. "12 min". -->
+    <string name="files_added_ago">added %1$s ago</string>
+    <string name="files_updated_ago">updated %1$s ago</string>
+    <string name="files_added_just_now">added just now</string>
+    <string name="files_updated_just_now">updated just now</string>
+    <plurals name="files_minutes_short">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <plurals name="files_hours_short">
+        <item quantity="one">%d h</item>
+        <item quantity="other">%d h</item>
+    </plurals>
+    <plurals name="files_days_short">
+        <item quantity="one">%d d</item>
+        <item quantity="other">%d d</item>
+    </plurals>
+    <!-- TalkBack (M8): the same times in full words. -->
+    <plurals name="files_minutes_long">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+    <plurals name="files_hours_long">
+        <item quantity="one">%d hour</item>
+        <item quantity="other">%d hours</item>
+    </plurals>
+    <plurals name="files_days_long">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+    <!-- TalkBack for a note row. %1$s: the note's name; %2$s: a long time, e.g. "12 minutes". -->
+    <string name="files_note_new_ago">%1$s, new, added %2$s ago</string>
+    <string name="files_note_updated_ago">%1$s, updated, %2$s ago</string>
+    <string name="files_note_new_just_now">%1$s, new, added just now</string>
+    <string name="files_note_updated_just_now">%1$s, updated, just now</string>
+    <!-- TalkBack for a subfolder row. %1$s: the folder's name. -->
+    <string name="files_folder_expanded">%1$s, folder, expanded</string>
+    <string name="files_folder_collapsed">%1$s, folder, collapsed</string>
+    <plurals name="files_marked_notes">
+        <item quantity="one">%d marked note</item>
+        <item quantity="other">%d marked notes</item>
+    </plurals>
+    <!-- The Welcome screen's way into the Files screen, and the reader menu's. -->
+    <string name="welcome_browse_folders">My folders</string>
+    <!-- M-160: a followed link that opens nothing (K7, K8). -->
+    <string name="note_link_cannot_open">Can\'t open this file</string>
+    <string name="note_link_not_found">Note not found: %1$s</string>
 </resources>

@@ -49,4 +49,9 @@
       instead of the two moving the editor against each other.
     -->
     <item name="editor_reveal" type="id" />
+    <!--
+      M-160: what a tap on a link to another note does (a NoteLinkHandler), on the reader's
+      RecyclerView, so the link span reaches the screen without a global callback.
+    -->
+    <item name="note_link_handler" type="id" />
 </resources>

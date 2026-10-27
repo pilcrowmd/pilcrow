@@ -36,7 +36,9 @@ fun RecyclerView.currentScrollAnchor(): ScrollAnchor {
     val lm = layoutManager as? LinearLayoutManager ?: return ScrollAnchor()
     val index = lm.findFirstVisibleItemPosition()
     if (index == RecyclerView.NO_POSITION) return ScrollAnchor()
-    val top = lm.findViewByPosition(index)?.top ?: 0
+    // The top of the item together with what is reserved above it (the open-file line over block 0),
+    // which is what scrollToPositionWithOffset counts from; an item with no such room is unchanged.
+    val top = lm.findViewByPosition(index)?.let { it.top - lm.getTopDecorationHeight(it) } ?: 0
     return ScrollAnchor(index, top - paddingTop)
 }
 

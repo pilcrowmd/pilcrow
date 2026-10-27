@@ -105,6 +105,11 @@ internal class DocumentSlot {
     private val _transient = MutableStateFlow(false)
     val transient: StateFlow<Boolean> = _transient.asStateFlow()
 
+    // The user closed the "temporary file" notice for THIS document. In memory only, and retired by
+    // every door that gives the slot a different document or a different file, so a later temporary
+    // file always shows its notice again.
+    val transientNoticeClosed = MutableStateFlow(false)
+
     val mode = MutableStateFlow<ViewMode>(ViewMode.READER)
 
     private val _renderMode = MutableStateFlow(RenderMode.MARKDOWN)
@@ -162,6 +167,8 @@ internal class DocumentSlot {
         val keptCaret = publication.document.uri?.let { sessionCarets[it] }
         // Before the document: a collector of it can resume inline, inside this publish, and reads this.
         editorCursorFromSession = keptCaret != null
+        // Before the document, so whoever sees the new document sees its notice open.
+        transientNoticeClosed.value = false
         _document.value = publication.document
         _transient.value = publication.transient
         editorCursor.value = keptCaret?.coerceAtMost(publication.document.content.length) ?: 0
@@ -183,6 +190,7 @@ internal class DocumentSlot {
         editorShownOnDocument = false
         _document.value = null
         _transient.value = false
+        transientNoticeClosed.value = false
         mode.value = ViewMode.READER
         previewScroll.value = ScrollAnchor()
         editorScroll.value = 0
@@ -216,6 +224,7 @@ internal class DocumentSlot {
         // Edits typed during the write stay, and keep the document dirty (Safeguard 2). The file it
         // now has was written as UTF-8, so a document read from a non-UTF-8 file may save in place
         // again (NEW-12) — to the copy; the original was never touched.
+        transientNoticeClosed.value = false // before the document, as in [publish]
         _document.value = current.copy(
             uri = uri,
             displayName = displayName,
