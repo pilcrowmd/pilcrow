@@ -11,6 +11,7 @@ import com.pilcrowmd.domain.folders.Ago
 import com.pilcrowmd.domain.folders.FolderEntry
 import com.pilcrowmd.domain.folders.Mark
 import com.pilcrowmd.domain.folders.NoteEntry
+import com.pilcrowmd.domain.folders.NoteMarks
 import com.pilcrowmd.domain.folders.SeenRecord
 import com.pilcrowmd.repository.AddFolderResult
 import com.pilcrowmd.repository.DocumentStats
@@ -25,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -704,5 +706,188 @@ class NotesFoldersViewModelTest {
         awaitValue(savedValues, "saved values") { baseline() }
         assertEquals("the other note untouched", old, marksStore.records.getValue(a)["deep.md-id"])
         vm.stopWatching()
+    }
+
+    /**
+     * S8-A46 (fix A): Drive sets a saved note's date about 8 s after the save, so the date stored as
+     * the baseline right after the save is the old one. The app's own save then waits for that date.
+     */
+    private fun savedThenListed(
+        lastModified: Long,
+        size: Long,
+        later: Long,
+        saveIsOwn: Boolean = true,
+        thenDate: Long? = null,
+    ): SeenRecord {
+        listed(a)
+        store.selectedFolder.value = a
+        val old = SeenRecord(1L, 1L, isNew = false, newSince = null, updatedSince = null)
+        marksStore.records[a] = mapOf("A.md-id" to old, "deep.md-id" to old)
+        val saves = MutableSharedFlow<Uri>(extraBufferCapacity = 1)
+        val vm = NotesFoldersViewModel(repo, store, marksStore, clock = { now }, savedDocuments = saves)
+        awaitValue(1, "listening for saves") { saves.subscriptionCount.value }
+        val saved = repo.noteUri(a, "A.md-id")
+        // What Drive answers right after the save: the size written, the date still the old one.
+        repo.stats[saved] = DocumentStats(lastModified = 42L, size = 7L)
+        if (saveIsOwn) saves.tryEmit(saved) else vm.onNoteSeen(saved)
+        val baseline = { marksStore.records.getValue(a).getValue("A.md-id") }
+        awaitValue(SeenRecord(42L, 7L, false, null, null), "saved values") { baseline() }
+
+        now += later
+        repo.listings[a] = rootOf(a).copy(notes = listOf(NoteEntry("A.md-id", "A.md", lastModified, size)))
+        vm.refresh()
+        awaitValue(true, "the listing reconciled") {
+            baseline().let { it.lastModified != 42L || it.updatedSince != null }
+        }
+        if (thenDate != null) {
+            // Later, inside the wait: another date move at the same size, from another device.
+            now += 1_000L
+            repo.listings[a] = rootOf(a).copy(notes = listOf(NoteEntry("A.md-id", "A.md", thenDate, size)))
+            vm.refresh()
+            awaitValue(true, "the second listing reconciled") {
+                baseline().let { it.lastModified != lastModified || it.updatedSince != null }
+            }
+        }
+        vm.stopWatching()
+        return baseline()
+    }
+
+    @Test
+    fun `S8-A46 - the provider's own date for the app's save is taken in silently`() {
+        val record = savedThenListed(lastModified = 50L, size = 7L, later = 10_000L)
+        assertEquals("no Updated mark", null, NoteMarks.markOf(record))
+        assertEquals("the provider's date is the baseline", SeenRecord(50L, 7L, false, null, null), record)
+    }
+
+    @Test
+    fun `S8-A46 - a size other than the one written after the app's save is Updated`() {
+        val record = savedThenListed(lastModified = 50L, size = 8L, later = 10_000L)
+        assertEquals(Mark.UPDATED, NoteMarks.markOf(record)?.mark)
+    }
+
+    @Test
+    fun `S8-A46 - a date that moves after the wait has ended is Updated`() {
+        val record = savedThenListed(lastModified = 50L, size = 7L, later = 2 * 60_000L + 1)
+        assertEquals(Mark.UPDATED, NoteMarks.markOf(record)?.mark)
+    }
+
+    @Test
+    fun `S8-A46 - a note only opened, not saved, gets no wait`() {
+        val record = savedThenListed(lastModified = 50L, size = 7L, later = 10_000L, saveIsOwn = false)
+        assertEquals(Mark.UPDATED, NoteMarks.markOf(record)?.mark)
+    }
+
+    @Test
+    fun `S8-A46 - an own save settles once, so a second same-size date move is Updated`() {
+        val record = savedThenListed(lastModified = 50L, size = 7L, later = 10_000L, thenDate = 60L)
+        assertEquals(Mark.UPDATED, NoteMarks.markOf(record)?.mark)
+    }
+
+    /**
+     * S8-A52: the app's own save of A.md as Drive answers right after it: the size written (7), the
+     * old date (42). The ViewModel re-reads the note every [RECHECK_MS] ms; no listing runs.
+     */
+    private fun ownSave(saveStarts: Flow<Uri> = emptyFlow()): Pair<NotesFoldersViewModel, Uri> {
+        listed(a)
+        store.selectedFolder.value = a
+        val old = SeenRecord(1L, 1L, isNew = false, newSince = null, updatedSince = null)
+        marksStore.records[a] = mapOf("A.md-id" to old, "deep.md-id" to old)
+        val saves = MutableSharedFlow<Uri>(extraBufferCapacity = 1)
+        val vm = NotesFoldersViewModel(
+            repo,
+            store,
+            marksStore,
+            clock = { now },
+            savedDocuments = saves,
+            saveStarts = saveStarts,
+            recheckMs = RECHECK_MS,
+            recheckWindowMs = RECHECK_WINDOW_MS,
+        )
+        awaitValue(1, "listening for saves") { saves.subscriptionCount.value }
+        val saved = repo.noteUri(a, "A.md-id")
+        repo.stats[saved] = DocumentStats(lastModified = 42L, size = 7L)
+        saves.tryEmit(saved)
+        awaitValue(SeenRecord(42L, 7L, false, null, null), "saved values") { aRecord() }
+        return vm to saved
+    }
+
+    private fun aRecord(): SeenRecord = marksStore.records.getValue(a).getValue("A.md-id")
+
+    /** Lists A [later] ms on, with A.md at [date] and [size], and returns A.md's record after it. */
+    private fun listAfter(vm: NotesFoldersViewModel, later: Long, date: Long, size: Long): SeenRecord {
+        now += later
+        val root = rootOf(a).copy(notes = listOf(NoteEntry("A.md-id", "A.md", date, size)))
+        repo.listings[a] = root
+        vm.refresh()
+        awaitValue(root, "A listed") { vm.loadedRoot }
+        return aRecord()
+    }
+
+    /** Runs the main looper for [count] re-read intervals. */
+    private fun idleIntervals(count: Int) = repeat(count) {
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(RECHECK_MS))
+        Thread.sleep(RECHECK_MS)
+    }
+
+    @Test
+    fun `S8-A52 - an own save first listed 3 min later is not Updated`() {
+        val (vm, saved) = ownSave()
+        // Drive's date for the save arrives a few seconds on, at the same size; no listing meanwhile.
+        repo.stats[saved] = DocumentStats(lastModified = 50L, size = 7L)
+        awaitValue(50L, "Drive's later date taken in without a listing") { aRecord().lastModified }
+
+        val record = listAfter(vm, later = 3 * 60_000L, date = 50L, size = 7L)
+
+        assertEquals("no Updated mark", null, NoteMarks.markOf(record))
+        assertEquals(SeenRecord(50L, 7L, false, null, null), record)
+        vm.stopWatching()
+    }
+
+    @Test
+    fun `S8-A52 - an outside edit of another size during the re-reads is Updated`() {
+        val (vm, saved) = ownSave()
+        val asked = repo.statsAsked.size
+        repo.stats[saved] = DocumentStats(lastModified = 60L, size = 9L)
+        awaitValue(true, "re-read twice after the outside edit") { repo.statsAsked.size >= asked + 2 }
+        assertEquals("the baseline stays the save's", SeenRecord(42L, 7L, false, null, null), aRecord())
+
+        val record = listAfter(vm, later = 10_000L, date = 60L, size = 9L)
+
+        assertEquals(Mark.UPDATED, NoteMarks.markOf(record)?.mark)
+        vm.stopWatching()
+    }
+
+    @Test
+    fun `S8-A52 - the re-reads end when the app goes to the background`() {
+        val (vm, saved) = ownSave()
+        awaitValue(true, "re-reading") { repo.statsAsked.size >= 2 }
+
+        vm.stopSaveRecheck()
+        repo.stats[saved] = DocumentStats(lastModified = 50L, size = 7L)
+        idleIntervals(RECHECK_COUNT)
+
+        assertEquals("the later date is left to a listing", 42L, aRecord().lastModified)
+        vm.stopWatching()
+    }
+
+    @Test
+    fun `S8-A52 - the re-reads end when another save starts`() {
+        val starts = MutableSharedFlow<Uri>(extraBufferCapacity = 1)
+        val (vm, saved) = ownSave(starts)
+        awaitValue(true, "re-reading") { repo.statsAsked.size >= 2 }
+
+        starts.tryEmit(saved)
+        idleIntervals(2)
+        repo.stats[saved] = DocumentStats(lastModified = 50L, size = 7L)
+        idleIntervals(RECHECK_COUNT)
+
+        assertEquals("no re-read overlaps the next save", 42L, aRecord().lastModified)
+        vm.stopWatching()
+    }
+
+    private companion object {
+        const val RECHECK_MS = 20L
+        const val RECHECK_COUNT = 10
+        const val RECHECK_WINDOW_MS = 5_000L
     }
 }

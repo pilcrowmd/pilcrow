@@ -44,6 +44,23 @@ class SaveReportingFileRepositoryTest {
     }
 
     @Test
+    fun `S8-A52 - a save's start is reported before the inner save runs, even when it fails`() = runBlocking {
+        val started = mutableListOf<Uri>()
+        val listener = launch(start = CoroutineStart.UNDISPATCHED) { repo.saveStarts.toList(started) }
+        var startedBeforeWrite: List<Uri>? = null
+        coEvery { inner.saveFile(note, content) } coAnswers {
+            yield()
+            startedBeforeWrite = started.toList()
+            Result.failure(IOException("disk full"))
+        }
+
+        repo.saveFile(note, content)
+        listener.cancel()
+
+        assertEquals(listOf(note), startedBeforeWrite)
+    }
+
+    @Test
     fun `a successful save returns the inner result unchanged and is reported`() {
         val ok = Result.success(Unit)
         coEvery { inner.saveFile(note, content) } returns ok

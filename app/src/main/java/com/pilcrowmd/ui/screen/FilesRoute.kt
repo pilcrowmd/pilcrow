@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pilcrowmd.ui.components.FilesScreen
+import com.pilcrowmd.viewmodel.DocumentId
 import com.pilcrowmd.viewmodel.NotesFoldersViewModel
 
 /**
@@ -82,19 +83,29 @@ internal fun FilesRoute(
 /**
  * M-162b (M5): tells [viewModel] when the reader shows a document, however it was opened, so its
  * mark goes. The document last shown survives rotation, so turning the phone is not a new open.
+ * S8-A52: the same file read again (Reload) is a new [documentId], and counts as seen too.
  * (The app's own saves reach the ViewModel from the data layer, M4.)
  */
 @Composable
-internal fun NoteSeenEffect(viewModel: NotesFoldersViewModel?, documentUri: Uri?) {
+internal fun NoteSeenEffect(viewModel: NotesFoldersViewModel?, documentUri: Uri?, documentId: DocumentId?) {
     var lastShown by rememberSaveable { mutableStateOf<Uri?>(null) }
-    LaunchedEffect(viewModel, documentUri) {
-        noteToMarkSeen(lastShown, documentUri)?.let { viewModel?.onNoteSeen(it) }
+    // Never saved (a DocumentId is process-local): after a rotation or a restore it starts empty.
+    var lastId by remember { mutableStateOf<DocumentId?>(null) }
+    LaunchedEffect(viewModel, documentUri, documentId) {
+        noteToMarkSeen(lastShown, lastId, documentUri, documentId)?.let { viewModel?.onNoteSeen(it) }
         lastShown = documentUri
+        lastId = documentId
     }
 }
 
 /**
- * The document to mark seen, or null: [shown] when it was not the one shown before ([lastShown]).
- * A document closed, discarded or still the same is not seen again.
+ * The document to mark seen, or null: [shown] when it was not the one shown before ([lastShown]),
+ * or when it is that one read again (a load gives it a new identity: Reload, or opened again). A
+ * document closed, discarded or still the same, saves and edits included, is not seen again.
  */
-internal fun noteToMarkSeen(lastShown: Uri?, shown: Uri?): Uri? = shown?.takeIf { it != lastShown }
+internal fun noteToMarkSeen(lastShown: Uri?, lastId: DocumentId?, shown: Uri?, shownId: DocumentId?): Uri? = when {
+    shown == null -> null
+    shown != lastShown -> shown
+    lastId != null && shownId != lastId -> shown
+    else -> null
+}

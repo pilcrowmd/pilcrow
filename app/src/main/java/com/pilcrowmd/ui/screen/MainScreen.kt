@@ -234,6 +234,8 @@ fun MainScreen(
     // config-change recreate (rotation) — otherwise the user's save/discard decision point silently
     // vanishes on rotate. Matches showSettings/showLicenses + pendingRescueSlotKey below.
     var showCloseConfirm by rememberSaveable { mutableStateOf(false) }
+    var showReloadConfirm by rememberSaveable { mutableStateOf(false) }
+    val changedOutside = viewModel.changedOutside.collectAsStateWithLifecycle()
 
     // The ViewModel refused a close because the document has unsaved edits — typed after the UI
     // decided it was clean, or during Save-then-close. Answer it with the same close prompt, once.
@@ -274,7 +276,7 @@ fun MainScreen(
     var showFiles by rememberSaveable { mutableStateOf(false) }
     // S8-A38: a note opened from My folders closes back to it.
     val filesReturn = FilesReturnEffect(currentDocument.value?.uri) { showFiles = true }
-    NoteSeenEffect(notesFoldersViewModel, currentDocument.value?.uri)
+    NoteSeenEffect(notesFoldersViewModel, currentDocument.value?.uri, currentDocument.value?.id)
     val canGoBackLink = noteLinksViewModel?.canGoBack?.collectAsStateWithLifecycle()
     val linkLanding = noteLinksViewModel?.landing?.collectAsStateWithLifecycle()
     val noteFolderPath = noteLinksViewModel?.folderPath?.collectAsStateWithLifecycle()
@@ -559,7 +561,13 @@ fun MainScreen(
     // Back from Android's settings, or from the picker: a grant may have come or gone.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { imageFolderViewModel?.refresh() }
     // The system ends a backgrounded app without warning, so unsaved text is kept before it goes.
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.flushDraft() }
+    // S8-A46: and the check for a change on another device ends; nothing runs in the background.
+    // S8-A52: and so do the re-reads of a note just saved.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        viewModel.flushDraft()
+        viewModel.stopChangeCheck()
+        notesFoldersViewModel?.stopSaveRecheck()
+    }
     val folderPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         imageFolderViewModel?.onFolderPicked(tree)
     }
@@ -852,6 +860,21 @@ fun MainScreen(
                             enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
                             onClick = { launchSaveAs() },
                             onClose = { viewModel.closeTransientNotice() },
+                        )
+                    }
+
+                    // S8-A46: the file changed on another device soon after it was opened. Reload
+                    // never drops unsaved edits without asking.
+                    if (changedOutside.value) {
+                        ChangedFileBanner(
+                            hasEdits = currentDocument.value?.dirty == true,
+                            enabled = !writeInFlight.value,
+                            onReload = {
+                                val hasEdits = currentDocument.value?.dirty == true
+                                // Asked first with edits; without, a keystroke during the read is still kept.
+                                if (hasEdits) showReloadConfirm = true else viewModel.reloadChangedFile(false)
+                            },
+                            onKeepMine = { viewModel.keepMyVersion() },
                         )
                     }
 
@@ -1170,6 +1193,34 @@ fun MainScreen(
                                 viewModel.discardAndClose() // the user chose to lose the edits
                             }) {
                                 Text(stringResource(R.string.main_action_discard), color = mdColors().secondaryText)
+                            }
+                        },
+                    )
+                }
+
+                // S8-A46: Reload over unsaved edits, only once the user agrees to lose them.
+                if (showReloadConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showReloadConfirm = false },
+                        containerColor = mdColors().secondarySurface,
+                        titleContentColor = mdColors().primaryText,
+                        textContentColor = mdColors().secondaryText,
+                        title = { Text(stringResource(R.string.main_dialog_reload_title)) },
+                        text = { Text(stringResource(R.string.main_dialog_reload_text)) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showReloadConfirm = false
+                                viewModel.reloadChangedFile(discardEdits = true) // the user chose to lose the edits
+                            }) {
+                                Text(stringResource(R.string.main_action_reload), color = mdColors().primaryText)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showReloadConfirm = false }) {
+                                Text(
+                                    stringResource(R.string.main_dialog_reload_cancel),
+                                    color = mdColors().secondaryText,
+                                )
                             }
                         },
                     )

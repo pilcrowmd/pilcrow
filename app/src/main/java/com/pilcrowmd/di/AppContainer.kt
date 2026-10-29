@@ -53,6 +53,9 @@ interface AppContainer {
     /** M-162b (M4): each document the app has just saved in place, from [fileRepository]. */
     val savedDocuments: Flow<Uri>
 
+    /** S8-A52: each save in place as it starts, from [fileRepository]. */
+    val saveStarts: Flow<Uri>
+
     /** M-162b: the New and Updated marks of each notes folder. */
     val noteMarksStore: NoteMarksStore
 

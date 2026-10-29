@@ -6,6 +6,7 @@ package com.pilcrowmd.viewmodel
 import android.net.Uri
 import com.pilcrowmd.domain.folders.FolderEntry
 import com.pilcrowmd.domain.folders.NoteMarks
+import com.pilcrowmd.domain.folders.OwnSave
 import com.pilcrowmd.domain.folders.SeenRecord
 import com.pilcrowmd.domain.folders.allNotes
 import com.pilcrowmd.repository.DocumentStats
@@ -36,6 +37,9 @@ class NoteMarksKeeper(
     private val lock = Mutex()
     private val latest = MutableStateFlow<Map<Uri, Map<String, SeenRecord>>>(emptyMap())
 
+    // S8-A46: the app's own saves still waiting for the provider's date, by folder and note ID.
+    private val ownSaves = HashMap<Uri, Map<String, OwnSave>>()
+
     // Bumped by drop(): a listing that began before a folder was dropped writes nothing for it.
     private val generations = HashMap<Uri, Int>()
 
@@ -51,7 +55,17 @@ class NoteMarksKeeper(
      */
     suspend fun listed(treeUri: Uri, root: FolderEntry, generation: Int) = work {
         if ((generations[treeUri] ?: 0) != generation) return@work
-        write(treeUri, NoteMarks.reconcile(store.get(treeUri), root.allNotes(), clock()))
+        val now = clock()
+        val waiting = ownSaves[treeUri].orEmpty().filterValues { now - it.at in 0..OwnSave.SETTLE_MS }
+        val previous = store.get(treeUri)
+        val records = NoteMarks.reconcile(previous, root.allNotes(), now, waiting)
+        // A save settles once: the one whose new date was just taken in, or that a real change has
+        // overtaken (now Updated), waits no more.
+        ownSaves[treeUri] = waiting.filterKeys { id ->
+            val record = records[id]
+            record != null && record.updatedSince == null && record.lastModified == previous?.get(id)?.lastModified
+        }
+        write(treeUri, records)
     }
 
     /** M5: every note of [root], subfolders included, seen. */
@@ -66,18 +80,41 @@ class NoteMarksKeeper(
 
     /**
      * M4, M5: the note [documentId] was opened or saved, and [current] is what it is now. When the
-     * provider could not say, the baseline stays as it was and only the mark goes.
+     * provider could not say, the baseline stays as it was and only the mark goes. After the app's
+     * own save ([ownSave]), the next listings may also take the provider's later date (S8-A46).
      */
-    suspend fun seen(treeUri: Uri, documentId: String, current: DocumentStats?) = work {
+    suspend fun seen(treeUri: Uri, documentId: String, current: DocumentStats?, ownSave: Boolean = false) = work {
         val records = store.get(treeUri) ?: return@work
         val old = records[documentId] ?: return@work
         val seen = NoteMarks.seen(current?.lastModified ?: old.lastModified, current?.size ?: old.size)
+        // An open meanwhile keeps the wait: the provider's date may still be on its way.
+        val savedSize = seen.size
+        if (ownSave && savedSize != null) {
+            ownSaves[treeUri] = ownSaves[treeUri].orEmpty() + (documentId to OwnSave(savedSize, clock()))
+        }
         write(treeUri, records + (documentId to seen))
+    }
+
+    /**
+     * S8-A52: [current] is the note [documentId] read again after the app's own save, with no
+     * listing. When it only settles that save ([OwnSave.settles]), its date becomes the baseline and
+     * the save waits no more. Nothing is marked here: a real change shows at the next listing.
+     * Returns whether the save still waits.
+     */
+    suspend fun recheck(treeUri: Uri, documentId: String, current: DocumentStats?): Boolean = work {
+        val save = ownSaves[treeUri]?.get(documentId) ?: return@work false
+        val records = store.get(treeUri) ?: return@work false
+        val old = records[documentId] ?: return@work false
+        if (!save.settles(old.lastModified, old.size, current?.lastModified, current?.size, clock())) return@work true
+        ownSaves[treeUri] = ownSaves[treeUri].orEmpty() - documentId
+        write(treeUri, records + (documentId to NoteMarks.seen(current?.lastModified, current?.size)))
+        false
     }
 
     /** M3: the folder was removed or replaced; if it is added again, its first scan marks nothing. */
     suspend fun drop(treeUri: Uri) = work {
         generations[treeUri] = (generations[treeUri] ?: 0) + 1
+        ownSaves.remove(treeUri)
         store.drop(treeUri)
         latest.update { it - treeUri }
     }

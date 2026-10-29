@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-29
+
+### Fixed
+
+- **Saving a note in a Google Drive folder no longer marks it as updated.**
+
+### Added
+
+- **A notice when a note changes on another device just after you open it.** For 30 seconds after
+  you open a note from My folders, PilcrowMD checks whether the file changed and shows
+  "This file was just changed outside PilcrowMD. Tap to reload." If you have unsaved edits, it
+  shows "This file was just changed outside PilcrowMD." and asks you to choose: Reload (it asks
+  again first, as your edits will be lost) or Keep mine. This was tested with Google Drive folders
+  added in My folders; Dropbox and OneDrive folders have not been tested.
+
 ## [1.1.0] - 2026-10-27
 
 ### Added

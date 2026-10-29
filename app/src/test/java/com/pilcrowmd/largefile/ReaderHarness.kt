@@ -84,6 +84,7 @@ internal class ReaderHarness(
             override val noteMarksStore: com.pilcrowmd.storage.NoteMarksStore = mockk(relaxed = true)
             override val noteLinkRepository: com.pilcrowmd.repository.NoteLinkRepository = mockk(relaxed = true)
             override val savedDocuments = kotlinx.coroutines.flow.emptyFlow<Uri>()
+            override val saveStarts = kotlinx.coroutines.flow.emptyFlow<Uri>()
             override val markwonRenderer by lazy { renderer }
             override val mermaidRenderer: MermaidDiagramRenderer = NullMermaidRenderer
             override val pdfExporter: com.pilcrowmd.export.PdfExporter = mockk(relaxed = true)

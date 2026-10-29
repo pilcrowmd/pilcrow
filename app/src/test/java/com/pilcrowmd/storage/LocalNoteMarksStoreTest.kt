@@ -6,6 +6,8 @@ package com.pilcrowmd.storage
 import android.content.Context
 import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.folders.Mark
 import com.pilcrowmd.domain.folders.NoteEntry
@@ -118,5 +120,29 @@ class LocalNoteMarksStoreTest {
 
         assertNull(store.get(notes))
         assertEquals(mapOf("y" to record), store.get(other))
+    }
+
+    /**
+     * S8-A46: the own-save wait is kept in memory, so the stored format stays six fields. A marks
+     * file as 1.1.0 wrote it, value written raw here, loads with every note as it was: none New.
+     */
+    @Test
+    fun `a marks file written by 1_1_0 loads with no note shown as New`() = runBlocking {
+        val key = stringPreferencesKey("marks:" + Uri.encode(notes.toString()))
+        val written110 = listOf(
+            "primary%3ANotes%2Findex.md\t1793136170204\t1348914\t0\t\t",
+            "primary%3ANotes%2Fplan.md\t1793136429917\t65954\t0\t\t1793194467184",
+        ).joinToString("\n")
+        val job = Job().also { jobs += it }
+        PreferenceDataStoreFactory.create(scope = CoroutineScope(Dispatchers.IO + job)) { file }
+            .edit { it[key] = written110 }
+        restart()
+
+        val read = store().get(notes)!!
+
+        assertEquals(setOf("primary:Notes/index.md", "primary:Notes/plan.md"), read.keys)
+        assertEquals(listOf(false, false), read.values.map { it.isNew })
+        assertEquals(SeenRecord(1793136170204L, 1348914L, false, null, null), read["primary:Notes/index.md"])
+        assertEquals(NoteMark(Mark.UPDATED, 1793194467184L), NoteMarks.markOf(read.getValue("primary:Notes/plan.md")))
     }
 }

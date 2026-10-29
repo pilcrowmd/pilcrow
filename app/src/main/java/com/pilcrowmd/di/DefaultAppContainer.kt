@@ -58,6 +58,7 @@ class DefaultAppContainer(private val appContext: Context) : AppContainer {
         LocalDraftRepository(appContext.noBackupFilesDir)
     }
     override val savedDocuments: Flow<Uri> get() = saveReporting.savedDocuments
+    override val saveStarts: Flow<Uri> get() = saveReporting.saveStarts
 
     /**
      * Storage manager: DataStore persistence for preferences, scroll state, recents.

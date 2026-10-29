@@ -9,6 +9,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -20,6 +21,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.model.ThemeMode
+import com.pilcrowmd.ui.screen.ChangedFileBanner
 import com.pilcrowmd.ui.screen.TransientBanner
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
@@ -38,6 +40,8 @@ import org.robolectric.annotation.GraphicsMode
  *
  *  - `transient_banner_temporary_*`: "Temporary file opened from another app", with the close button.
  *  - `transient_banner_not_utf8_*`: the not-UTF-8 explanation, with NO close button.
+ *  - `transient_banner_changed_*`: S8-A46, the file changed on another device, no unsaved edits.
+ *  - `transient_banner_changed_edits_*`: the same with unsaved edits: Reload and Keep mine.
  *
  * Pixel goldens assert nothing textually; a re-record must be looked at (M-56).
  */
@@ -59,7 +63,23 @@ class TransientBannerScreenshotTest(private val themeMode: ThemeMode, private va
     @Test
     fun notUtf8() = capture(R.string.main_banner_not_utf8, closable = false, kind = "not_utf8")
 
-    private fun capture(@StringRes text: Int, closable: Boolean, kind: String) {
+    @Test
+    fun changedFile() = shoot("changed") { ChangedFileBanner(hasEdits = false, onReload = {}, onKeepMine = {}) }
+
+    @Test
+    fun changedFileWithEdits() = shoot("changed_edits") {
+        ChangedFileBanner(hasEdits = true, onReload = {}, onKeepMine = {})
+    }
+
+    private fun capture(@StringRes text: Int, closable: Boolean, kind: String) = shoot(kind) {
+        TransientBanner(
+            onClick = {},
+            text = stringResource(text),
+            onClose = if (closable) ({}) else null,
+        )
+    }
+
+    private fun shoot(kind: String, banner: @Composable () -> Unit) {
         val scheme = if (themeMode == ThemeMode.DARK) DarkColorScheme else LightColorScheme
         composeRule.setContent {
             val density = LocalDensity.current
@@ -69,11 +89,7 @@ class TransientBannerScreenshotTest(private val themeMode: ThemeMode, private va
                 LocalDensity provides Density(density.density, fontScale),
             ) {
                 Box(Modifier.fillMaxSize().background(scheme.primaryBackground)) {
-                    TransientBanner(
-                        onClick = {},
-                        text = stringResource(text),
-                        onClose = if (closable) ({}) else null,
-                    )
+                    banner()
                 }
             }
         }

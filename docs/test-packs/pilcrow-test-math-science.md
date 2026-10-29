@@ -12,7 +12,7 @@ LaTeX that most note apps and AI assistants produce. PilcrowMD draws them on you
 - Wide formulas should scroll or fit; nothing should be cut off at the right edge.
 - Try both themes (**Settings → Theme**): formulas stay readable on both.
 
-**Known gaps in version 1.1.0** – we know about these, no need to report them:
+**Known gaps in version 1.1.1** – we know about these, no need to report them:
 
 - `\( … \)` and `\[ … \]` are not treated as maths; use `$…$` and `$$…$$`.
 - When a file is reopened, its formulas can show as source for a moment before they are drawn.

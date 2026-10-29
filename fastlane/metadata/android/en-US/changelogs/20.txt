@@ -1,0 +1,3 @@
+- Saving a note in a Google Drive folder no longer marks it as updated.
+- New notice: if a note from My folders changes on another device just after you open it, PilcrowMD shows "This file was just changed outside PilcrowMD. Tap to reload." With unsaved edits, it shows "This file was just changed outside PilcrowMD." and you choose Reload or Keep mine.
+- Tested with Google Drive folders. Dropbox and OneDrive are not tested yet.

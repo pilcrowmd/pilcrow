@@ -32,6 +32,21 @@
     <!-- Banner under the toolbar for a file opened from another app with no write permission. Two lines (\n); the second is a tappable call to action. -->
     <string name="main_banner_transient">Temporary file opened from another app.\nTap to Save a copy…</string>
 
+    <!-- Banner under the toolbar: the open file changed on another device just after it was opened, and there are no unsaved edits. One line (S8-A52); the whole banner is tappable. -->
+    <string name="main_banner_changed">This file was just changed outside PilcrowMD. Tap to reload.</string>
+    <!-- Banner under the toolbar: the open file changed on another device just after it was opened, while there are unsaved edits. Followed by the Reload and Keep mine buttons. Full sentence. -->
+    <string name="main_banner_changed_edits">This file was just changed outside PilcrowMD.</string>
+    <!-- Button on the "file changed" banner: read the file again. Short imperative. -->
+    <string name="main_action_reload">Reload</string>
+    <!-- Button on the "file changed" banner: keep the unsaved edits; saving will write them over the other version. Short phrase. -->
+    <string name="main_action_keep_mine">Keep mine</string>
+    <!-- Title of the dialog before reloading a changed file over unsaved edits. Question. -->
+    <string name="main_dialog_reload_title">Reload the file?</string>
+    <!-- Text of the dialog before reloading a changed file over unsaved edits. Full sentence. -->
+    <string name="main_dialog_reload_text">Your unsaved edits will be lost.</string>
+    <!-- Button of the reload dialog that keeps the edits and closes the dialog. Short imperative. -->
+    <string name="main_dialog_reload_cancel">Cancel</string>
+
     <!-- Content description (TalkBack) of the button that closes the "temporary file" banner. Short imperative. -->
     <string name="main_banner_close">Close notice</string>
 

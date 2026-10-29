@@ -24,7 +24,7 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
 - The very last line of the file says **End of the General pack**. If you can read it, nothing
   was lost on the way.
 
-**Known gaps in version 1.1.0** – we know about these, no need to report them:
+**Known gaps in version 1.1.1** – we know about these, no need to report them:
 
 - A web address written without angle brackets (`https://…`) is not a link; `<https://…>` is.
 - Task boxes cannot be ticked in reading mode (by design: reading mode never changes your file).
@@ -33,6 +33,14 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
 - A new note made with Create MD File and not yet saved has no kept copy: if the app is closed before
   its first save, the text is lost.
 - A link in a note that is not inside a folder you added does nothing, with no message.
+- In a cloud folder such as Google Drive, a change made on another device in the 2 minutes after
+  you save a note is not marked in My folders if the file size stays exactly the same. This also
+  holds when you reopen the note in those 2 minutes.
+- In a cloud folder, if you leave PilcrowMD within 20 seconds of saving a note and do not come
+  back to My folders within 2 minutes, your own save can mark that note as updated.
+- With unsaved edits, after you tap Reload on the "This file was just changed outside PilcrowMD."
+  notice and confirm, the app can ask a second time and offer to restore your edits. Tap Discard
+  to drop them.
 
 Found something not on this list? Please open an issue at
 <https://github.com/pilcrowmd/pilcrow/issues> and say which pack and which section.

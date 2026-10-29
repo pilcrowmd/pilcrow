@@ -13,6 +13,7 @@ import com.pilcrowmd.domain.folders.FolderIdentity
 import com.pilcrowmd.domain.folders.FolderLabels
 import com.pilcrowmd.domain.folders.NoteMark
 import com.pilcrowmd.domain.folders.NoteMarks
+import com.pilcrowmd.domain.folders.OwnSave
 import com.pilcrowmd.domain.folders.SeenRecord
 import com.pilcrowmd.domain.folders.shownOpenFolderIds
 import com.pilcrowmd.repository.AddFolderResult
@@ -27,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,7 +99,8 @@ data class NotesFoldersUiState(
  * listing updates the New and Updated marks (section 3b), dated by [clock].
  */
 @OptIn(FlowPreview::class)
-@Suppress("TooManyFunctions") // one function per event of the Files screen
+// One function per event of the Files screen; built from its sources and the timings tests shorten.
+@Suppress("TooManyFunctions", "LongParameterList")
 class NotesFoldersViewModel(
     private val repo: NotesFolderRepository,
     private val store: NotesFolderStore,
@@ -107,6 +110,10 @@ class NotesFoldersViewModel(
     computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     // M4: each document the app has just saved in place.
     savedDocuments: Flow<Uri> = emptyFlow(),
+    // S8-A52: each save in place as it starts, and how often and how long a saved note is read again.
+    saveStarts: Flow<Uri> = emptyFlow(),
+    private val recheckMs: Long = OwnSave.RECHECK_MS,
+    private val recheckWindowMs: Long = OwnSave.RECHECK_WINDOW_MS,
 ) : ViewModel() {
 
     private val listing = MutableStateFlow<Listing?>(null)
@@ -116,6 +123,7 @@ class NotesFoldersViewModel(
     private val marks = NoteMarksKeeper(marksStore, clock, computeDispatcher)
     private val expandedEdits = Mutex()
     private var watchJob: Job? = null
+    private var recheckJob: Job? = null
 
     /** The ticked folder, only while it is in the list. */
     private val selected: StateFlow<Uri?> = combine(repo.folders, store.selectedFolder) { folders, uri ->
@@ -137,7 +145,10 @@ class NotesFoldersViewModel(
 
     init {
         // M4: the app's own save sets the note's new baseline, so it never reads as Updated.
-        viewModelScope.launch { savedDocuments.collect { onNoteSeen(it) } }
+        // S8-A46: and the provider's later date for that save is taken in too (Drive sets it ~8 s on).
+        viewModelScope.launch { savedDocuments.collect { noteSeen(it, ownSave = true) } }
+        // S8-A52: a save that starts ends the re-reads after the one before; the two never overlap.
+        viewModelScope.launch { saveStarts.collect { stopSaveRecheck() } }
         // F6/P12: the tick stays on a listed folder. A stored tick that is no longer listed (or none
         // at all) moves to the first folder; with no folders left there is no tick.
         viewModelScope.launch {
@@ -248,7 +259,9 @@ class NotesFoldersViewModel(
      * or has just saved it. If it is a note of an added folder, its mark goes and its current date
      * and size become the baseline, so the app's own save never reads as Updated.
      */
-    fun onNoteSeen(documentUri: Uri) {
+    fun onNoteSeen(documentUri: Uri) = noteSeen(documentUri, ownSave = false)
+
+    private fun noteSeen(documentUri: Uri, ownSave: Boolean) {
         viewModelScope.launch {
             val id = repo.documentIdOf(documentUri) ?: return@launch
             val holding = repo.folders.first()
@@ -256,7 +269,27 @@ class NotesFoldersViewModel(
                 .filter { it.authority == documentUri.authority && marks.knows(it, id) }
             if (holding.isEmpty()) return@launch
             val stats = repo.noteStats(documentUri)
-            holding.forEach { marks.seen(it, id, stats) }
+            holding.forEach { marks.seen(it, id, stats, ownSave) }
+            if (ownSave) recheckSave(documentUri, id, holding)
+        }
+    }
+
+    /**
+     * S8-A52: Drive gives a saved note's new date seconds after the save, and a listing takes it in
+     * only within [OwnSave.SETTLE_MS], so a first return to the list after that marked the app's own
+     * save Updated. The note is read again every [recheckMs] for [recheckWindowMs] until the date is
+     * in. Ends at the next save and when the app goes to the background ([stopSaveRecheck]). If the
+     * app is ended meanwhile, only a listing within the 2 min can still take the date in (accepted).
+     */
+    private fun recheckSave(documentUri: Uri, id: String, holding: List<Uri>) {
+        recheckJob?.cancel()
+        recheckJob = viewModelScope.launch {
+            repeat((recheckWindowMs / recheckMs).toInt()) {
+                delay(recheckMs)
+                val stats = repo.noteStats(documentUri)
+                val waiting = holding.map { marks.recheck(it, id, stats) }
+                if (waiting.none { it }) return@launch
+            }
         }
     }
 
@@ -290,6 +323,12 @@ class NotesFoldersViewModel(
         }
     }
 
+    /** S8-A52: the app went to the background, or another save started: no more re-reads of the last save. */
+    fun stopSaveRecheck() {
+        recheckJob?.cancel()
+        recheckJob = null
+    }
+
     fun stopWatching() {
         watchJob?.cancel()
         watchJob = null
@@ -309,6 +348,7 @@ class NotesFoldersViewModel(
                 store = container.notesFolderStore,
                 marksStore = container.noteMarksStore,
                 savedDocuments = container.savedDocuments,
+                saveStarts = container.saveStarts,
             ) as T
         }
     }

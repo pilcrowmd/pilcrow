@@ -28,7 +28,16 @@ class SaveReportingFileRepository(private val inner: FileRepository) : FileRepos
     /** The URI of every successful [saveFile], once the save has finished. */
     val savedDocuments: SharedFlow<Uri> = saved.asSharedFlow()
 
+    private val started = MutableSharedFlow<Uri>(
+        extraBufferCapacity = SAVED_BUFFER,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** S8-A52: the URI of every [saveFile] as it starts, whatever its outcome, reported the same way. */
+    val saveStarts: SharedFlow<Uri> = started.asSharedFlow()
+
     override suspend fun saveFile(uri: Uri, content: String): Result<Unit> {
+        started.tryEmit(uri)
         val result = inner.saveFile(uri, content)
         if (result.isSuccess) saved.tryEmit(uri)
         return result

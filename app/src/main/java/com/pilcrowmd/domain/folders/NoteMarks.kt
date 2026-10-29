@@ -45,15 +45,22 @@ object NoteMarks {
      * New (M1; a renamed or moved note has a new ID, M6) and stays New. Any other note is Updated
      * when its date or its size differs from the baseline, each compared only when known on both
      * sides, and never against the clock (M2). The baseline itself only changes when the note is
-     * seen. Records of notes no longer listed are dropped.
+     * seen, or when the provider settles one of the app's own saves ([ownSaves], by note ID, S8-A46).
+     * Records of notes no longer listed are dropped.
      */
-    fun reconcile(previous: Map<String, SeenRecord>?, notes: List<NoteEntry>, now: Long): Map<String, SeenRecord> {
+    fun reconcile(
+        previous: Map<String, SeenRecord>?,
+        notes: List<NoteEntry>,
+        now: Long,
+        ownSaves: Map<String, OwnSave> = emptyMap(),
+    ): Map<String, SeenRecord> {
         if (previous == null) return markAllSeen(notes)
         return notes.associate { note ->
             val old = previous[note.documentId]
             note.documentId to when {
                 old == null -> SeenRecord(note.lastModified, note.size, isNew = true, newSince = now, null)
                 old.isNew -> old
+                settlesOwnSave(ownSaves[note.documentId], old, note, now) -> seen(note.lastModified, note.size)
                 differs(old, note) -> old.copy(updatedSince = old.updatedSince ?: now)
                 else -> old.copy(updatedSince = null)
             }
@@ -102,6 +109,9 @@ object NoteMarks {
             else -> Ago.Days(elapsed / DAY_MS)
         }
     }
+
+    private fun settlesOwnSave(save: OwnSave?, old: SeenRecord, note: NoteEntry, now: Long): Boolean =
+        save?.settles(old.lastModified, old.size, note.lastModified, note.size, now) == true
 
     private fun differs(old: SeenRecord, note: NoteEntry): Boolean {
         val dateChanged = old.lastModified != null && note.lastModified != null && old.lastModified != note.lastModified

@@ -150,10 +150,33 @@ constructor(
         PrepareReaderModelUseCase(parseHeadingsUseCase::parseTree, parseHeadingsUseCase),
     /** Where unsaved text is kept between keystrokes and a save, so a kill does not lose it. */
     private val drafts: DraftRepository = DraftRepository.None,
+    /** S8-A46: whether a file opened from an added folder changes outside the app soon after. */
+    private val changeCheck: OpenFileChangeCheck = OpenFileChangeCheck(stats = { null }),
 ) : ViewModel() {
     // The open document and everything derived from it. This class READS all of it, but can
     // replace the document only through the slot's adjudicated doors (M-109) — see [DocumentSlot].
     private val slot = DocumentSlot()
+
+    // S8-A46 (see [startChangeCheck]). Before the startup restore below, which may publish inline.
+    private val _changedOutside = MutableStateFlow(false)
+
+    /** The open file changed on another device after it was opened: the reload banner shows. */
+    val changedOutside: StateFlow<Boolean> = _changedOutside.asStateFlow()
+
+    private var changeCheckJob: Job? = null
+
+    // The document (identity and file) being checked. Another document, or this one saved under a
+    // new URI, ends the check and the banner.
+    private var checkedDocument: Pair<DocumentId, Uri>? = null
+
+    init {
+        viewModelScope.launch {
+            slot.document.collect { doc ->
+                val checked = checkedDocument ?: return@collect
+                if (doc == null || doc.id != checked.first || doc.uri != checked.second) endChangeCheck()
+            }
+        }
+    }
 
     // Unsaved text is kept as a draft while the document is dirty (crash recovery). Declared straight
     // after the slot and before anything that can load a document: the startup restore below may run
@@ -665,6 +688,7 @@ constructor(
             PublishOutcome.PUBLISHED -> {
                 // Before anything suspends: from here a keystroke could start overwriting the draft.
                 checkForStoredDraft(publication.document)
+                startChangeCheck(publication.document, file.takeIf { it.isUtf8 }?.content)
                 // The TOC is the one value allowed to arrive AFTER the document: it comes from the
                 // reader model, which [readerModel] prepares off Main once the document is published.
                 finishLoad(claim, FileLoadState.Success)
@@ -905,7 +929,7 @@ constructor(
                     // NEW-12: keep the document, its edits and the prompt, exactly as a failed save.
                     if (refuseNotUtf8(doc)) return@withWriteClaim
                     _fileLoadState.emit(FileLoadState.Saving)
-                    val result = repository.saveFile(target, contentForDisk(doc))
+                    val result = saveTracked(target, contentForDisk(doc))
                     if (result.isFailure) {
                         _fileLoadState.emit(
                             FileLoadState.SaveError(result.exceptionOrNull()?.message ?: "Unknown error"),
@@ -988,7 +1012,7 @@ constructor(
                 // write suspends, so an open the user starts during the write wins over this close.
                 val claim = slot.claim()
                 _fileLoadState.emit(FileLoadState.Saving)
-                repository.saveFile(target, contentForDisk(doc))
+                saveTracked(target, contentForDisk(doc))
                     .onSuccess {
                         slot.markSaved(doc.id, doc.content)
                         when (slot.publishClose(claim, ReplacePolicy.IF_CLEAN)) {
@@ -1466,7 +1490,7 @@ constructor(
 
                 // contentForDisk restores the original line ending before the write (Safeguard 2),
                 // shared by every save path so a CRLF file is never silently converted to LF.
-                repository.saveFile(target, contentForDisk(doc))
+                saveTracked(target, contentForDisk(doc))
                     .onSuccess {
                         // Baseline = the content we just persisted, in the editor's LF form (doc.content).
                         // The disk form (contentForDisk) may be CRLF; the editor/model always work in LF, so
@@ -1517,7 +1541,7 @@ constructor(
                 // Best-effort persist; result ignored so a provider that rejects it can't abort the write.
                 repository.takePersistableUriPermission(targetUri)
 
-                repository.saveFile(targetUri, contentForDisk(doc))
+                saveTracked(targetUri, contentForDisk(doc))
                     .onSuccess {
                         val displayName = repository.displayName(targetUri)
 
@@ -1791,7 +1815,7 @@ constructor(
         // NEW-12: the picker can hand back an existing file, and one that is not UTF-8 is never written over.
         if (!repository.readsAsUtf8(targetUri)) return refusePickNewFile()
         repository.takePersistableUriPermission(targetUri) // best-effort; result intentionally ignored
-        repository.saveFile(targetUri, applyLineEnding(draft.text, draft.lineEnding))
+        saveTracked(targetUri, applyLineEnding(draft.text, draft.lineEnding))
             .onSuccess {
                 drafts.delete(draft.uri)
                 onSaved()
@@ -1802,6 +1826,60 @@ constructor(
 
     /** The app is going to the background, where the system may end it: write the draft now. */
     fun flushDraft() = draftKeeper.flush()
+
+    // ── S8-A46: the file changed outside the app soon after it was opened ──────────────────────
+    // A save over the file the banner warned about is the user's answer to it: the banner goes.
+    private suspend fun saveTracked(uri: Uri, content: String): Result<Unit> =
+        changeCheck.saving { repository.saveFile(uri, content) }.also {
+            if (it.isSuccess && checkedDocument?.second == uri) _changedOutside.value = false
+        }
+
+    /**
+     * [read] is the file's text as read, exactly as on disk, when it is UTF-8: its size is then the
+     * number of bytes read (strict UTF-8 round-trips byte for byte). Null skips that comparison.
+     */
+    private fun startChangeCheck(document: Document, read: String?) {
+        endChangeCheck()
+        val uri = document.uri ?: return
+        if (!OpenFileChangeCheck.isFolderNote(uri)) return
+        checkedDocument = document.id to uri
+        changeCheckJob = viewModelScope.launch {
+            val readSize = read?.let { withContext(cpuDispatcher) { it.toByteArray(Charsets.UTF_8).size.toLong() } }
+            if (changeCheck.changed(uri, readSize)) _changedOutside.value = true
+        }
+    }
+
+    private fun endChangeCheck() {
+        changeCheckJob?.cancel()
+        changeCheckJob = null
+        checkedDocument = null
+        _changedOutside.value = false
+    }
+
+    /** The app went to the background: no more checks for this open. A banner already shown stays. */
+    fun stopChangeCheck() {
+        changeCheckJob?.cancel()
+        changeCheckJob = null
+    }
+
+    /**
+     * The banner's Reload: read the file again, at the stored reading position, as on any open of
+     * it. Unsaved edits are dropped only when [discardEdits], after the View has asked; otherwise
+     * text typed while the file is read is never replaced (M-180's Save/Discard prompt asks). The
+     * banner stays until the new text is published, so a failed read can be tried again.
+     */
+    fun reloadChangedFile(discardEdits: Boolean) {
+        if (_writeInFlight.value) return
+        val uri = slot.document.value?.uri ?: return
+        val claim = slot.claim()
+        viewModelScope.launch {
+            restoreJob.cancel()
+            loadDocument(uri, claim, if (discardEdits) ReplacePolicy.DISCARD else ReplacePolicy.IF_CLEAN)
+        }
+    }
+
+    /** The banner's Keep mine: the user's text stays, and a save writes it over the other version. */
+    fun keepMyVersion() = endChangeCheck()
 
     override fun onCleared() {
         draftKeeper.flush()
@@ -2084,6 +2162,7 @@ constructor(
                         pdfExporter = container.pdfExporter,
                         appInfo = container.appInfo,
                         drafts = container.draftRepository,
+                        changeCheck = OpenFileChangeCheck(container.notesFolderRepository::noteStats),
                         prepareReaderModel = PrepareReaderModelUseCase(
                             parse = container.markwonRenderer::parseForReader,
                             headings = container.parseMarkdownHeadingsUseCase,
