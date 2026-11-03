@@ -734,4 +734,91 @@ class SearchMarkdownUseCaseTest {
 
         assertTrue(blocks.filterIsInstance<CodeBlockPiece>().all { it is FencedCodeBlock })
     }
+
+    // S8-A61: one unbroken run is cut into pieces by characters, so a word can straddle a cut. The
+    // fixture puts three needles in one run: one inside the first piece, one across the first cut,
+    // one inside the second piece. Only the character cut makes them land in two blocks.
+
+    private val maxChars = com.pilcrowmd.domain.markdown.LongLineCut.MAX_BLOCK_CHARS
+
+    /** An unspaced run: NEEDLE at 0, NEEDLE across [maxChars], NEEDLE inside the second piece. */
+    private val straddlingRun: String =
+        "NEEDLE" + "a".repeat(maxChars - 9) + "NEEDLE" + "b".repeat(100) + "NEEDLE" + "c".repeat(12_000)
+
+    @Test
+    fun `a word across a character cut is found, in the piece where it starts`() {
+        val content = "# T\n\n" + straddlingRun + "\n"
+
+        val matches = useCase.findSearchMatches(content, "needle")
+
+        val blocks = AdapterBlocks.of(parseHeadingsUseCase.parseDocument(content)!!)
+        assertTrue("the run was cut into pieces, got ${blocks.size} blocks", blocks.size >= 4)
+        assertEquals("all three needles, including the one across the cut", 3, matches.size)
+        val runStart = content.indexOf("NEEDLE")
+        val starts = listOf(runStart, runStart + maxChars - 3, runStart + maxChars + 103)
+        assertEquals(starts, matches.map { it.startIndex })
+        assertEquals("the first two start in the first piece", listOf(1, 1, 2), matches.map { it.adapterPosition })
+        // The one across the cut comes after the first piece's own.
+        assertEquals(listOf(0, 1, 0), matches.map { it.occurrenceInBlock })
+        assertTrue("the second piece's needle is its own", textOf(blocks[2]).contains("NEEDLE"))
+    }
+
+    @Test
+    fun `a query across a cut at a space is not joined over the seam`() {
+        // A cut after a space is a word boundary: the head ends with the space, the next piece starts on
+        // the word. Nothing is joined there, as for the cuts by child count (M-328).
+        val content = "a".repeat(maxChars - 2) + " bword " + "z".repeat(10_000)
+
+        assertEquals(0, useCase.findSearchMatches(content, "a bw").size)
+        assertEquals(1, useCase.findSearchMatches(content, "bword").size)
+    }
+
+    @Test
+    fun `plain text search does not join a query over a cut at a space`() {
+        val content = "a".repeat(maxChars - 2) + " bword " + "z".repeat(10_000)
+        val literals = com.pilcrowmd.domain.markdown.PlainTextChunks.split(content)
+
+        assertEquals(0, useCase.findPlainSearchMatches(content, literals, "a bw").size)
+        assertEquals(1, useCase.findPlainSearchMatches(content, literals, "bword").size)
+    }
+
+    @Test
+    fun `a match after a capped table cell keeps its true offset`() {
+        val content = "| a | b |\n|---|---|\n| " + "z".repeat(20_000) + " | short |\n\nafter needle\n"
+
+        val matches = useCase.findSearchMatches(content, "needle")
+
+        assertEquals(1, matches.size)
+        assertEquals(content.indexOf("needle"), matches.single().startIndex)
+        assertEquals(content.indexOf("short"), useCase.findSearchMatches(content, "short").single().startIndex)
+    }
+
+    @Test
+    fun `a match after a capped cell whose dropped part is mostly markup keeps its true offset`() {
+        // S8-A62: the dropped part is about 7,000 chars of text in 21,000 of source (`**x** `), so a
+        // cursor stepped by the dropped TEXT would end up far further back than search looks forward.
+        val cell = "z".repeat(9_990) + " " + "**x** ".repeat(3_500)
+        val content = "| a | b |\n|---|---|\n| $cell | short |\n\nafter needle\n"
+
+        val needle = useCase.findSearchMatches(content, "needle").single()
+        val short = useCase.findSearchMatches(content, "short").single()
+
+        assertEquals(content.indexOf("needle"), needle.startIndex)
+        assertEquals(content.indexOf("short"), short.startIndex)
+    }
+
+    @Test
+    fun `plain text search finds a word across a cut inside a line, at its true offset`() {
+        val content = "intro\n" + straddlingRun + "\noutro NEEDLE\n"
+        val literals = com.pilcrowmd.domain.markdown.PlainTextChunks.split(content)
+        assertTrue(literals.size >= 3)
+
+        val matches = useCase.findPlainSearchMatches(content, literals, "needle")
+
+        val expected = Regex("NEEDLE").findAll(content).map { it.range.first }.toList()
+        assertEquals("every needle, at its offset in the file", expected, matches.map { it.startIndex })
+        assertEquals(listOf(0, 0, 1, 2), matches.map { it.adapterPosition })
+        assertEquals(listOf(0, 1, 0, 0), matches.map { it.occurrenceInBlock })
+        matches.forEach { assertEquals("NEEDLE", content.substring(it.startIndex, it.startIndex + 6)) }
+    }
 }

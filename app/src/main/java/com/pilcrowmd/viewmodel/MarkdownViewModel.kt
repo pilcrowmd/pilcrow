@@ -100,6 +100,12 @@ data class Document(
      * a null check, because that is what every call site is actually asking.
      */
     val isUnsaved: Boolean get() = uri == null
+
+    /**
+     * True when the toolbar's Save has something to do (GitHub #19): unsaved edits, or a new document
+     * whose file does not exist yet. A clean opened file has nothing to save, so Save is greyed out.
+     */
+    val hasSomethingToSave: Boolean get() = dirty || isUnsaved
 }
 
 /**
@@ -1308,9 +1314,9 @@ constructor(
                     scanOrNothing {
                         when {
                             model is ReaderModel.Plain ->
-                                searchUseCase.findPlainSearchMatches(model.chunkLiterals, query)
+                                searchUseCase.findPlainSearchMatches(content, model.chunkLiterals, query)
                             model == null && prepareReaderModel.showsAsPlain(content, renderMode) ->
-                                searchUseCase.findPlainSearchMatches(PlainTextChunks.split(content), query)
+                                searchUseCase.findPlainSearchMatches(content, PlainTextChunks.split(content), query)
                             else -> searchUseCase.findSearchMatches(content, query)
                         }
                     }
@@ -1592,6 +1598,84 @@ constructor(
                         _fileLoadState.emit(FileLoadState.SaveError(error.message ?: "Unknown error"))
                     }
             }
+        }
+    }
+
+    /**
+     * S8-A55 "Allow editing": the open document is transient (read-only "Open with"), and the user
+     * picked [pickedUri] in the system picker to get write access to the same file. The picker's
+     * grant is persistable read+write, so the document ADOPTS [pickedUri] and Save writes there from
+     * now on, also after restarts, with unsaved edits kept.
+     *
+     * Adopted only when the picked file holds exactly what was opened: its text equals the opened
+     * text (the baseline, not the edits) with the same line ending, read as UTF-8, and — while the
+     * opened file can still be read — the same characters as the opened file, CR for CR. Anything
+     * else (another file, or the same file changed since it was opened) is refused, the grant just
+     * taken is released, and nothing changes, so a Save can never land on a file the user was not
+     * reading (Safeguard 1). Nothing is written here. A null [pickedUri] (the picker was cancelled)
+     * changes nothing.
+     */
+    fun allowEditing(pickedUri: Uri?) {
+        if (pickedUri == null) return
+        viewModelScope.launch {
+            withWriteClaim {
+                val doc = slot.document.value ?: return@withWriteClaim
+                val openedUri = doc.uri ?: return@withWriteClaim
+                if (!slot.transient.value || doc.notUtf8) return@withWriteClaim
+                val openedId = doc.id
+                val baseline = slot.baseline
+                val lineEnding = slot.lineEnding.value
+                // Any grant held before this pick (read or write, e.g. the file is in Recents from
+                // "Open MD File") is not ours to release on a refusal.
+                val grantedBefore = withContext(Dispatchers.IO) {
+                    repository.hasPersistedPermission(pickedUri) || repository.hasPersistedWritePermission(pickedUri)
+                }
+                repository.takePersistableUriPermission(pickedUri) // checked just below
+                if (!withContext(Dispatchers.IO) { repository.hasPersistedWritePermission(pickedUri) }) {
+                    return@withWriteClaim _fileLoadState.emit(FileLoadState.EditRefusedReadOnly)
+                }
+                if (!isSameFile(pickedUri, openedUri, baseline, lineEnding)) {
+                    if (!grantedBefore) repository.releasePersistableUriPermission(pickedUri)
+                    return@withWriteClaim _fileLoadState.emit(FileLoadState.EditRefusedOtherFile)
+                }
+                val displayName = repository.displayName(pickedUri)
+                // The baseline stays what was opened, so edits typed before or during the check stay
+                // dirty and reach the file on the next Save. The DraftKeeper moves their draft along.
+                val adopted = slot.adoptIdentity(
+                    expected = openedId,
+                    writtenContent = baseline,
+                    uri = pickedUri,
+                    displayName = displayName,
+                    transient = false,
+                )
+                if (!adopted) { // another document is on screen by now
+                    if (!grantedBefore) repository.releasePersistableUriPermission(pickedUri)
+                    return@withWriteClaim
+                }
+                applyDerivedRenderMode(openedId, pickedUri, displayName)
+                refreshActiveSearch()
+                storage.saveLastFileUri(pickedUri)
+                // Recents lists the file it can reopen, not the one-time "Open with" URI.
+                storage.removeRecent(openedUri)
+                storage.addRecent(RecentFile(pickedUri, displayName, System.currentTimeMillis()))
+                _fileLoadState.emit(FileLoadState.EditAllowed)
+            }
+        }
+    }
+
+    /**
+     * Whether [pickedUri] holds what was opened from [openedUri]: UTF-8, the same line ending, the
+     * opened text ([baseline], LF form), and — while [openedUri] can still be read — the same
+     * characters as that file, CR for CR, so a file changed since it was opened does not pass.
+     */
+    private suspend fun isSameFile(pickedUri: Uri, openedUri: Uri, baseline: String, lineEnding: String): Boolean {
+        val picked = repository.readFile(pickedUri).getOrNull() ?: return false
+        if (!picked.isUtf8) return false
+        val opened = repository.readFile(openedUri).getOrNull()
+        return withContext(cpuDispatcher) {
+            detectLineEnding(picked.content) == lineEnding &&
+                picked.content.replace("\r\n", "\n") == baseline &&
+                (opened == null || opened.content == picked.content)
         }
     }
 
@@ -2218,4 +2302,13 @@ sealed class FileLoadState {
      * content, is not UTF-8, or cannot be read). Nothing was written.
      */
     object SaveRefusedPickNewFile : FileLoadState(), SaveOutcome
+
+    /** S8-A55: "Allow editing" worked; the open document now saves to the picked file. */
+    object EditAllowed : FileLoadState(), SaveOutcome
+
+    /** S8-A55: the picked file is not the one that was opened (or it changed). Nothing changed. */
+    object EditRefusedOtherFile : FileLoadState(), SaveOutcome
+
+    /** S8-A55: the picker's grant could not be kept for the picked file. Nothing changed. */
+    object EditRefusedReadOnly : FileLoadState(), SaveOutcome
 }

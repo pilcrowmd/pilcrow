@@ -56,9 +56,9 @@ class CodeBlockPiece internal constructor(val group: CodeBlockGroup, val index: 
  * Only a block longer than [LONG_BLOCK_CHARS] or [LONG_BLOCK_LINES] is cut; a shorter one stays one
  * reader block, coloured as before. Front matter (drawn as its own card) is never cut. A Mermaid
  * fence (drawn as a picture) is cut only past [MERMAID_MAX_CHARS], when it is shown as source instead.
- * Cuts fall only at line ends, so a single line longer than a piece stays whole. Every cut is decided
- * from the block's start, so a prefix of a block is cut at the same places as the whole block (the
- * Edit to Read caret mapping relies on this).
+ * Cuts fall at line ends, and inside a line longer than [LINE_PIECE_CHARS] (S8-A65 to S8-A67), with code wrap
+ * on or off. Every cut is decided from the block's start, so a prefix of a block that ends at a line end
+ * is cut at the same places as the whole block (the Edit to Read caret mapping relies on this).
  */
 object CodeBlockSplitter {
     /** A block longer than this is cut. Prism4j's colour-at-bind limit ([LONG_BLOCK_CHARS] chars, NEW-99a). */
@@ -80,7 +80,23 @@ object CodeBlockSplitter {
     /** A piece also ends at the first line end past this many chars, so long lines keep pieces small. */
     const val PIECE_CHARS = 8_000
 
-    /** Cut every long top-level code block of [document] in place. */
+    /**
+     * In a block that is cut at all (past [LONG_BLOCK_CHARS] or [LONG_BLOCK_LINES]), a line longer than
+     * this is cut inside, into pieces of at most this many chars (S8-A67). With code wrap off a row is
+     * drawn whole, every glyph of it, and a row of 8,000 distinct CJK chars overflowed the GPU glyph
+     * atlas, re-uploaded every frame (S8-A66 e5: 6 s to first text on the S24+, an ANR on the
+     * emulator). Measured on the S24plus_API36 emulator, e5 with wrap off (S8-A67 report): 2,000
+     * and 1,500 still took 4-5 s, 1,000 was on the limit, 750 drew in 2.5-2.7 s with a worst frame of
+     * 1.8 s. A line no longer than this is never cut.
+     */
+    const val LINE_PIECE_CHARS = 750
+
+    /**
+     * Cut every long top-level code block of [document] in place. A line longer than [LINE_PIECE_CHARS] is cut
+     * inside as well. A TextView runs minikin's line breaker over its whole text on the main thread,
+     * wrapped (S8-A62 e3) or not (S8-A65 e5: a CJK line has a break chance at every char), and for one
+     * line of 1 MB that froze the reader. With wrap off the pieces show as stacked rows that pan together.
+     */
     fun split(document: Node) {
         var block = document.firstChild
         while (block != null) {
@@ -109,14 +125,25 @@ object CodeBlockSplitter {
         block.unlink()
     }
 
-    /** Piece starts: 0, then the start of the line after every [PIECE_LINES] lines or [PIECE_CHARS] chars. */
+    /**
+     * Piece starts: 0, then the start of the line after every [PIECE_LINES] lines or [PIECE_CHARS] chars.
+     * A line longer than [LINE_PIECE_CHARS] starts a piece of its own and is cut inside where
+     * [LongLineCut.pieceEnd] says (after its last space in the window, else at a character boundary);
+     * what is left of it counts as one line of the next piece.
+     */
     internal fun pieceStarts(literal: String): IntArray {
         val starts = ArrayList<Int>()
         starts += 0
         var pieceStart = 0
         var lines = 0
+        var lineStart = 0
         var lineEnd = literal.indexOf('\n')
         while (lineEnd >= 0 && lineEnd + 1 < literal.length) {
+            if (lineEnd - lineStart > LINE_PIECE_CHARS) {
+                if (lineStart > pieceStart) starts += lineStart
+                pieceStart = cutInside(literal, lineStart, lineEnd, starts)
+                lines = 0
+            }
             lines++
             val next = lineEnd + 1
             if (lines >= PIECE_LINES || next - pieceStart >= PIECE_CHARS) {
@@ -124,9 +151,29 @@ object CodeBlockSplitter {
                 pieceStart = next
                 lines = 0
             }
+            lineStart = next
             lineEnd = literal.indexOf('\n', next)
         }
+        // The last line, which nothing follows (or only its line end).
+        val lastEnd = if (lineEnd >= 0) lineEnd else literal.length
+        if (lastEnd - lineStart > LINE_PIECE_CHARS) {
+            if (lineStart > pieceStart) starts += lineStart
+            cutInside(literal, lineStart, lastEnd, starts)
+        }
         return starts.toIntArray()
+    }
+
+    /** Add the cuts inside the line [from] to [end] (its line end); returns where its last piece starts. */
+    private fun cutInside(literal: String, from: Int, end: Int, starts: MutableList<Int>): Int {
+        var pieceStart = from
+        while (end - pieceStart > LINE_PIECE_CHARS) {
+            val cut = LongLineCut.pieceEnd(literal, pieceStart, end, LINE_PIECE_CHARS)
+            // One unbreakable cluster running to the line end: no piece of nothing after it.
+            if (cut >= end) break
+            starts += cut
+            pieceStart = cut
+        }
+        return pieceStart
     }
 
     private fun lineCount(literal: String): Int {

@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.rendering
 
+import com.pilcrowmd.domain.markdown.CellEllipsis
 import io.noties.markwon.MarkwonPlugin
 import io.noties.markwon.MarkwonVisitor
 import io.noties.markwon.ext.tables.TablePlugin
@@ -36,6 +37,9 @@ internal class TableCellRenderPlugin(private val tables: TablePlugin) : MarkwonP
     }
 
     override fun configureVisitor(builder: MarkwonVisitor.Builder) {
+        // Markwon picks a visitor by the node's exact class, so the capped cell's "…" (a Text subclass)
+        // needs its own, or it draws nothing while search counts it (S8-A61).
+        builder.on(CellEllipsis::class.java) { visitor, node -> visitor.builder().append(node.literal) }
         tables.configureVisitor(
             object : MarkwonVisitor.Builder by builder {
                 override fun <N : Node> on(

@@ -54,9 +54,12 @@ data class NoteFolderPath(val uri: Uri?, val names: List<String>)
 /**
  * The open-file line for the document [name] at [uri]: its folder names only when [path] was worked
  * out for this very document, otherwise the file name alone. Null when the document has no name.
+ * [unsaved] is the document's dirty state.
  */
-fun openFileLine(name: String, uri: Uri?, path: NoteFolderPath?): OpenFileLine? =
-    name.takeIf { it.isNotBlank() }?.let { OpenFileLine(it, path?.takeIf { p -> p.uri == uri }?.names.orEmpty()) }
+fun openFileLine(name: String, uri: Uri?, path: NoteFolderPath?, unsaved: Boolean = false): OpenFileLine? =
+    name.takeIf { it.isNotBlank() }?.let {
+        OpenFileLine(it, path?.takeIf { p -> p.uri == uri }?.names.orEmpty(), unsaved)
+    }
 
 /** Where a note opened by a followed link lands: its [heading] (raw fragment), or the top when null (K3). */
 data class NoteLanding(val uri: Uri, val heading: String?)

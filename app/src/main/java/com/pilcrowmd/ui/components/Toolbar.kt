@@ -55,6 +55,7 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.pilcrowmd.R
+import com.pilcrowmd.ui.theme.DISABLED_ACTION_ALPHA
 import com.pilcrowmd.ui.theme.PilcrowSpacing
 import com.pilcrowmd.ui.theme.mdColors
 import com.pilcrowmd.viewmodel.ViewMode
@@ -82,8 +83,11 @@ fun PilcrowToolbar(
     onTOC: () -> Unit = {},
     onExportPdf: () -> Unit = {},
     isSaving: Boolean = false,
+    // GitHub #19: Save is greyed out while there is nothing to save, Undo and Redo while there is no step.
+    saveEnabled: Boolean = true,
     onUndo: (() -> Unit)? = null,
     onRedo: (() -> Unit)? = null,
+    undoRedo: UndoRedoState = UndoRedoState(canUndo = true, canRedo = true),
     // Non-null only for .txt documents; the label reflects the mode to switch TO.
     plainToggleLabel: String? = null,
     onTogglePlainView: () -> Unit = {},
@@ -143,7 +147,7 @@ fun PilcrowToolbar(
                             stringResource(R.string.toolbar_save)
                         },
                         onClick = onSave,
-                        enabled = !isSaving,
+                        enabled = !isSaving && saveEnabled,
                         tint = if (isSaving) {
                             c.secondaryText
                         } else {
@@ -164,6 +168,7 @@ fun PilcrowToolbar(
                         icon = Icons.AutoMirrored.Outlined.Undo,
                         contentDescription = stringResource(R.string.toolbar_undo),
                         onClick = onUndo,
+                        enabled = undoRedo.canUndo,
                     )
                 }
                 // Redo button (editor mode only, if onRedo is provided)
@@ -172,6 +177,7 @@ fun PilcrowToolbar(
                         icon = Icons.AutoMirrored.Outlined.Redo,
                         contentDescription = stringResource(R.string.toolbar_redo),
                         onClick = onRedo,
+                        enabled = undoRedo.canRedo,
                     )
                 }
                 // Overflow menu (⋮) — hosts "Save a copy" + the .txt render toggle. Sits left of Close.
@@ -243,6 +249,8 @@ private fun ModeButton(currentMode: ViewMode, onModeSelected: (ViewMode) -> Unit
 /**
  * A toolbar action button: a 42dp touch target (up from 36dp for reliable finger taps) with a 22dp
  * icon (up from 18dp so icons read visibly larger), so every icon in the bar reads at the same scale.
+ * A disabled button stays on screen, dimmed to [DISABLED_ACTION_ALPHA] (GitHub #19): the explicit
+ * [tint] would otherwise hide IconButton's own disabled colour.
  */
 @Composable
 private fun ActionIcon(
@@ -260,7 +268,7 @@ private fun ActionIcon(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = tint,
+            tint = if (enabled) tint else tint.copy(alpha = DISABLED_ACTION_ALPHA),
             modifier = Modifier.size(22.dp),
         )
     }

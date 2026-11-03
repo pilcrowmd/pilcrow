@@ -471,4 +471,180 @@ class ParagraphSplitterTest {
         assertFalse(seams.continuesNext(pieces[0]))
         assertFalse(seams.continuesPrevious(pieces[0]))
     }
+
+    // S8-A61: a character limit next to the child count. One unbroken run is one Text child, so the
+    // count rule can never fire on these fixtures: only the character limit can cut them.
+
+    private val maxChars = LongLineCut.MAX_BLOCK_CHARS
+
+    /** The characters a block paints from its Text and Code nodes, in order. */
+    private fun textOf(node: Node): String = buildString {
+        fun walk(n: Node) {
+            when (n) {
+                is Text -> append(n.literal)
+                is Code -> append(n.literal)
+                else -> generateSequence(n.firstChild) { it.next }.forEach { walk(it) }
+            }
+        }
+        walk(node)
+    }
+
+    /** Every node under [node], depth first. */
+    private fun descendants(node: Node): List<Node> = childrenOf(node).flatMap { listOf(it) + descendants(it) }
+
+    @Test
+    fun `one 20K run with no space becomes at least three pieces within the character limit`() {
+        val run = "x".repeat(20_000)
+        val document = documentOf(paragraphOf(listOf(Text(run))))
+
+        val seams = ParagraphSplitter.split(document)
+
+        val pieces = blocksOf(document)
+        assertTrue("at least three pieces, got ${pieces.size}", pieces.size >= 3)
+        pieces.forEach {
+            assertEquals(Paragraph::class.java, it.javaClass)
+            val chars = textOf(it).length
+            assertTrue("a piece paints at most $maxChars chars, got $chars", chars <= maxChars)
+        }
+        assertEquals("every character, once, in order", run, pieces.joinToString("") { textOf(it) })
+        assertFalse(seams.continuesPrevious(pieces.first()))
+        pieces.drop(1).forEach { assertTrue(seams.continuesPrevious(it)) }
+        pieces.dropLast(1).forEach { assertTrue(seams.continuesNext(it)) }
+    }
+
+    @Test
+    fun `a run with one space near the limit is cut just after the space`() {
+        val head = "a".repeat(maxChars - 10) + " "
+        val run = head + "b".repeat(12_000)
+        val document = documentOf(paragraphOf(listOf(Text(run))))
+
+        ParagraphSplitter.split(document)
+
+        val pieces = blocksOf(document)
+        assertEquals("the first piece ends on the space", head, textOf(pieces[0]))
+        assertEquals(run, pieces.joinToString("") { textOf(it) })
+    }
+
+    @Test
+    fun `a paragraph under the child limit is still cut when its characters are over`() {
+        // 140 children: under the count limit. 100 chars each: 14,000 chars, over the character one.
+        val kids = List(140) { Text("t".repeat(99) + " ") }
+        val document = documentOf(paragraphOf(kids))
+
+        ParagraphSplitter.split(document)
+
+        val pieces = blocksOf(document)
+        assertTrue("more than one piece, got ${pieces.size}", pieces.size > 1)
+        pieces.forEach { assertTrue(textOf(it).length <= maxChars) }
+        val moved = pieces.flatMap { childrenOf(it) }
+        kids.forEachIndexed { i, kid -> assertSame("child $i is the original object, in order", kid, moved[i]) }
+    }
+
+    @Test
+    fun `a word carried over a cut by the character limit starts the next piece`() {
+        // 7,009 + 2,000 chars do not fit one piece; the text runs into the emphasis mid-word, so its
+        // last word goes to the next piece with it.
+        val text = Text("w".repeat(7_000) + " tailword")
+        val emphasis = org.commonmark.node.Emphasis("*").also { it.appendChild(Text("e".repeat(2_000))) }
+        val document = documentOf(paragraphOf(listOf(text, emphasis)))
+
+        ParagraphSplitter.split(document)
+
+        val pieces = blocksOf(document)
+        assertEquals(2, pieces.size)
+        assertEquals("w".repeat(7_000) + " ", textOf(pieces[0]))
+        assertEquals("tailword" + "e".repeat(2_000), textOf(pieces[1]))
+        assertSame(emphasis, pieces[1].lastChild)
+    }
+
+    @Test
+    fun `several long texts that each carry a word still end, every piece within the limit`() {
+        // Three 6,500-char texts with spaces, each running into the next mid-word: every cut carries a
+        // word, and two neighbours never fit one piece. The cut must still move on each time.
+        val kids = List(3) { Text("w".repeat(3_000) + " " + "v".repeat(3_499)) }
+        val document = documentOf(paragraphOf(kids))
+
+        ParagraphSplitter.split(document)
+
+        val pieces = blocksOf(document)
+        assertTrue("more than one piece, got ${pieces.size}", pieces.size > 1)
+        pieces.forEach { assertTrue(textOf(it).length <= 2 * maxChars) }
+        assertEquals(kids.size * 6_500, pieces.sumOf { textOf(it).length })
+    }
+
+    @Test
+    fun `a short paragraph is left as the very node the parser built`() {
+        val text = Text("y".repeat(maxChars))
+        val paragraph = paragraphOf(listOf(text))
+        val document = documentOf(paragraph)
+
+        ParagraphSplitter.split(document)
+
+        assertSame(paragraph, document.firstChild)
+        assertSame(text, paragraph.firstChild)
+    }
+
+    @Test
+    fun `bold across the cut stays bold on both sides`() {
+        val bold = StrongEmphasis().also { it.appendChild(Text("b".repeat(20_000))) }
+        val document = documentOf(paragraphOf(listOf(Text("lead "), bold, Text(" tail"))))
+
+        ParagraphSplitter.split(document)
+
+        val pieces = blocksOf(document)
+        assertTrue(pieces.size >= 3)
+        assertEquals("lead " + "b".repeat(20_000) + " tail", pieces.joinToString("") { textOf(it) })
+        pieces.forEach { piece ->
+            assertTrue(textOf(piece).length <= maxChars)
+            descendants(piece).filterIsInstance<Text>().filter { 'b' in it.literal }.forEach {
+                assertTrue("every bold char is under a StrongEmphasis", it.parent is StrongEmphasis)
+            }
+        }
+    }
+
+    @Test
+    fun `a link and a code span across the cut keep their kind and destination on every side`() {
+        val link = Link("https://example.com/x", "title").also { it.appendChild(Text("l".repeat(20_000))) }
+        val code = Code("c".repeat(20_000))
+        val document = documentOf(paragraphOf(listOf(link, Text(" "), code)))
+
+        ParagraphSplitter.split(document)
+
+        val pieces = blocksOf(document)
+        val links = pieces.flatMap { descendants(it) }.filterIsInstance<Link>()
+        assertTrue("the link is drawn in several pieces, got ${links.size}", links.size >= 3)
+        links.forEach {
+            assertEquals("https://example.com/x", it.destination)
+            assertEquals("title", it.title)
+        }
+        assertEquals("l".repeat(20_000), links.joinToString("") { textOf(it) })
+        val codes = pieces.flatMap { descendants(it) }.filterIsInstance<Code>()
+        assertTrue(codes.size >= 3)
+        assertEquals("c".repeat(20_000), codes.joinToString("") { it.literal })
+        pieces.forEach { assertTrue(textOf(it).length <= maxChars) }
+    }
+
+    @Test
+    fun `emoji and CJK runs are never cut inside a character`() {
+        // One char in front, so a cut at the bare limit would land inside a pair or a sequence.
+        val emoji = "a" + "\uD83D\uDE00".repeat(10_000)
+        val family = "a" + "\uD83D\uDC69\u200D\uD83D\uDCBB".repeat(4_000)
+        val cjk = "a" + "\uD840\uDC00漢".repeat(7_000)
+        for (run in listOf(emoji, family, cjk)) {
+            val document = documentOf(paragraphOf(listOf(Text(run))))
+
+            ParagraphSplitter.split(document)
+
+            val pieces = blocksOf(document).map { textOf(it) }
+            assertTrue(pieces.size >= 3)
+            assertEquals(run, pieces.joinToString(""))
+            pieces.forEach {
+                assertFalse("no piece starts inside a pair", it.first().isLowSurrogate())
+                assertFalse("no piece starts on the second half of a sequence", it.startsWith("\uD83D\uDCBB"))
+                assertFalse("no piece starts with a joiner", it.first() == '\u200D')
+                assertFalse("no piece ends inside a pair", it.last().isHighSurrogate())
+                assertFalse("no piece ends with a joiner", it.last() == '\u200D')
+            }
+        }
+    }
 }

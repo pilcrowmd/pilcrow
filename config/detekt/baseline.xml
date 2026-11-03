@@ -54,7 +54,6 @@
     <ID>UnusedParameter:RecyclerAdapterEntries.kt$RecyclerAdapterEntries$markwon: Markwon</ID>
     <ID>UnusedPrivateProperty:LatexBlockEntry.kt$LatexBlockEntry$private val nodeClass: Class&lt;out Node&gt;</ID>
     <ID>UnusedPrivateProperty:MarkdownViewModel.kt$MarkdownViewModel$// Per-file scroll-position memory (keyed by document URI) private val _fileScrollPositions = mutableMapOf&lt;String, Int&gt;()</ID>
-    <ID>WildcardImport:HeadingsDrawer.kt$import androidx.compose.foundation.layout.*</ID>
     <ID>WildcardImport:LocalStorageManager.kt$import androidx.datastore.preferences.core.*</ID>
     <ID>WildcardImport:SearchBar.kt$import androidx.compose.foundation.layout.*</ID>
   </CurrentIssues>

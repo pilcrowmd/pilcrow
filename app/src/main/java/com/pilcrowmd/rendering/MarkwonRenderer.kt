@@ -408,6 +408,8 @@ internal fun buildPilcrowMarkwon(
         // Must follow SyntaxHighlightPlugin: overrides its single code background with separate
         // inline and fenced-block backgrounds.
         .usePlugin(CodeSurfacePlugin(colorScheme))
+        // S8-A48: bold in the scheme's strong-text colour (Dark and AMOLED only; Light and the PDF add nothing).
+        .usePlugin(StrongTextColourPlugin(colorScheme))
         // Limited HTML (<br>, <sub>, <sup> and the like). `<details>` is NOT handled here: this plugin
         // would only strip its tags. The reader draws it as a collapsible section (M-161, DetailsState).
         .usePlugin(htmlPlugin())

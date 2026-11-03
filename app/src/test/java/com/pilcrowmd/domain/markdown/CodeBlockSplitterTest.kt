@@ -108,22 +108,17 @@ class CodeBlockSplitterTest {
     }
 
     @Test
-    fun `a single line longer than a piece stays whole, and ends its piece`() {
+    fun `a single line longer than a piece is cut inside it, and its rest runs on with the lines after it`() {
+        // S8-A66 (it used to stay whole): the line is cut with code wrap on or off.
         val huge = "y".repeat(20_000)
         val literal = "short one\n$huge\nshort two\nshort three\n"
         val pieces = piecesOf(literal)
 
         assertEquals(literal, pieces.joinToString("") { it.literal })
-        val holding = pieces.single { it.literal.contains(huge) }
-        assertEquals(
-            "the long line is in one piece, whole",
-            huge,
-            holding.literal.lines().single {
-                it.startsWith("yyy")
-            },
-        )
-        assertTrue("the piece ends after the long line", holding.literal.endsWith("$huge\n"))
-        assertEquals("the lines after it start the next piece", "short two\nshort three\n", pieces.last().literal)
+        assertEquals("the long line starts a piece", "short one\n", pieces.first().literal)
+        assertEquals(List(26) { "y".repeat(750) }, pieces.subList(1, 27).map { it.literal })
+        assertEquals("y".repeat(500) + "\nshort two\nshort three\n", pieces.last().literal)
+        assertEquals(28, pieces.size)
     }
 
     @Test

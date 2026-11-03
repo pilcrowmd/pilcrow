@@ -14,8 +14,9 @@ import org.commonmark.node.Node
 object ReaderDocument {
     /**
      * [splitLongParagraphs]: a top-level paragraph with more than
-     * [ParagraphSplitter.MAX_INLINE_CHILDREN] inline children becomes several paragraphs, so the
-     * reader binds, lays out and records a bounded block per frame (M-328). It runs first, because
+     * [ParagraphSplitter.MAX_INLINE_CHILDREN] inline children, or more than
+     * [LongLineCut.MAX_BLOCK_CHARS] characters, becomes several paragraphs, so the reader binds, lays
+     * out and records a bounded block per frame (M-328, S8-A61). It runs first, because
      * [Footnotes.transform] numbers the blocks. The PDF export passes false: it lays its pages out
      * off the main thread and prints the paragraph whole.
      *
@@ -25,9 +26,11 @@ object ReaderDocument {
      *
      * [splitLongTables]: a top-level table with more body rows (or cells) than [TableSplitter.PIECE_ROWS]
      * and [TableSplitter.PIECE_CELLS] allow becomes several [TablePiece]s, each drawn with the header, so
-     * the reader binds a bounded number of cells at a time (S8-A31). The PDF skips it, as the others.
+     * the reader binds a bounded number of cells at a time (S8-A31), and every top-level table has each
+     * cell's text capped at [TableSplitter.MAX_CELL_CHARS] (S8-A61). The PDF skips it, as the others.
      *
-     * [inlineSource]: see [Callouts.transform]; the renderer passes its maths source.
+     * [inlineSource]: see [Callouts.transform]; the renderer passes its maths source. The paragraph and
+     * table splits measure such a node by it too ([InlineCut]), so they cut where search's tree cuts.
      */
     fun transform(
         document: Node,
@@ -36,9 +39,9 @@ object ReaderDocument {
         splitLongCodeBlocks: Boolean = splitLongParagraphs,
         splitLongTables: Boolean = splitLongParagraphs,
     ): Node {
-        if (splitLongParagraphs) ParagraphSplitter.split(document)
+        if (splitLongParagraphs) ParagraphSplitter.split(document, inlineSource)
         if (splitLongCodeBlocks) CodeBlockSplitter.split(document)
-        if (splitLongTables) TableSplitter.split(document)
+        if (splitLongTables) TableSplitter.split(document, inlineSource)
         return Callouts.transform(Footnotes.transform(document), inlineSource)
     }
 }

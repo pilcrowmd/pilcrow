@@ -178,6 +178,9 @@ internal class CodePieceBinder(
             params.bottomMargin = if (piece.isLast) holder.defaultMarginBottom else 0
             holder.itemView.layoutParams = params
         }
+        // One block, one scrollbar: each piece pans in its own scroll view, and with short rows every
+        // one of them showed its own thumb on a pan (S8-A67). The last piece's sits where a block's does.
+        holder.codeScroll.isHorizontalScrollBarEnabled = piece.isLast
         val views = holder.pieceViews
         if (views != null && !wrapLines) {
             view.minWidth = views.widthAt(view.textSize)

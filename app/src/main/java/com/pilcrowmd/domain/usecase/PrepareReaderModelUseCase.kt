@@ -75,8 +75,9 @@ class PrepareReaderModelUseCase(
         // rendering it as Markdown would overflow the stack, so the source is shown as plain text.
         if (parsed is TooDeepDocument) return plain(content, renderMode, PlainReason.TOO_DEEP)
         // M-328: the reader runs the split itself to keep the seams; search and the headings drawer
-        // take the same split through ReaderDocument.transform's default, so positions agree.
-        val seams = ParagraphSplitter.split(parsed)
+        // take the same split through ReaderDocument.transform's default, so positions agree. S8-A62: a
+        // formula or emoji is measured by its source, which is plain text in search's tree.
+        val seams = ParagraphSplitter.split(parsed, ::calloutTitleSource)
         // M-227: a callout's title reads a formula or emoji as its source, as the PDF does (ReaderTree),
         // so the title painted here is the text search finds in it.
         // Issue #17: long code blocks are cut here too, by the same default search and the drawer take.

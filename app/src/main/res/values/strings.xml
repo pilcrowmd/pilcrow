@@ -18,6 +18,10 @@
     <string name="main_toast_not_saved_not_utf8">Not saved: this file isn\'t UTF-8</string>
     <!-- Status toast when a copy is refused because the picked file already has content or is not UTF-8. Full sentence. -->
     <string name="main_toast_not_saved_pick_new_file">Not saved: pick a new file for the copy</string>
+    <!-- S8-A55: status toast (also read by TalkBack) after "Allow editing" worked; the read-only banner goes away. Short status phrase. -->
+    <string name="main_toast_edit_allowed">Editing allowed</string>
+    <!-- S8-A55: status toast when Android would not let PilcrowMD keep write access to the picked file. Full sentences. -->
+    <string name="main_toast_edit_read_only">Couldn\'t get permission to edit this file. Use Save a copy instead.</string>
     <!-- Toast and welcome-screen message when a file fails to open. Full sentence. -->
     <string name="main_load_failed">Couldn\'t open that file</string>
     <!-- Status toast when a file is over the read limit (20 MiB). Full sentence. -->
@@ -30,7 +34,7 @@
     <!-- Banner under the toolbar for a file that is not UTF-8. Two lines (\n); the second is a tappable call to action. -->
     <string name="main_banner_not_utf8">This file isn\'t UTF-8, so saving would change it.\nTap to Save a copy…</string>
     <!-- Banner under the toolbar for a file opened from another app with no write permission. Two lines (\n); the second is a tappable call to action. -->
-    <string name="main_banner_transient">Temporary file opened from another app.\nTap to Save a copy…</string>
+    <string name="main_banner_transient">Read-only: opened from another app.\nTap to allow editing or save a copy…</string>
 
     <!-- Banner under the toolbar: the open file changed on another device just after it was opened, and there are no unsaved edits. One line (S8-A52); the whole banner is tappable. -->
     <string name="main_banner_changed">This file was just changed outside PilcrowMD. Tap to reload.</string>
@@ -40,6 +44,24 @@
     <string name="main_action_reload">Reload</string>
     <!-- Button on the "file changed" banner: keep the unsaved edits; saving will write them over the other version. Short phrase. -->
     <string name="main_action_keep_mine">Keep mine</string>
+    <!-- S8-A55: title of the dialog Save (or the banner) opens for a file another app opened read-only. Question. -->
+    <string name="main_dialog_edit_title">Edit this file?</string>
+    <!-- S8-A55: text of that dialog. Full sentence. -->
+    <string name="main_dialog_edit_text">The app that sent this file only lets PilcrowMD read it.</string>
+    <!-- S8-A55: button that starts "Allow editing"; also the title of the next dialog. Short imperative. -->
+    <string name="main_action_allow_editing">Allow editing</string>
+    <!-- S8-A55: title of the dialog shown before the system file picker opens. Short imperative (same words as the button). -->
+    <string name="main_dialog_allow_editing_title">Allow editing</string>
+    <!-- S8-A55: text of that dialog. Full sentences. -->
+    <string name="main_dialog_allow_editing_text">Android will show your files. Pick this same file once, and PilcrowMD can save to it from then on.</string>
+    <!-- S8-A55: button of that dialog that opens the system file picker. Short imperative. -->
+    <string name="main_action_continue">Continue</string>
+    <!-- S8-A55: title of the dialog when the picked file is not the one open in PilcrowMD. Full sentence. -->
+    <string name="main_dialog_not_same_file_title">That isn\'t the same file</string>
+    <!-- S8-A55: text of that dialog. Full sentence. -->
+    <string name="main_dialog_not_same_file_text">The file you picked is different from the one open here, so nothing was changed.</string>
+    <!-- S8-A55: button of that dialog that opens the file picker again. Short imperative. -->
+    <string name="main_action_pick_again">Pick again</string>
     <!-- Title of the dialog before reloading a changed file over unsaved edits. Question. -->
     <string name="main_dialog_reload_title">Reload the file?</string>
     <!-- Text of the dialog before reloading a changed file over unsaved edits. Full sentence. -->
@@ -89,6 +111,8 @@
     <string name="main_open_file_description">File: %1$s, %2$s</string>
     <!-- Same, for a file that was not opened from My folders. %1$s is the file name. -->
     <string name="main_open_file_description_plain">File: %1$s</string>
+    <!-- Spoken after the open-file line while the open file has edits that are not saved yet (GitHub #19; the line then ends in "*"). %1$s is the line's spoken text above ("File: notes.md"). -->
+    <string name="main_open_file_unsaved">%1$s, unsaved changes</string>
 
     <!-- Toolbar overflow item: switch a .txt file to Markdown rendering. Menu item label. -->
     <string name="main_view_as_markdown">View as Markdown</string>
@@ -270,6 +294,18 @@
     <!-- Table of contents drawer. -->
     <!-- Drawer title (noun): the list of the document's headings. -->
     <string name="headings_title">Headings</string>
+    <!-- Text button at the right of the drawer title: folds every heading that has sub-headings. Imperative verb phrase, button label. -->
+    <string name="headings_collapse_all">Collapse all</string>
+    <!-- Text button at the right of the drawer title, shown once any heading is folded: unfolds every heading. Imperative verb phrase, button label. -->
+    <string name="headings_expand_all">Expand all</string>
+    <!-- TalkBack name of the arrow beside an unfolded heading, which hides its sub-headings. %1$s is the heading's text. Imperative verb phrase. -->
+    <string name="headings_collapse_heading">Collapse %1$s</string>
+    <!-- TalkBack name of the arrow beside a folded heading, which shows its sub-headings again. %1$s is the heading's text. Imperative verb phrase. -->
+    <string name="headings_expand_heading">Expand %1$s</string>
+    <!-- TalkBack state of a heading's arrow while its sub-headings are shown. Adjective. -->
+    <string name="headings_state_expanded">Expanded</string>
+    <!-- TalkBack state of a heading's arrow while its sub-headings are hidden. Adjective. -->
+    <string name="headings_state_collapsed">Collapsed</string>
 
     <!-- Full-screen Mermaid diagram viewer. -->
     <!-- Content description of the diagram picture, read by TalkBack (noun phrase). -->
@@ -413,6 +449,8 @@
     <string name="render_code_copy">Copy</string>
     <!-- Toast shown after a code block has been copied to the clipboard. Past-tense confirmation. -->
     <string name="render_code_copied">Copied</string>
+    <!-- Toast shown when Copy on a code block fails because the block is too large for the system clipboard (several MB). Short. -->
+    <string name="render_code_too_large_to_copy">Too large to copy</string>
     <!-- Shown in place of a code block whose text could not be drawn (graceful degradation). The brackets are part of the text. -->
     <string name="render_code_block_failed">[code block could not be rendered]</string>
     <!-- Shown in place of a LaTeX block that could not be drawn. The brackets are part of the text. -->

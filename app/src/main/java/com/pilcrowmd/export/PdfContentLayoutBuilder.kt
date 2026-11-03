@@ -73,8 +73,13 @@ internal fun topLevelBlocksForMode(
     renderMode: com.pilcrowmd.domain.model.RenderMode,
 ): List<org.commonmark.node.Node> {
     if (renderMode != com.pilcrowmd.domain.model.RenderMode.PLAIN) return parseTopLevelBlocks(markwon, content)
-    // No reader cap: the PDF paginates whole blocks, so a forced seam would leave half-empty pages.
-    val document = com.pilcrowmd.rendering.PlainTextBlocks.build(content, maxChunkLines = Int.MAX_VALUE)
+    // No reader cap: the PDF paginates whole blocks, so a forced seam would leave half-empty pages, and
+    // it lays out off the main thread, so a long line is printed whole (S8-A61).
+    val document = com.pilcrowmd.rendering.PlainTextBlocks.build(
+        content,
+        maxChunkLines = Int.MAX_VALUE,
+        maxLineChars = Int.MAX_VALUE,
+    )
     val nodes = buildList {
         var node = document.firstChild
         while (node != null) {

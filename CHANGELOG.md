@@ -7,6 +7,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-03
+
+### Added
+
+- **Allow editing for files opened read-only from another app, such as Samsung My Files.** Save
+  offers **Allow editing**: pick the same file once in Android's file picker, and PilcrowMD saves
+  straight into it from then on, also after a restart. **Save a copy** is still there.
+- **Contents panel: fold a heading to hide its sub-headings; Collapse all / Expand all.**
+- **A * after the file name shows unsaved changes; Save, Undo and Redo are greyed out when there
+  is nothing to do (GitHub #19).**
+
+### Changed
+
+- **Open source licenses: complete notices for the libraries inside the diagram engine.**
+- **Bold text stands out more in Dark and AMOLED themes.**
+
+### Fixed
+
+- **Very long lines without spaces no longer freeze the app.**
+- **Files with one very long line no longer freeze in Edit mode.**
+- **Code blocks with a very long line no longer freeze, with line wrapping on or off.** With it off,
+  such a line shows as stacked rows that scroll sideways together.
+- **Copying a very large code block no longer crashes the app.** It says "Too large to copy" instead.
+
 ## [1.1.1] - 2026-10-29
 
 ### Fixed

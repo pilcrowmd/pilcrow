@@ -219,7 +219,8 @@ class PlainTextBlocksTest {
         // adapter shows, so the match must carry that chunk's adapter position and raw offset.
         val src = (1..1000).joinToString("\n") { "line $it" }
         val literals = PlainTextChunks.split(src)
-        val matches = SearchMarkdownUseCase(ParseMarkdownHeadingsUseCase()).findPlainSearchMatches(literals, "line 401")
+        val matches =
+            SearchMarkdownUseCase(ParseMarkdownHeadingsUseCase()).findPlainSearchMatches(src, literals, "line 401")
         assertEquals(1, matches.size)
         val match = matches.single()
         assertEquals("second chunk's adapter position", 1, match.adapterPosition)
@@ -245,7 +246,7 @@ class PlainTextBlocksTest {
         assertEquals("line 900 is in the third chunk", 2, matches.single().adapterPosition)
 
         // The same position through the plain-mode entry point over the painter's literals.
-        val plain = SearchMarkdownUseCase(ParseMarkdownHeadingsUseCase()).findPlainSearchMatches(split, "line 900")
+        val plain = SearchMarkdownUseCase(ParseMarkdownHeadingsUseCase()).findPlainSearchMatches(src, split, "line 900")
         assertEquals(2, plain.single().adapterPosition)
     }
 }

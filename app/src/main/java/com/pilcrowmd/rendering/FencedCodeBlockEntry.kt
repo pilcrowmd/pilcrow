@@ -3,12 +3,15 @@
 
 package com.pilcrowmd.rendering
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.os.TransactionTooLargeException
+import android.text.Layout
 import android.text.Spannable
 import android.text.Spanned
 import android.text.TextPaint
@@ -132,6 +135,7 @@ class FencedCodeBlockEntry(
         holder.mermaidImage.visibility = View.GONE
         holder.mermaidCaption.visibility = View.GONE
         holder.codeScroll.wrapLines = wrapLines
+        holder.codeView.setCodeBreakStrategy(wrapLines)
         // Size is re-applied on EVERY bind and BEFORE the try, not inside it. Two reasons, and the
         // second is why it moved: a reused holder must not keep the PX size the live pinch wrote
         // (createHolder does not run again for one — see M-04), and if `markwon.render` throws, the
@@ -206,8 +210,12 @@ class FencedCodeBlockEntry(
         holder.copyButton.setOnClickListener {
             val clipboard =
                 context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("code", literal))
-            Toast.makeText(context, context.getString(R.string.render_code_copied), Toast.LENGTH_SHORT).show()
+            val said = if (clipboard.copyPlainText("code", literal)) {
+                R.string.render_code_copied
+            } else {
+                R.string.render_code_too_large_to_copy
+            }
+            Toast.makeText(context, context.getString(said), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -347,7 +355,8 @@ class FencedCodeBlockEntry(
 
         /**
          * Issue #17: back to an ordinary block, on every bind of every route and on recycle: off the
-         * block's shared views, and the layout's own margins, padding and font padding, no minimum width.
+         * block's shared views, and the layout's own margins, padding and font padding, no minimum width,
+         * its scrollbar back.
          */
         fun resetPiece() {
             pieceViews?.detach(this)
@@ -357,6 +366,7 @@ class FencedCodeBlockEntry(
             codeView.includeFontPadding = true
             codeView.minWidth = 0
             codeScroll.resetScroll()
+            codeScroll.isHorizontalScrollBarEnabled = true
             codeView.setPaddingRelative(
                 codeView.paddingStart,
                 defaultPaddingTop,
@@ -430,6 +440,38 @@ class FencedCodeBlockEntry(
 
 // Markwon 4.6.2's CorePlugin.visitCodeBlock writes a no-break space and a newline before the code.
 private const val MARKWON_CODE_PREFIX = 2
+
+// How far down a failure's causes Copy looks for the binder's refusal; a cause chain can loop.
+private const val MAX_CAUSES = 8
+
+/**
+ * S8-A66: an unwrapped row is never broken, but minikin's optimal breaker still weighs every break
+ * chance in it, and an 8,000-char CJK row (a break chance at every char) froze the reader for seconds.
+ * The greedy breaker is linear and shows the same text; wrapped code keeps the default.
+ */
+// The Layout constants are the LineBreaker ones (same values), which lint asks for but need API 29.
+@SuppressLint("WrongConstant")
+private fun TextView.setCodeBreakStrategy(wrapLines: Boolean) {
+    breakStrategy = if (wrapLines) Layout.BREAK_STRATEGY_HIGH_QUALITY else Layout.BREAK_STRATEGY_SIMPLE
+}
+
+/**
+ * S8-A66: put [text] on the clipboard; false when the system refuses it as too large. A clip goes to the
+ * clipboard service in one binder transaction, and for a block of several MB ClipboardManager rethrows
+ * its TransactionTooLargeException as a RuntimeException, which crashed the app. Any other failure is
+ * not caught here.
+ */
+@Suppress("TooGenericExceptionCaught") // the framework wraps the one failure caught in a RuntimeException
+private fun ClipboardManager.copyPlainText(label: String, text: CharSequence): Boolean = try {
+    setPrimaryClip(ClipData.newPlainText(label, text))
+    true
+} catch (e: RuntimeException) {
+    if (generateSequence<Throwable>(e) { it.cause }.take(MAX_CAUSES).none { it is TransactionTooLargeException }) {
+        throw e
+    }
+    Log.w("FencedCodeBlockEntry", "Copy refused: ${text.length} chars is too large for the clipboard", e)
+    false
+}
 
 /** [runs] painted on [view], which shows Markwon's render of [code]. */
 private fun paintCode(view: TextView, code: String, runs: List<CodeRun>, colorScheme: PilcrowColorScheme) {

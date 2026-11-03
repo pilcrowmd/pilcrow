@@ -38,4 +38,12 @@ class OpenFileLineTest {
         assertEquals("", plain.spokenFolderPath)
         assertEquals("plan.md", plain.caption)
     }
+
+    /** GitHub #19: a "*" right after the file name while the file has unsaved changes, and only then. */
+    @Test
+    fun anUnsavedFileEndsInAnAsterisk() {
+        assertEquals("plan.md*", OpenFileLine("plan.md", unsaved = true).caption)
+        assertEquals("Notes › plan.md*", OpenFileLine("plan.md", listOf("Notes"), unsaved = true).caption)
+        assertEquals("plan.md", OpenFileLine("plan.md", unsaved = false).caption)
+    }
 }

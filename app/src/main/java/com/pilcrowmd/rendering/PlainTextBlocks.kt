@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.rendering
 
+import com.pilcrowmd.domain.markdown.LongLineCut
 import com.pilcrowmd.domain.markdown.PlainTextChunks
 import org.commonmark.node.CustomBlock
 import org.commonmark.node.Document
@@ -26,9 +27,15 @@ class PlainTextChunk(val literal: String, val continuesPrevious: Boolean = false
  */
 object PlainTextBlocks {
 
-    /** [maxChunkLines] lets a caller that does not draw on the main thread (the PDF export) opt out of the cap. */
-    fun build(content: String, maxChunkLines: Int = PlainTextChunks.MAX_CHUNK_LINES): Document =
-        build(PlainTextChunks.pieces(content, maxChunkLines))
+    /**
+     * [maxChunkLines] and [maxLineChars] let a caller that does not draw on the main thread (the PDF
+     * export) opt out of the caps.
+     */
+    fun build(
+        content: String,
+        maxChunkLines: Int = PlainTextChunks.MAX_CHUNK_LINES,
+        maxLineChars: Int = LongLineCut.MAX_BLOCK_CHARS,
+    ): Document = build(PlainTextChunks.pieces(content, maxChunkLines, maxLineChars))
 
     /** The document for pieces [PlainTextChunks.pieces] already produced — the chunks share those strings. */
     fun build(pieces: List<PlainTextChunks.Piece>): Document {

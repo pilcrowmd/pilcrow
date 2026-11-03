@@ -17,15 +17,20 @@ import io.github.rosemoe.sora.widget.subscribeAlways
 
 /**
  * Issue #15: scroll so [line] sits in the middle of the editor's height. The editor is resized for an
- * open keyboard (imePadding), so the line stays above it. Sora's layout offset for a character is the
- * bottom of its row, so the row's top is one row height above it.
+ * open keyboard (imePadding), so the line stays above it.
+ *
+ * S8-A64: the row's top comes from row arithmetic, never from `getCharOffsetY`. That one also measures
+ * the character's X, which shapes the whole line on the main thread before any draw has cached it: a
+ * 5 MB CJK line was an ANR right here. With wrap on the row is the layout's row for the line's first
+ * character (a search in its row table), with wrap off it is the line.
  *
  * The move is applied at once, not left pending for the next frame: Sora's word-wrap pass ends in
  * `scrollBy(0, 0)`, which cancels a move that has not been drawn yet (measured on a 329-line note:
  * the reveal was gone a few milliseconds after it).
  */
 internal fun CodeEditor.revealLineInMiddle(line: Int) {
-    val rowTop = getCharOffsetY(line, 0) + offsetY - rowHeight
+    val row = if (isWordwrap) layout.getRowIndexForPosition(text.getCharIndex(line, 0)) else line
+    val rowTop = getRowTop(row)
     val target = (rowTop - (height - rowHeight) / 2f).toInt().coerceIn(0, scrollMaxY.coerceAtLeast(0))
     scroller.forceFinished(true)
     scroller.startScroll(offsetX, offsetY, 0, target - offsetY, 0)

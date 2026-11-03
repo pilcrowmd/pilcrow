@@ -44,12 +44,12 @@ android {
         applicationId = "com.pilcrowmd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "1.1.1"
+        versionCode = 21
+        versionName = "1.1.2"
         // M-174: the release-prep date, bumped in the same edit as versionName (docs/PUBLISHING.md
         // step 1). File content, never the build clock or git, so every builder produces the same
         // bytes (F-Droid). ReleasePrepDateTest fails if it is not later than the previous release.
-        val releasePrepDate = "2026-10-29"
+        val releasePrepDate = "2026-11-03"
         LocalDate.parse(releasePrepDate) // a malformed date fails the build
         buildConfigField("String", "RELEASE_PREP_DATE", "\"$releasePrepDate\"")
 

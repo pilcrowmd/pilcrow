@@ -150,6 +150,12 @@ class DraftKeeperTest {
             settle()
         }
 
+        /** S8-A55 "Allow editing": the same document, still dirty, moves to [uri]. */
+        fun adopt(uri: Uri) {
+            slot.adoptIdentity(id, slot.baseline, uri, "notes.md", transient = false)
+            settle()
+        }
+
         /** Let [ms] pass and run everything that falls due, including what is due exactly at the end. */
         fun elapse(ms: Long) {
             test.testScheduler.advanceTimeBy(ms)
@@ -231,6 +237,37 @@ class DraftKeeperTest {
         assertTrue(rig.drafts.writes.isEmpty())
         assertTrue(rig.drafts.detached.isEmpty())
         assertTrue("and there is nothing to remove either", rig.drafts.deletes.isEmpty())
+    }
+
+    @Test
+    fun `a dirty document that moves to another file takes its draft along`() = runTest {
+        val rig = Rig(this)
+        rig.open(file, "original\n")
+        rig.type("edited\n")
+        rig.elapse(1_500)
+        assertEquals("a draft under the first file", setOf(file), rig.drafts.stored.keys)
+
+        rig.adopt(other)
+
+        assertEquals("the draft now lives under the new file only", setOf(other), rig.drafts.stored.keys)
+        assertEquals("edited\n", rig.drafts.stored.getValue(other).text)
+        val order = rig.drafts.writes.map { it.uri } to rig.drafts.deletes
+        assertEquals("written under the new file before the old one is removed", listOf(file, other), order.first)
+        assertEquals(listOf(file), order.second)
+    }
+
+    @Test
+    fun `a moved draft that cannot be written keeps the old one`() = runTest {
+        val rig = Rig(this)
+        rig.open(file, "original\n")
+        rig.type("edited\n")
+        rig.elapse(1_500)
+        rig.drafts.failWrites = true
+
+        rig.adopt(other)
+
+        assertTrue("the old draft stays when the new one failed", file in rig.drafts.stored)
+        assertTrue(rig.drafts.deletes.isEmpty())
     }
 
     @Test

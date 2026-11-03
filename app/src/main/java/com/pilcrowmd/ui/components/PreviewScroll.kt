@@ -118,8 +118,12 @@ private fun RecyclerView.focusedMatchTarget(
     val textViews = collectTextViews(itemView)
     // searchableMatchOffsets skips LaTeX-math spans, so the per-TextView counts and the chosen char
     // offset match the search use case + highlighter (math is not a match — consistent ordinals).
+    // An ordinal past the block's own matches is one that runs on from its end into the next piece of
+    // a cut line (S8-A61): no TextView holds it whole, so it lands on the block's last char, where it starts.
     val counts = textViews.map { searchableMatchOffsets(it.text, query).size }
-    val location = locateFocusedMatch(counts, occurrenceInBlock) ?: return null
+    val location = locateFocusedMatch(counts, occurrenceInBlock)
+        ?: return textViews.lastOrNull()?.takeIf { occurrenceInBlock >= counts.sum() && it.text.isNotEmpty() }
+            ?.let { it to it.text.length - 1 }
     val tv = textViews[location.textViewIndex]
     val charIdx = searchableMatchOffsets(tv.text, query).getOrNull(location.withinTextViewOccurrence)
     return if (charIdx == null) null else tv to charIdx

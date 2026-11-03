@@ -1,0 +1,6 @@
+- Allow editing: a file opened read-only from another app, like Samsung My Files, can now be saved in place.
+- Contents panel: fold headings, plus Collapse all and Expand all.
+- A * after the file name shows unsaved changes. Save, Undo and Redo grey out when there is nothing to do.
+- Bold stands out more in Dark and AMOLED.
+- Very long lines no longer freeze reading, editing or code blocks.
+- Copying a very large code block no longer crashes the app.

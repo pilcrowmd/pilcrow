@@ -38,7 +38,7 @@ import org.robolectric.annotation.GraphicsMode
  * The calm "save a copy" banners under the toolbar, in Dark and Light, at the system font scale 1.0
  * and 2.0 (the largest Android offers), so the two-line text wrapping beside the close button is caught.
  *
- *  - `transient_banner_temporary_*`: "Temporary file opened from another app", with the close button.
+ *  - `transient_banner_temporary_*`: "Read-only: opened from another app" (S8-A54 wording), with the close button.
  *  - `transient_banner_not_utf8_*`: the not-UTF-8 explanation, with NO close button.
  *  - `transient_banner_changed_*`: S8-A46, the file changed on another device, no unsaved edits.
  *  - `transient_banner_changed_edits_*`: the same with unsaved edits: Reload and Keep mine.

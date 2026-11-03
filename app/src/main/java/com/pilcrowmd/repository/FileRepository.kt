@@ -44,6 +44,9 @@ data class FileText(val content: String, val isUtf8: Boolean)
  * Abstraction for file access. v1 implements single-file via ContentResolver.
  * vNext hook: tree-URI (Obsidian-style vault) can be added later without ViewModel changes.
  */
+// One over the threshold since S8-A55 (releasePersistableUriPermission, the counterpart of the take):
+// the grant calls belong with the file they grant, and splitting the interface would touch every fake.
+@Suppress("TooManyFunctions")
 interface FileRepository {
     /**
      * Read the content of a file by URI, decoded as UTF-8, with whether the bytes were valid UTF-8
@@ -86,6 +89,12 @@ interface FileRepository {
      * no save path.
      */
     fun hasPersistedWritePermission(uri: Uri): Boolean
+
+    /**
+     * S8-A55: give back a persisted grant this app took for [uri] and no longer wants (a file picked
+     * for "Allow editing" that was not the open one). Best-effort; the default does nothing.
+     */
+    suspend fun releasePersistableUriPermission(uri: Uri) {}
 
     /**
      * The WAL slots still pending after launch recovery — i.e. saves that could not be committed and

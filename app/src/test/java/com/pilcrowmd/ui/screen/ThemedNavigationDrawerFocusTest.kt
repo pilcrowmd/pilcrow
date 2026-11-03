@@ -28,6 +28,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -172,6 +173,10 @@ class ThemedNavigationDrawerFocusTest {
     private fun headingIsFocused(text: String): Boolean =
         composeRule.onNodeWithText(text).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused) == true
 
+    private fun arrowIsFocused(description: String): Boolean =
+        composeRule.onNodeWithContentDescription(description).fetchSemanticsNode().config
+            .getOrNull(SemanticsProperties.Focused) == true
+
     private fun closeByBack() {
         composeRule.runOnIdle { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
     }
@@ -251,6 +256,9 @@ class ThemedNavigationDrawerFocusTest {
             tab()
             val onARow = headingIsFocused("Intro") || headingIsFocused("Details")
             assertFalse("Tab ${n + 2} focused a row of the CLOSED drawer", onARow)
+            // S8-A49: nor the fold controls, which "Intro" (it has a sub-heading) brings.
+            assertFalse("Tab ${n + 2} focused Collapse all of the CLOSED drawer", headingIsFocused("Collapse all"))
+            assertFalse("Tab ${n + 2} focused an arrow of the CLOSED drawer", arrowIsFocused("Collapse Intro"))
         }
     }
 

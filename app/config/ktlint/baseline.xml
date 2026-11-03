@@ -3,9 +3,6 @@
     <file name="src/main/java/com/pilcrowmd/storage/LocalStorageManager.kt">
         <error line="11" column="1" source="standard:no-wildcard-imports" />
     </file>
-    <file name="src/main/java/com/pilcrowmd/ui/components/HeadingsDrawer.kt">
-        <error line="8" column="1" source="standard:no-wildcard-imports" />
-    </file>
     <file name="src/main/java/com/pilcrowmd/ui/components/SearchBar.kt">
         <error line="7" column="1" source="standard:no-wildcard-imports" />
     </file>
@@ -20,6 +17,6 @@
     </file>
     <file name="src/main/java/com/pilcrowmd/viewmodel/MarkdownViewModel.kt">
         <error line="19" column="1" source="standard:no-wildcard-imports" />
-        <error line="333" column="17" source="standard:backing-property-naming" />
+        <error line="339" column="17" source="standard:backing-property-naming" />
     </file>
 </baseline>

@@ -17,13 +17,18 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.testing.withRealSize
 import com.pilcrowmd.viewmodel.DocumentId
 import io.github.rosemoe.sora.event.ScrollEvent
+import io.github.rosemoe.sora.widget.CodeEditor
+import io.github.rosemoe.sora.widget.layout.Layout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Proxy
 import java.time.Duration
 
 /**
@@ -225,6 +230,48 @@ class EditorLineRevealTest {
         editor.setLayoutBusy(false)
 
         assertEquals("not any more", atTheEnd, count[0])
+    }
+
+    /**
+     * S8-A64: the reveal must not measure a character's X to find its row's Y. `getCharOffsetY` does,
+     * through `Layout.getCharLayoutOffset`, which shapes the whole line on the main thread before a
+     * draw has cached it: one 5 MB CJK line was an ANR here. A recording layout stands in for Sora's.
+     */
+    private fun layoutCallsOfARevealOnALongLine(wordwrap: Boolean, chars: Int): List<String> {
+        val editor = CodeEditor(ApplicationProvider.getApplicationContext()).withRealSize()
+        editor.setText("x".repeat(chars) + "\nshort\n")
+        if (wordwrap) editor.setWordwrap(true, true, true)
+        val field = CodeEditor::class.java.getDeclaredField("layout").apply { isAccessible = true }
+        val real = field.get(editor) as Layout
+        val calls = mutableListOf<String>()
+        val loader = Layout::class.java.classLoader
+        val recording = Proxy.newProxyInstance(loader, arrayOf(Layout::class.java)) { _, method, args ->
+            calls += method.name
+            try {
+                method.invoke(real, *(args ?: emptyArray()))
+            } catch (e: InvocationTargetException) {
+                throw e.targetException
+            }
+        } as Layout
+        field.set(editor, recording)
+        compose.runOnUiThread { editor.revealLineInMiddle(1) }
+        field.set(editor, real)
+        editor.release()
+        return calls
+    }
+
+    @Test
+    fun `a reveal on a 100,000-char line with wrap off never measures a character`() {
+        val calls = layoutCallsOfARevealOnALongLine(wordwrap = false, chars = 100_000)
+        assertFalse("getCharLayoutOffset was called: $calls", "getCharLayoutOffset" in calls)
+    }
+
+    @Test
+    fun `a reveal on a long line with wrap on asks for the row only`() {
+        // 20,000 chars, not 100,000: Sora wraps on a thread pool every editor in this JVM shares.
+        val calls = layoutCallsOfARevealOnALongLine(wordwrap = true, chars = 20_000)
+        assertFalse("getCharLayoutOffset was called: $calls", "getCharLayoutOffset" in calls)
+        assertTrue("the row comes from the row table: $calls", "getRowIndexForPosition" in calls)
     }
 
     private companion object {

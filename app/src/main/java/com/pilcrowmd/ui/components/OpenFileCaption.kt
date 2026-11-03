@@ -34,16 +34,19 @@ internal const val OPEN_FILE_CAPTION_TAG = "open_file_caption"
  * One small line that names the open file: a folder icon and "Folder › sub › name.md" for a note
  * opened from My folders, a document icon and the file name for any other file. Not tappable. Long
  * text is shortened in the middle, so the end of the name (".md") stays visible. TalkBack reads it
- * once, as "File: Folder, sub, name.md", whatever the line shows. Colours come from the token layer.
+ * once, as "File: Folder, sub, name.md", whatever the line shows. While the file has unsaved changes
+ * the line ends in "*" and TalkBack adds ", unsaved changes" (GitHub #19). Colours come from the token
+ * layer.
  */
 @Composable
 internal fun OpenFileCaption(line: OpenFileLine, modifier: Modifier = Modifier) {
     val c = mdColors()
-    val spoken = if (line.inFolder) {
+    val file = if (line.inFolder) {
         stringResource(R.string.main_open_file_description, line.spokenFolderPath, line.name)
     } else {
         stringResource(R.string.main_open_file_description_plain, line.name)
     }
+    val spoken = if (line.unsaved) stringResource(R.string.main_open_file_unsaved, file) else file
     Row(
         modifier = modifier
             .fillMaxWidth()

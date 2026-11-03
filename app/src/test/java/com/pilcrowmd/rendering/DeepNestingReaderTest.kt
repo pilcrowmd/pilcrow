@@ -14,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.pilcrowmd.domain.markdown.PlainTextChunks
 import com.pilcrowmd.domain.markdown.ReaderModel
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.SearchMatch
@@ -114,7 +115,21 @@ class DeepNestingReaderTest {
     private fun assertShownAsPlainText(markdown: String) {
         val items = renderInReader(markdown)
         assertTrue("every item is a plain-text chunk", items.all { it.holder is PlainTextBlockEntry.Holder })
-        assertEquals("the source, verbatim", markdown, items.joinToString("\n") { it.text })
+        assertEquals("the source, verbatim", markdown, joinedLikeTheSource(markdown, items.map { it.text }))
+    }
+
+    /**
+     * [texts], the painted chunks of [markdown], joined as the source has them: a chunk cut at a line end
+     * dropped that '\n', one cut inside a long line (S8-A61) dropped nothing.
+     */
+    private fun joinedLikeTheSource(markdown: String, texts: List<String>): String {
+        val starts = PlainTextChunks.chunkStarts(markdown)
+        return buildString {
+            texts.forEachIndexed { i, text ->
+                if (i > 0 && markdown[starts[i] - 1] == '\n') append('\n')
+                append(text)
+            }
+        }
     }
 
     @Test
@@ -149,9 +164,13 @@ class DeepNestingReaderTest {
         val markdown = "# Title\n\n" + ">".repeat(100_000) + " deep[^1]\n\n[^1]: note\n"
         val headings = ParseMarkdownHeadingsUseCase()
         assertEquals(emptyList<Any>(), headings.extractHeadings(markdown))
-        // Shown as one plain-text chunk, so its one "deep" is item 0 at its exact source offset.
+        // Shown as plain-text chunks; the 100,000-char line is cut inside itself (S8-A61), so its one "deep"
+        // is in the chunk that holds it, at its exact source offset.
+        val deep = markdown.indexOf("deep")
+        val chunk = PlainTextChunks.chunkStarts(markdown).indexOfLast { it <= deep }
+        assertTrue("the long line was cut, so the word is past the first chunk", chunk > 0)
         assertEquals(
-            listOf(SearchMatch("deep", startIndex = markdown.indexOf("deep"), adapterPosition = 0)),
+            listOf(SearchMatch("deep", startIndex = deep, adapterPosition = chunk)),
             SearchMarkdownUseCase(headings).findSearchMatches(markdown, "deep"),
         )
     }

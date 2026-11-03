@@ -256,14 +256,17 @@ internal class DocumentSlot {
     /**
      * [savedContent] reached disk for document [expected]. The baseline moves to it, and `dirty`
      * clears ONLY if nothing was typed during the write — otherwise those keystrokes would be marked
-     * saved and never written (M-152). No-op if another document is on screen by now.
+     * saved and never written (M-152). It is set again when the text no longer matches the new
+     * baseline: typing back to the old text during the write left it clean, and Save greys out while
+     * clean (GitHub #19). No-op if another document is on screen by now.
      */
     @Synchronized
     fun markSaved(expected: DocumentId, savedContent: String) {
         val current = _document.value
         if (current == null || current.id != expected) return
         originalContent = savedContent
-        if (current.content == savedContent) _document.value = current.copy(dirty = false)
+        val dirty = current.content != savedContent
+        if (current.dirty != dirty) _document.value = current.copy(dirty = dirty)
     }
 
     /**

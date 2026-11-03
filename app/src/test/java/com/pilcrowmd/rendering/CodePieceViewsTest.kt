@@ -115,6 +115,24 @@ class CodePieceViewsTest {
     }
 
     @Test
+    fun `wrap off, the rows of one long line cut in pieces pan together, as one block`() {
+        // S8-A66: one line of 20,000 chars is cut inside the line, so it shows as stacked rows.
+        val built = build("w".repeat(20_000) + "\n")
+        assertTrue("the line is in rows: ${built.pieceCount}", built.pieceCount >= 3)
+        val first = built.bind(0)
+        val last = built.bind(built.pieceCount - 1) // the line's 4,000-char rest, half as wide alone
+        layOut(first)
+        layOut(last)
+        settle(first, last)
+        assertEquals("the short row is as wide as the full one", first.codeView.width, last.codeView.width)
+
+        last.codeScroll.scrollTo(PAN_PX, 0)
+
+        assertEquals("the row panned", PAN_PX, last.codeScroll.scrollX)
+        assertEquals("the row above followed", PAN_PX, first.codeScroll.scrollX)
+    }
+
+    @Test
     fun `a piece bound after the pan stands where the block stands, once it is laid out`() {
         val built = build(wideBlock())
         val first = built.bind(0)

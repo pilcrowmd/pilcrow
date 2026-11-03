@@ -234,6 +234,19 @@ class LocalFileRepository(private val contentResolver: ContentResolver, walBaseD
         }
     }
 
+    override suspend fun releasePersistableUriPermission(uri: Uri) {
+        withContext(Dispatchers.IO) {
+            try {
+                contentResolver.releasePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            } catch (_: SecurityException) {
+                // Nothing held to give back.
+            }
+        }
+    }
+
     override suspend fun displayName(uri: Uri): String = withContext(Dispatchers.IO) {
         try {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)

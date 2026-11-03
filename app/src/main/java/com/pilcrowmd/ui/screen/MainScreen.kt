@@ -74,6 +74,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -106,6 +108,7 @@ import com.pilcrowmd.ui.components.WelcomeScreen
 import com.pilcrowmd.ui.components.openEmailUs
 import com.pilcrowmd.ui.components.openIssueReport
 import com.pilcrowmd.ui.components.openStoreListing
+import com.pilcrowmd.ui.components.rememberUndoRedoState
 import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSets
@@ -235,6 +238,11 @@ fun MainScreen(
     // vanishes on rotate. Matches showSettings/showLicenses + pendingRescueSlotKey below.
     var showCloseConfirm by rememberSaveable { mutableStateOf(false) }
     var showReloadConfirm by rememberSaveable { mutableStateOf(false) }
+    // S8-A55 "Allow editing": the choice (Allow editing / Save a copy), the note before the picker,
+    // and the "not the same file" answer.
+    var showEditChoice by rememberSaveable { mutableStateOf(false) }
+    var showAllowEditing by rememberSaveable { mutableStateOf(false) }
+    var showNotSameFile by rememberSaveable { mutableStateOf(false) }
     val changedOutside = viewModel.changedOutside.collectAsStateWithLifecycle()
 
     // The ViewModel refused a close because the document has unsaved edits — typed after the UI
@@ -264,6 +272,8 @@ fun MainScreen(
     val lastFileNotReopened = viewModel.lastFileNotReopened.collectAsStateWithLifecycle()
     var statusToastError by remember { mutableStateOf(false) }
     var statusToastVisible by remember { mutableStateOf(false) }
+    // S8-A55: this toast is a polite live region, so TalkBack reads it ("Editing allowed").
+    var statusToastAnnounced by remember { mutableStateOf(false) }
 
     // Settings screen visibility. rememberSaveable so the modal survives a config
     // change / rotation.
@@ -297,6 +307,8 @@ fun MainScreen(
     val soraCodeEditor = remember {
         AccessibleCodeEditor(context)
     }
+    // GitHub #19: Undo and Redo are greyed out while the editor's history has no step for them.
+    val undoRedo = rememberUndoRedoState(soraCodeEditor)
     // Release the hoisted CodeEditor when MainScreen leaves composition (app exit / Activity
     // destroy) so its native resources + Context reference are freed (guards the leak surface
     // that LeakCanary watches). DisposableEffect(Unit) only fires on true teardown, not mode toggles.
@@ -500,6 +512,25 @@ fun MainScreen(
                 statusToastVisible = true
                 viewModel.resetSaveState()
             }
+            // S8-A55 "Allow editing": the outcome of the pick, once. Only this toast is announced
+            // (TalkBack), because it says why the read-only banner just went away.
+            is FileLoadState.EditAllowed -> {
+                statusToastText = context.getString(R.string.main_toast_edit_allowed)
+                statusToastError = false
+                statusToastAnnounced = true
+                statusToastVisible = true
+                viewModel.resetSaveState()
+            }
+            is FileLoadState.EditRefusedOtherFile -> {
+                showNotSameFile = true
+                viewModel.resetSaveState()
+            }
+            is FileLoadState.EditRefusedReadOnly -> {
+                statusToastText = context.getString(R.string.main_toast_edit_read_only)
+                statusToastError = true
+                statusToastVisible = true
+                viewModel.resetSaveState()
+            }
             // M-126: every load failure was silent — this state had no consumer anywhere. The
             // toast reports it wherever the user is (including with a document still open, where
             // the welcome screen is not visible); `loadFailedWithNoDocument` then keeps the
@@ -546,6 +577,7 @@ fun MainScreen(
         if (statusToastVisible) {
             kotlinx.coroutines.delay(if (statusToastError) 2800L else 1500L)
             statusToastVisible = false
+            statusToastAnnounced = false
         }
     }
 
@@ -665,6 +697,22 @@ fun MainScreen(
             saveAsLauncher.launch("Copy of ${baseName ?: "document"}.md")
         }
     }
+    // S8-A55 "Allow editing": the picker opens at the document itself (its folder) when it is a
+    // DocumentsContract URI, so the user can tap the same file; any other URI (a MediaStore one from
+    // Samsung My Files, a FileProvider one from mail) is not one the picker can start at, so it opens
+    // where Android chooses. The ViewModel adopts the pick only if it holds exactly what was opened.
+    val allowEditingLauncher = rememberAllowEditingLauncher { uri -> viewModel.allowEditing(uri) }
+    val launchAllowEditing = {
+        val uri = currentDocument.value?.uri
+        allowEditingLauncher.launch(uri?.takeIf { android.provider.DocumentsContract.isDocumentUri(context, it) })
+    }
+    // Save on a read-only "Open with" document (transient, read as UTF-8, not a new one) asks first:
+    // allow editing, or save a copy. Every other document that cannot save in place goes to Save-As.
+    val saveReadOnly = {
+        val doc = currentDocument.value
+        if (transient.value && doc?.isUnsaved != true && doc?.notUtf8 != true) showEditChoice = true else launchSaveAs()
+    }
+
     // Documents that cannot be saved in place, so every Save routes to Save-As: a transient doc
     // (read-only "Open with"), a never-saved one (M-91), and one read from a file that is not UTF-8
     // (NEW-12 — saving it in place would rewrite the file in another encoding). The ViewModel
@@ -739,6 +787,7 @@ fun MainScreen(
                     scope.launch { drawerState.close() }
                 },
                 rowsFocusable = { drawerState.targetValue == DrawerValue.Open },
+                documentKey = currentDocument.value?.id,
             )
         },
         modifier = modifier.fillMaxSize(),
@@ -753,7 +802,7 @@ fun MainScreen(
                 // trusting this routing — a wrong target is a data-loss bug (Safeguard 1).
                 onSave = {
                     if (savesOnlyAsCopy()) {
-                        launchSaveAs()
+                        saveReadOnly()
                     } else {
                         viewModel.saveFile()
                     }
@@ -801,9 +850,13 @@ fun MainScreen(
                     exportPdfLauncher.launch("${baseName ?: "document"}.pdf")
                 },
                 isSaving = writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
+                // GitHub #19: greyed out while there is nothing to save. The temporary-file banner
+                // still offers Allow editing / Save a copy (S8-A55); only this button follows it.
+                saveEnabled = currentDocument.value?.hasSomethingToSave == true,
                 onOpenFiles = notesFoldersViewModel?.let { { showFiles = true } },
                 onUndo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.undo() }) else null,
                 onRedo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.redo() }) else null,
+                undoRedo = undoRedo.value,
                 onMenuOpenChanged = { readingBars.onMenuOpenChanged(it) },
             )
         }
@@ -858,7 +911,7 @@ fun MainScreen(
                     } else if (transient.value && !transientNoticeClosed.value) {
                         TransientBanner(
                             enabled = !writeInFlight.value, // M-149: the CLAIM, never FileLoadState.Saving
-                            onClick = { launchSaveAs() },
+                            onClick = { saveReadOnly() },
                             onClose = { viewModel.closeTransientNotice() },
                         )
                     }
@@ -1095,6 +1148,7 @@ fun MainScreen(
                                             currentDocument.value!!.displayName,
                                             currentDocument.value!!.uri,
                                             noteFolderPath?.value,
+                                            unsaved = currentDocument.value!!.dirty,
                                         ),
                                     )
                                 }
@@ -1142,12 +1196,14 @@ fun MainScreen(
                                             codeEditorInstance = soraCodeEditor,
                                             onUndo = { soraCodeEditor.undo() },
                                             onRedo = { soraCodeEditor.redo() },
+                                            undoRedo = undoRedo.value,
                                             formattingBarEnabled = formattingBarEnabled.value,
                                             syntaxHighlighting = editorSupport == EditorSupport.HIGHLIGHTED,
                                             openFile = openFileLine(
                                                 editorFileName,
                                                 currentDocument.value?.uri,
                                                 noteFolderPath?.value,
+                                                unsaved = currentDocument.value?.dirty == true,
                                             ),
                                         )
                                     }
@@ -1199,6 +1255,38 @@ fun MainScreen(
                 }
 
                 // S8-A46: Reload over unsaved edits, only once the user agrees to lose them.
+                if (showEditChoice) {
+                    EditChoiceDialog(
+                        onAllowEditing = {
+                            showEditChoice = false
+                            showAllowEditing = true
+                        },
+                        onSaveCopy = {
+                            showEditChoice = false
+                            launchSaveAs()
+                        },
+                        onDismiss = { showEditChoice = false },
+                    )
+                }
+                if (showAllowEditing) {
+                    AllowEditingDialog(
+                        onContinue = {
+                            showAllowEditing = false
+                            launchAllowEditing()
+                        },
+                        onDismiss = { showAllowEditing = false },
+                    )
+                }
+                if (showNotSameFile) {
+                    NotSameFileDialog(
+                        onPickAgain = {
+                            showNotSameFile = false
+                            launchAllowEditing()
+                        },
+                        onDismiss = { showNotSameFile = false },
+                    )
+                }
+
                 if (showReloadConfirm) {
                     AlertDialog(
                         onDismissRequest = { showReloadConfirm = false },
@@ -1328,7 +1416,14 @@ fun MainScreen(
                             if (statusToastError) mdColors().error else mdColors().accent,
                             shape = RoundedCornerShape(8.dp),
                         )
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                        .then(
+                            if (statusToastAnnounced) {
+                                Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
             }
         }

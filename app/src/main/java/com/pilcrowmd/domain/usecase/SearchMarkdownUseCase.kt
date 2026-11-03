@@ -5,6 +5,7 @@ package com.pilcrowmd.domain.usecase
 
 import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.CalloutBlock
+import com.pilcrowmd.domain.markdown.CellEllipsis
 import com.pilcrowmd.domain.markdown.CodeBlockPiece
 import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.markdown.EmojiShortcodeMatch
@@ -33,6 +34,7 @@ import org.commonmark.node.Image
 import org.commonmark.node.IndentedCodeBlock
 import org.commonmark.node.Link
 import org.commonmark.node.Node
+import org.commonmark.node.Paragraph
 import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
 
@@ -74,35 +76,51 @@ class SearchMarkdownUseCase(
         val doc = parseHeadingsUseCase.parseDocument(content) ?: return emptyList()
         // A document nested too deep to render is painted as plain-text chunks (`ReaderTree`), so it
         // is searched over the same chunks: its parse is empty, but every word of it is on screen.
-        if (doc is TooDeepDocument) return findPlainSearchMatches(PlainTextChunks.split(content), query)
+        if (doc is TooDeepDocument) return findPlainSearchMatches(content, PlainTextChunks.split(content), query)
         return BlockScanner(content, query, emoji).scan(doc)
     }
 
     /**
      * Plain-mode search: matches over the literal chunk texts — the visible text IS the
      * source, so Markdown syntax is findable (`# alpha` matches). [chunkLiterals] must be the same
-     * split the plain render uses (adapter position = chunk index); chunks join with "\n", so raw
-     * start indices are cumulative. Case-insensitive and steps by ONE char (overlaps counted) —
-     * the same rules as the markdown scan and the TextView highlighter, so counts and focus
-     * ordinals never diverge.
+     * split of [content] the plain render uses (adapter position = chunk index), so raw start indices
+     * are cumulative: a chunk cut at a line end is followed by the "\n" the cut dropped, one cut inside
+     * a long line (S8-A61) by nothing. Case-insensitive and steps by ONE char (overlaps counted) — the
+     * same rules as the markdown scan and the TextView highlighter, so counts and focus ordinals never
+     * diverge. A match that runs over a cut inside a line belongs to the chunk it starts in, after
+     * that chunk's own matches ([straddlingStarts]).
      */
-    fun findPlainSearchMatches(chunkLiterals: List<String>, query: String): List<SearchMatch> {
+    fun findPlainSearchMatches(content: String, chunkLiterals: List<String>, query: String): List<SearchMatch> {
         if (query.isEmpty()) return emptyList()
         val matches = mutableListOf<SearchMatch>()
         var chunkStart = 0
         chunkLiterals.forEachIndexed { position, literal ->
-            var index = literal.indexOf(query, ignoreCase = true)
             var ordinal = 0
-            while (index >= 0) {
+            fun add(index: Int) {
                 matches += SearchMatch(
-                    content = literal.substring(index, index + query.length),
+                    content = content.substring(chunkStart + index, chunkStart + index + query.length),
                     startIndex = chunkStart + index,
                     adapterPosition = position,
                     occurrenceInBlock = ordinal++,
                 )
+            }
+            var index = literal.indexOf(query, ignoreCase = true)
+            while (index >= 0) {
+                add(index)
                 index = literal.indexOf(query, index + 1, ignoreCase = true)
             }
-            chunkStart += literal.length + 1 // +1: the newline consumed at the chunk boundary
+            val end = chunkStart + literal.length
+            val next = chunkLiterals.getOrNull(position + 1)
+            // A cut at a line end leaves that line's '\n' between the chunks; a cut inside a line, nothing.
+            if (next != null && end < content.length && content[end] != '\n') {
+                // A cut after a space is a word boundary: nothing runs on over it, as in the Markdown scan.
+                if (literal.isNotEmpty() && !literal.last().isWhitespace()) {
+                    straddlingStarts(literal, next, query).forEach(::add)
+                }
+                chunkStart = end
+            } else {
+                chunkStart = end + 1
+            }
         }
         return matches
     }
@@ -149,49 +167,87 @@ class SearchMarkdownUseCase(
         private val shortcodeIndex = ShortcodeIndex(content, emoji)
 
         fun scan(doc: Node): List<SearchMatch> {
+            // The paragraph just scanned, which the next block may continue (S8-A61), or the piece of
+            // a code block, which the next piece continues where it cuts a long line (S8-A65).
+            var previous: Chunk? = null
+            var previousNode: Node? = null
             // Numbered as the adapter numbers its items: a link reference definition has none (M-214).
             AdapterBlocks.of(doc).forEachIndexed { blockIndex, node ->
                 // occurrenceInBlock is per top-level block. A table renders as one TextView PER CELL, so
                 // its ordinal threads across cells in row-major order — the exact order TableBlockEntry
                 // paints and PreviewScroll walks; every other block is a single chunk.
-                if (node is TableBlock) {
+                previous = if (node is TableBlock) {
                     val occurrence = Occurrence()
-                    forEachCell(node) { cell -> scanChunk(cell, blockIndex, occurrence) }
+                    forEachCell(node) { cell -> scanChunk(cell, blockIndex, occurrence, before = null) }
+                    null
                 } else {
-                    scanChunk(node, blockIndex, Occurrence())
+                    val continues = continues(previousNode, node)
+                    scanChunk(node, blockIndex, Occurrence(), previous.takeIf { continues })
+                        .takeIf { node is Paragraph || node is CodeBlockPiece }
                 }
+                previousNode = node
             }
             return matches
+        }
+
+        /**
+         * A block's (or table cell's) visible text, each char's raw offset, and whose matches they are.
+         * [match] records the hit at [text] index `at` as the next of this block's occurrences.
+         */
+        private class Chunk(
+            val text: String,
+            val rawOffsets: List<Int>,
+            val blockIndex: Int,
+            val occurrence: Occurrence,
+        ) {
+            fun match(at: Int, shown: String) = SearchMatch(
+                content = shown,
+                startIndex = rawOffsets[at],
+                adapterPosition = blockIndex,
+                occurrenceInBlock = occurrence.next(),
+            )
+
+            /**
+             * S8-A61: whether [next] is the following piece of the same run of text, cut by
+             * [com.pilcrowmd.domain.markdown.ParagraphSplitter] in the middle of a word: its first char
+             * comes straight after this one's last in the source, and that last char is not a space. A
+             * cut at a space or a line break is a word boundary, and two real paragraphs always have a
+             * line between them, so nothing else runs on.
+             */
+            fun runsInto(next: Chunk): Boolean =
+                rawOffsets.last() + 1 == next.rawOffsets.first() && !text.last().isWhitespace()
         }
 
         /**
          * Assemble [root]'s visible text (the string Markwon renders into its TextView), then record
          * every case-insensitive occurrence of [query] in it. [occurrence] advances per hit (threaded
          * across a table's cells); the cursor advances so each hit keeps an exact raw start offset.
+         * When [before], the paragraph just scanned, runs on into this one (S8-A61), the matches that
+         * start in it and end here are recorded first, as [before]'s, after its own. Returns the chunk,
+         * or null when the block paints no text.
          */
-        private fun scanChunk(root: Node, blockIndex: Int, occurrence: Occurrence) {
+        private fun scanChunk(root: Node, blockIndex: Int, occurrence: Occurrence, before: Chunk?): Chunk? {
             val sb = StringBuilder()
             val rawOffsets = mutableListOf<Int>()
             inMath = false // each chunk (block, or table cell) starts outside any math run
             html = InlineHtmlPaint()
             appendVisible(root, sb, rawOffsets)
             val text = sb.toString()
-            if (text.isEmpty()) return
-
+            if (text.isEmpty()) return null
+            val chunk = Chunk(text, rawOffsets, blockIndex, occurrence)
+            if (before != null && before.runsInto(chunk)) {
+                for (at in straddlingStarts(before.text, text, query)) {
+                    matches += before.match(at, (before.text.substring(at) + text).substring(0, query.length))
+                }
+            }
             var from = 0
             while (true) {
                 val idx = text.indexOf(query, from, ignoreCase = true)
                 if (idx < 0) break
-                matches.add(
-                    SearchMatch(
-                        content = text.substring(idx, idx + query.length),
-                        startIndex = rawOffsets[idx],
-                        adapterPosition = blockIndex,
-                        occurrenceInBlock = occurrence.next(),
-                    ),
-                )
+                matches += chunk.match(idx, text.substring(idx, idx + query.length))
                 from = idx + 1 // step by 1 so self-overlapping queries ("aa" in "aaa") are all found
             }
+            return chunk
         }
 
         /**
@@ -216,6 +272,14 @@ class SearchMarkdownUseCase(
                 is Image -> {
                     inMath = false
                     return
+                }
+                // S8-A61: a capped cell's "…" stands where its dropped text is. S8-A62: the cursor goes
+                // on to the cell's end in the source, since the dropped text's markup has no length here.
+                is CellEllipsis -> {
+                    inMath = false
+                    sb.append(node.literal)
+                    offsets.add(cursor)
+                    cursor = cellEnd(content, cursor)
                 }
                 // Prose Text is the only place `$…$`/`$$…$$` are parsed into math by the renderer, so
                 // it always skips math. Code and inline HTML render `$` literally and stay searchable,
@@ -473,6 +537,25 @@ class SearchMarkdownUseCase(
     }
 }
 
+/**
+ * S8-A61: where a case-insensitive [query] starts in the last chars of [before] and runs on into
+ * [after], two pieces of one line the reader shows as separate blocks: offsets into [before], in
+ * order. Stepping by one char, like every other scan here, so overlapping matches all count.
+ */
+internal fun straddlingStarts(before: String, after: String, query: String): List<Int> {
+    val keep = query.length - 1
+    if (keep <= 0) return emptyList()
+    val tailStart = maxOf(0, before.length - keep)
+    val joined = before.substring(tailStart) + after.take(keep)
+    val starts = ArrayList<Int>()
+    var index = joined.indexOf(query, ignoreCase = true)
+    while (index >= 0 && tailStart + index < before.length) {
+        starts += tailStart + index
+        index = joined.indexOf(query, index + 1, ignoreCase = true)
+    }
+    return starts
+}
+
 // Forward window for locating a literal's raw-source offset from the monotonic cursor. Large
 // enough to span a normal block (paragraph/cell/most code), small enough to cap a pathological
 // false match (an escape/entity literal) so it can't cascade across the document. Mirrors the
@@ -538,6 +621,18 @@ private fun placeLiteral(content: String, literal: String, cursor: Int, kind: So
     }
 }
 
+/**
+ * Where the table cell that holds [from] ends: its closing `|`, or the end of the row's line. `\|` stays
+ * inside the cell, exactly as in commonmark's own row split (a `\` before anything else is plain).
+ */
+private fun cellEnd(content: String, from: Int): Int {
+    var i = from
+    while (i < content.length && content[i] != '|' && content[i] != '\n') {
+        i += if (content[i] == '\\' && content.getOrNull(i + 1) == '|') 2 else 1
+    }
+    return i
+}
+
 /** The index of the line break ending the line that holds [from], or the end of [content]. */
 private fun lineEnd(content: String, from: Int): Int =
     content.indexOf('\n', from).let { if (it < 0) content.length else it }
@@ -570,3 +665,10 @@ private fun forEachCellInRow(row: TableRow, action: (TableCell) -> Unit) {
 /** Whether [block] is a top-level Mermaid fence, which the reader draws as a picture, not as text. */
 private fun isDrawnAsPicture(block: FencedCodeBlock): Boolean =
     block !is CodeBlockPiece && block.parent is Document && fenceLanguage(block.info) == MERMAID_LANGUAGE
+
+/** Whether search block [node] may go on with the text of [before]: two paragraphs, or two pieces of one code block. */
+private fun continues(before: Node?, node: Node): Boolean = when (node) {
+    is Paragraph -> before is Paragraph
+    is CodeBlockPiece -> before is CodeBlockPiece && before.group === node.group
+    else -> false
+}

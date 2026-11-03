@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.domain.model.EditorSupport.Companion.MAX_EDITOR_LINE_CHARS
 import com.pilcrowmd.testing.withRealSize
 import com.pilcrowmd.viewmodel.DocumentId
 import com.pilcrowmd.viewmodel.ViewMode
@@ -123,6 +124,54 @@ class MarkdownEditorKeepsTextTest {
 
         assertEquals("the caret", caretBefore, hoisted.cursor.left)
         assertEquals("the scroll", scrollBefore, hoisted.offsetY)
+    }
+
+    // S8-A64: a line over the limit reaches the editor cut into display lines; the app sees file text.
+
+    @Test
+    fun aLineOfTheLimitReachesTheEditorAsItIsAndOneCharMoreIsCut() {
+        text = "x".repeat(MAX_EDITOR_LINE_CHARS)
+        showEditorInEditMode()
+        assertEquals("2,000 chars: no cut", text, hoisted.text.toString())
+
+        documentId = DocumentId.mint()
+        text = "y".repeat(MAX_EDITOR_LINE_CHARS + 1)
+        compose.waitForIdle()
+        assertEquals("2,001 chars: one display break", text.length + 1, hoisted.text.length)
+        assertEquals(2, hoisted.text.lineCount)
+    }
+
+    @Test
+    fun aDocumentWithACutLineComesBackWithItsUndoHistoryAndOnlyFileTextLeaves() {
+        val file = "# Title\n" + "word ".repeat(MAX_EDITOR_LINE_CHARS / 4) + "\n" // a 2,500-char line
+        text = file
+        showEditorInEditMode()
+        assertEquals("precondition: the long line is cut once", file.length + 1, hoisted.text.length)
+
+        compose.runOnUiThread { hoisted.text.insert(0, 0, "x") }
+        compose.waitForIdle()
+        assertEquals("the edit reached the app as file text, no display break in it", "x$file", text)
+        val contentBefore = hoisted.text
+
+        toReaderAndBack()
+
+        assertSame("the editor kept its Content", contentBefore, hoisted.text)
+        assertTrue("and so its undo history", hoisted.canUndo())
+    }
+
+    @Test
+    fun theCaretCrossesTheBoundaryAsAFileOffset() {
+        val file = "z".repeat(MAX_EDITOR_LINE_CHARS + 500)
+        text = file
+        caret = MAX_EDITOR_LINE_CHARS + 100 // past the cut
+        showEditorInEditMode()
+        compose.waitForIdle()
+        assertEquals("the caret lands on the second display line", 1, hoisted.cursor.leftLine)
+        assertEquals(100, hoisted.cursor.leftColumn)
+
+        compose.runOnUiThread { hoisted.setSelection(1, 7) }
+        compose.waitForIdle()
+        assertEquals("the app hears a file offset", MAX_EDITOR_LINE_CHARS + 7, caret)
     }
 
     private companion object {

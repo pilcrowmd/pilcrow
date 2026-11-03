@@ -31,6 +31,8 @@ fun CodeEditor.continueListsOnEnter(): SubscriptionReceipt<EditorKeyEvent> = sub
 
     val content = text
     val line = cursor.leftLine
+    // A display piece of a long line is not the whole line the rules read (S8-A64): plain Enter.
+    if ((this as? PilcrowCodeEditor)?.isPieceOfCutLine(line) == true) return@subscribeAlways
     val linesAbove = (0 until line).asSequence().map { content.getLineString(it) }
     val action = ListContinuation.onEnter(content.getLineString(line), cursor.leftColumn, linesAbove)
         ?: return@subscribeAlways

@@ -58,6 +58,9 @@ data class OrphanDraft(val uri: Uri, val displayName: String, val savedAt: Long)
  *
  * Documents without a file (never saved, M-91) have no draft: a draft is found again by its file.
  */
+// One over the threshold since S8-A55 (moveDraft): moving a draft is this class's job, and it needs
+// the same scope, store and hold list as writing one.
+@Suppress("TooManyFunctions")
 internal class DraftKeeper(
     private val drafts: DraftRepository,
     private val scope: CoroutineScope,
@@ -94,6 +97,8 @@ internal class DraftKeeper(
             cancelPending()
             val gone = previous.uri
             scope.launch { drafts.delete(gone) }
+        } else if (movedToAnotherFile(previous, doc)) {
+            moveDraft(from = previous!!.uri!!, doc = doc!!)
         }
         warmBaselinePrint(doc)
         val uri = doc?.uri
@@ -101,6 +106,22 @@ internal class DraftKeeper(
             doc == null || !doc.dirty || uri == null || uri in held -> cancelPending()
             doc.content.length > EditorSupport.EDIT_CEILING_CHARS -> cancelPending()
             else -> schedule(doc)
+        }
+    }
+
+    /**
+     * S8-A55: the same document moved to another file ("Allow editing" adopted the picked URI). The
+     * draft moves with it: written under the new URI first, and only then removed from [from], so a
+     * crash in between never leaves the edits without a draft.
+     */
+    private fun moveDraft(from: Uri, doc: Document) {
+        scope.launch {
+            val to = doc.uri ?: return@launch
+            if (doc.dirty && to !in held && doc.content.length <= EditorSupport.EDIT_CEILING_CHARS) {
+                val draft = withContext(cpu) { draftOf(doc, to) }
+                if (drafts.write(draft).isFailure) return@launch
+            }
+            drafts.delete(from)
         }
     }
 
@@ -201,3 +222,7 @@ internal class DraftKeeper(
 /** [previous] was dirty and [doc] is not it, or is it but clean. */
 private fun stoppedBeingDirty(previous: Document, doc: Document?): Boolean =
     previous.dirty && (doc == null || doc.id != previous.id || !doc.dirty)
+
+/** The same document, now with a different file (S8-A55 "Allow editing"). */
+private fun movedToAnotherFile(previous: Document?, doc: Document?): Boolean =
+    previous?.uri != null && doc != null && doc.id == previous.id && doc.uri != previous.uri

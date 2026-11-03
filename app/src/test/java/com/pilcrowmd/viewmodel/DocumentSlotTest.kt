@@ -86,6 +86,23 @@ class DocumentSlotTest {
         assertTrue("A's save moved B's baseline", slot.document.value!!.dirty)
     }
 
+    /**
+     * GitHub #19: Save is greyed out while the document is clean, so `dirty` must be true whenever the
+     * text differs from what is on disk. Typing back to the old text while a save is in flight left it
+     * false: the old baseline matched, and the save then moved the baseline away from the text.
+     */
+    @Test
+    fun `typing back to the old text during a save leaves the document dirty`() {
+        val slot = DocumentSlot()
+        slot.publish(slot.claim(), publication("a"), ReplacePolicy.IF_CLEAN)
+        val id = slot.document.value!!.id
+        slot.updateContent(id, "a, saved") // the save writes this
+        slot.updateContent(id, "a") // typed back to the opened text while it was written
+        assertFalse("precondition: back to the old baseline", slot.document.value!!.dirty)
+        slot.markSaved(id, "a, saved")
+        assertTrue("the text on screen is not what is on disk", slot.document.value!!.dirty)
+    }
+
     @Test
     fun `an edit made on a document that is no longer open is dropped`() {
         // For up to a frame after B publishes, the editor still shows A and still reports A's edits.

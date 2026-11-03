@@ -12,6 +12,7 @@ import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.node.Document
 import org.commonmark.node.Node
 import org.commonmark.node.Paragraph
+import org.commonmark.node.StrongEmphasis
 import org.commonmark.node.Text
 import org.commonmark.parser.Parser
 import org.junit.Assert.assertEquals
@@ -202,4 +203,78 @@ class TableSplitterTest {
     }
 
     private fun tablesOf(document: Node): List<TableBlock> = blocksOf(document).filterIsInstance<TableBlock>()
+
+    // S8-A61: one cell's text is one TextView, measured and laid out on the main thread; a cell of a
+    // million characters froze the reader for good. Each cell is shown up to MAX_CELL_CHARS, then "…".
+
+    private fun shownCellTexts(table: Node): List<String> {
+        val out = ArrayList<String>()
+        fun walk(node: Node) {
+            if (node is TableCell) {
+                out += buildString {
+                    fun text(n: Node) {
+                        if (n is Text) append(n.literal)
+                        generateSequence(n.firstChild) { it.next }.forEach { text(it) }
+                    }
+                    text(node)
+                }
+            } else {
+                generateSequence(node.firstChild) { it.next }.forEach { walk(it) }
+            }
+        }
+        walk(table)
+        return out
+    }
+
+    @Test
+    fun `a cell over the cell limit shows its first part and an ellipsis, and nothing else changes`() {
+        val long = "z".repeat(20_000)
+        val tables = tablesOf("| a | b |\n|---|---|\n| $long | short |\n| x | **y** |\n")
+
+        val cells = shownCellTexts(tables.single())
+
+        assertEquals(listOf("a", "b", "z".repeat(TableSplitter.MAX_CELL_CHARS) + "…", "short", "x", "y"), cells)
+    }
+
+    @Test
+    fun `a cell at the cell limit is drawn whole`() {
+        val atLimit = "z".repeat(TableSplitter.MAX_CELL_CHARS)
+
+        val cells = shownCellTexts(tablesOf("| a |\n|---|\n| $atLimit |\n").single())
+
+        assertEquals(listOf("a", atLimit), cells)
+    }
+
+    @Test
+    fun `a capped cell inside bold keeps the bold and the ellipsis follows it`() {
+        val long = "w".repeat(20_000)
+        val table = tablesOf("| a |\n|---|\n| **$long** tail |\n").single()
+
+        val cell = generateSequence(table.lastChild.firstChild.firstChild.firstChild) { it.next }.toList()
+
+        assertTrue(cell[0] is StrongEmphasis)
+        assertEquals("w".repeat(TableSplitter.MAX_CELL_CHARS), (cell[0].firstChild as Text).literal)
+        assertEquals("…", (cell.last() as Text).literal)
+        assertEquals(2, cell.size)
+    }
+
+    @Test
+    fun `inline HTML in a cell does not count toward the cell limit`() {
+        // S8-A62: only text, code and the nodes the reader knows the source of (formulas, emoji) count.
+        val cell = "z".repeat(9_990) + "<br>".repeat(10) + "tail"
+
+        val cells = shownCellTexts(tablesOf("| a |\n|---|\n| $cell |\n").single())
+
+        assertEquals(listOf("a", "z".repeat(9_990) + "tail"), cells)
+    }
+
+    @Test
+    fun `search counts only what a capped cell shows`() {
+        val cellText = "z".repeat(5_000) + "SEEN" + "z".repeat(10_000) + "HIDDEN" + "z".repeat(5_000)
+        val markdown = "| a |\n|---|\n| $cellText |\n"
+        val search = com.pilcrowmd.domain.usecase.SearchMarkdownUseCase(parser)
+
+        assertEquals(1, search.findSearchMatches(markdown, "seen").size)
+        assertEquals("past the cap is not drawn, so not counted", 0, search.findSearchMatches(markdown, "hidden").size)
+    }
 }

@@ -15,12 +15,13 @@ object ReaderTree {
      * [plain]: the verbatim chunk tree, no parser. Otherwise the parsed tree with the shared post-parse
      * passes — or, for a document nested past `NestingLimit.MAX_DEPTH`, the same verbatim chunk tree,
      * because rendering it as Markdown would overflow the stack (NEW-11, Safeguard 3). A long paragraph
-     * is NOT split here (M-328): the PDF lays its pages out off the main thread and prints it whole.
+     * is NOT split here (M-328): the PDF lays its pages out off the main thread and prints it whole,
+     * and for the same reason a long line of the chunk tree is not cut either (S8-A61).
      */
     fun build(markwon: Markwon, content: String, plain: Boolean): Node {
-        if (plain) return PlainTextBlocks.build(content)
+        if (plain) return PlainTextBlocks.build(content, maxLineChars = Int.MAX_VALUE)
         val parsed = markwon.parse(content)
-        if (parsed is TooDeepDocument) return PlainTextBlocks.build(content)
+        if (parsed is TooDeepDocument) return PlainTextBlocks.build(content, maxLineChars = Int.MAX_VALUE)
         return ReaderDocument.transform(parsed, splitLongParagraphs = false, inlineSource = ::calloutTitleSource)
     }
 }

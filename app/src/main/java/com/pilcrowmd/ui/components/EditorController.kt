@@ -36,9 +36,10 @@ class EditorController(private val editor: CodeEditor?) {
     fun selectAndRevealMatch(startOffset: Int, endOffset: Int, contentLength: Int) {
         if (editor == null) return
         try {
-            // Clamp offsets to content bounds
-            val clampedStart = startOffset.coerceIn(0, contentLength)
-            val clampedEnd = endOffset.coerceIn(0, contentLength)
+            // Clamp offsets to content bounds; they are file offsets, the editor's differ where a long
+            // line is shown cut (S8-A64).
+            val clampedStart = editor.editorOffsetOf(startOffset.coerceIn(0, contentLength))
+            val clampedEnd = editor.editorOffsetOf(endOffset.coerceIn(0, contentLength))
 
             // Convert character offsets to line/column positions using Sora's indexer.
             // The indexer handles soft-wrapped content correctly (visual lines != logical lines).
@@ -87,7 +88,7 @@ class EditorController(private val editor: CodeEditor?) {
             val offset = content.indexOf(headingMarker)
 
             if (offset >= 0) {
-                val clampedOffset = offset.coerceIn(0, contentLength)
+                val clampedOffset = editor.editorOffsetOf(offset.coerceIn(0, contentLength))
 
                 // Convert character offset to line/column using Sora's indexer.
                 val pos = editor.text.indexer.getCharPosition(clampedOffset)

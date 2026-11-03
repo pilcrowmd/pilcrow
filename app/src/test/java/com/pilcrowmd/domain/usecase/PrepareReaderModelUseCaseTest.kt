@@ -3,6 +3,8 @@
 
 package com.pilcrowmd.domain.usecase
 
+import com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock
+import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.domain.markdown.HeadingAnchors
 import com.pilcrowmd.domain.markdown.PlainReason
 import com.pilcrowmd.domain.markdown.ReaderModel
@@ -18,6 +20,7 @@ import org.commonmark.node.Node
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,6 +80,49 @@ class PrepareReaderModelUseCaseTest {
         assertTrue(model.seams.continuesNext(model.blocks[1]))
         // Search and the drawer parse on their own: they must have taken the same split.
         assertEquals(headings.extractHeadings(source), model.headings)
+    }
+
+    @Test
+    fun `a long unspaced line is cut by characters, the text is untouched, and jumps after it land on the pieces`() {
+        // S8-A61: one paragraph child, so only the character limit can cut it.
+        val run = "x".repeat(20_000)
+        val source = "# One\n\n$run[^1]\n\n## Two\n\nSee [two](#two).\n\n[^1]: The note.\n"
+
+        val model = useCase().prepare(source, RenderMode.MARKDOWN) as ReaderModel.Markdown
+
+        assertSame("the document text is the file text itself", source, model.content)
+        val two = model.headings.single { it.text == "Two" }
+        val pieces = model.blocks.subList(1, two.adapterPosition)
+        assertTrue("the line became at least three pieces, got ${pieces.size}", pieces.size >= 3)
+        assertEquals("every character of the line, once, in order", run, pieces.joinToString("") { visibleText(it) })
+        assertTrue(model.blocks[two.adapterPosition] is Heading)
+        assertEquals(two.adapterPosition, model.anchors["two"])
+        assertEquals(headings.extractHeadings(source), model.headings)
+        val referencePiece = model.blocks.indexOfFirst { block -> referenceIn(block) != null }
+        assertEquals("the marker sits in the last piece", two.adapterPosition - 1, referencePiece)
+        val reference = referenceIn(model.blocks[referencePiece])!!
+        val definition = model.blocks[reference.definitionBlockIndex] as FootnoteDefinitionBlock
+        assertEquals("the note links back to the piece", referencePiece, definition.firstReferenceBlockIndex)
+    }
+
+    private fun visibleText(node: Node): String = buildString {
+        node.accept(
+            object : AbstractVisitor() {
+                override fun visit(text: org.commonmark.node.Text) {
+                    append(text.literal)
+                }
+            },
+        )
+    }
+
+    private fun referenceIn(root: Node): FootnoteReference? {
+        if (root is FootnoteReference) return root
+        var child = root.firstChild
+        while (child != null) {
+            referenceIn(child)?.let { return it }
+            child = child.next
+        }
+        return null
     }
 
     @Test

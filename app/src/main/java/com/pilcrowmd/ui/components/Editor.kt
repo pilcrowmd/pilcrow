@@ -54,7 +54,8 @@ import io.github.rosemoe.sora.widget.subscribeAlways
  * Key behaviors preserved:
  * - Markdown syntax highlighting (now via TextMate grammar, native)
  * - Line-number gutter (built-in to Sora, auto-aligns with soft wrap)
- * - Soft-wrap (no horizontal scroll via setWordwrap(true))
+ * - Soft-wrap (no horizontal scroll via setWordwrap(true)); a line too long for the editor is shown cut
+ *   into display lines (S8-A64, PilcrowCodeEditor), so every line can wrap
  * - Scroll preservation
  * - Cursor preservation across mode toggles
  * - Round-trip fidelity (Safeguard 2: CRLF preserved via ViewModel)
@@ -100,6 +101,8 @@ fun MarkdownEditor(
     onCursorChange: (Int) -> Unit = {},
     onUndo: () -> Unit = {},
     onRedo: () -> Unit = {},
+    // GitHub #19: the formatting bar greys Undo and Redo out while there is no step.
+    undoRedo: UndoRedoState = UndoRedoState(canUndo = true, canRedo = true),
     codeEditorInstance: CodeEditor? = null,
     formattingBarEnabled: Boolean = false,
     syntaxHighlighting: Boolean = true,
@@ -135,14 +138,15 @@ fun MarkdownEditor(
         if (editor != null) {
             receipts += editor.subscribeAlways<ContentChangeEvent> {
                 if (!suppressContentChange) {
-                    currentOnContentChange(editor.text.toString())
+                    // S8-A64: the file's text, without the editor's display breaks.
+                    currentOnContentChange(editor.currentFileText())
                 }
             }
             receipts += editor.subscribeAlways<SelectionChangeEvent> { event ->
                 if (!suppressContentChange) {
                     try {
                         val idx = editor.text.indexer.getCharIndex(event.left.line, event.left.column)
-                        currentOnCursorChange(idx)
+                        currentOnCursorChange(editor.fileOffsetOf(idx))
                     } catch (e: Exception) {
                         Log.w("MarkdownEditor", "cursor index failed: ${e.message}")
                     }
@@ -212,9 +216,10 @@ fun MarkdownEditor(
                     // share one undo history (Safeguard 2).
                     val keepsText = documentId != null &&
                         editor.getTag(R.id.editor_document) == documentId &&
-                        editor.text.length == content.length &&
-                        editor.text.toString() == content
-                    if (!keepsText) editor.setText(content)
+                        editor.holdsFile(content)
+                    // Wrapping BEFORE the text, so Sora lays a new text out once, wrapped.
+                    if (!editor.isWordwrap) editor.setWordwrap(true, true, true)
+                    if (!keepsText) editor.showFileText(content)
                     editor.setTag(R.id.editor_document, documentId)
 
                     // Configure editor appearance and behavior
@@ -264,10 +269,13 @@ fun MarkdownEditor(
                     // Restore initial cursor position
                     editor.post {
                         try {
-                            val clampedCursor = initialCursor.coerceIn(0, editor.text.length)
+                            // The ViewModel's caret is a file offset (S8-A64).
+                            val clampedCursor = editor.editorOffsetOf(initialCursor.coerceAtLeast(0))
+                                .coerceAtMost(editor.text.length)
                             // Kept text already has the caret and the scroll the user left; move them
                             // only if the ViewModel moved the caret meanwhile (Read was scrolled).
-                            if (keepsText && editor.cursor.left == clampedCursor) return@post
+                            val caretNow = editor.fileOffsetOf(editor.cursor.left)
+                            if (keepsText && caretNow == editor.fileOffsetOf(clampedCursor)) return@post
                             val pos = editor.text.indexer.getCharPosition(clampedCursor)
                             editor.setSelection(pos.line, pos.column)
                             // Issue #15: the caret's line in the middle, as it was in the reader.
@@ -294,15 +302,15 @@ fun MarkdownEditor(
                     applyEditorLanguage(editor, plainText)
 
                     // Update editor content only if it changed upstream (not on every recomposition)
-                    if (editor.text.toString() != content) {
+                    if (!editor.holdsFile(content)) {
                         suppressContentChange = true
-                        editor.setText(content)
+                        editor.showFileText(content)
                         suppressContentChange = false
 
                         // Restore cursor position after setText
                         try {
                             val clampedCursor = initialCursor.coerceIn(0, content.length)
-                            val pos = editor.text.indexer.getCharPosition(clampedCursor)
+                            val pos = editor.text.indexer.getCharPosition(editor.editorOffsetOf(clampedCursor))
                             editor.setSelection(pos.line, pos.column)
                             onCursorChange(clampedCursor)
                         } catch (e: Exception) {
@@ -338,6 +346,7 @@ fun MarkdownEditor(
                 onAction = { action -> codeEditor?.applyFormat(action) },
                 onUndo = onUndo,
                 onRedo = onRedo,
+                undoRedo = undoRedo,
             )
         }
     }

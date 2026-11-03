@@ -102,7 +102,8 @@ internal class OpenFileHeaderDecoration : RecyclerView.ItemDecoration() {
 /**
  * The line that names the open file, as a view: the same look as [OpenFileCaption] (an icon, then the
  * text, 12 sp, secondary text colour), shortened in the middle so the ".md" stays. Not tappable.
- * TalkBack reads [OpenFileLine] once, as "File: Folder, sub, name.md". Its height is worked out from the
+ * TalkBack reads [OpenFileLine] once, as "File: Folder, sub, name.md" (", unsaved changes" after it
+ * while the line ends in "*"). Its height is worked out from the
  * text size and fixed, so the room reserved above block 0 is exactly the line's height.
  */
 internal class OpenFileCaptionView(context: Context) : TextView(context) {
@@ -143,11 +144,12 @@ internal class OpenFileCaptionView(context: Context) : TextView(context) {
         )
         setTextColor(color)
         text = line.caption
-        contentDescription = if (line.inFolder) {
+        val file = if (line.inFolder) {
             context.getString(R.string.main_open_file_description, line.spokenFolderPath, line.name)
         } else {
             context.getString(R.string.main_open_file_description_plain, line.name)
         }
+        contentDescription = if (line.unsaved) context.getString(R.string.main_open_file_unsaved, file) else file
         val side = (SIDE_DP * density).toInt()
         setPaddingRelative(side, 0, side, 0)
         val icon = ContextCompat.getDrawable(

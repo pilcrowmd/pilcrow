@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.FormatAction
+import com.pilcrowmd.ui.theme.DISABLED_ACTION_ALPHA
 import com.pilcrowmd.ui.theme.mdColors
 
 /** One formatting button: what it does, its glyph and its TalkBack label. */
@@ -84,7 +85,8 @@ private val MORE_BUTTONS = listOf(
  * it with the rest. It only reports taps; `CodeEditor.applyFormat` does the editing.
  *
  * When the screen is too narrow for every button, the formatting buttons scroll sideways and Undo,
- * Redo and More stay in place, so no button is ever cut off. Colours from the token layer only
+ * Redo and More stay in place, so no button is ever cut off. Undo and Redo are greyed out while there is
+ * no step to undo or redo ([undoRedo]; GitHub #19). Colours from the token layer only
  * (Safeguard 4).
  */
 @Composable
@@ -93,6 +95,7 @@ fun FormattingBar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     modifier: Modifier = Modifier,
+    undoRedo: UndoRedoState = UndoRedoState(canUndo = true, canRedo = true),
 ) {
     val c = mdColors()
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -112,21 +115,24 @@ fun FormattingBar(
             Row(modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
                 MAIN_BUTTONS.forEach { BarButton(it.icon, it.label) { onAction(it.action) } }
             }
-            BarButton(Icons.AutoMirrored.Outlined.Undo, R.string.format_undo, onUndo)
-            BarButton(Icons.AutoMirrored.Outlined.Redo, R.string.format_redo, onRedo)
+            BarButton(Icons.AutoMirrored.Outlined.Undo, R.string.format_undo, undoRedo.canUndo, onUndo)
+            BarButton(Icons.AutoMirrored.Outlined.Redo, R.string.format_redo, undoRedo.canRedo, onRedo)
             MoreButton(expanded = expanded, onClick = { expanded = !expanded })
         }
     }
 }
 
-/** A 42dp touch target with a 22dp glyph, the same scale as the top toolbar's buttons. */
+/**
+ * A 42dp touch target with a 22dp glyph, the same scale as the top toolbar's buttons. Disabled, it stays
+ * on screen dimmed to [DISABLED_ACTION_ALPHA], as the toolbar's buttons do (GitHub #19).
+ */
 @Composable
-private fun BarButton(icon: ImageVector, @StringRes label: Int, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
+private fun BarButton(icon: ImageVector, @StringRes label: Int, enabled: Boolean = true, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(42.dp)) {
         Icon(
             imageVector = icon,
             contentDescription = stringResource(label),
-            tint = mdColors().primaryText,
+            tint = mdColors().primaryText.let { if (enabled) it else it.copy(alpha = DISABLED_ACTION_ALPHA) },
             modifier = Modifier.size(22.dp),
         )
     }
