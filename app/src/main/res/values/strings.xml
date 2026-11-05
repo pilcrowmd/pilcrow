@@ -137,8 +137,8 @@
 
     <!-- Toolbar button (top bar), opens the in-document search. Verb or noun, icon button TalkBack label. -->
     <string name="toolbar_search">Search</string>
-    <!-- Toolbar button (top bar), opens the table of contents drawer. Noun phrase, icon button TalkBack label. -->
-    <string name="toolbar_table_of_contents">Table of contents</string>
+    <!-- Toolbar button (top bar), opens the contents drawer: the list of the document's headings. Noun, icon button TalkBack label. -->
+    <string name="toolbar_contents">Contents</string>
     <!-- Toolbar button (top bar, editing mode), saves the open file. Verb, icon button TalkBack label. -->
     <string name="toolbar_save">Save</string>
     <!-- Toolbar button (top bar) while a save is in progress. Gerund used as a state label. -->
@@ -150,7 +150,7 @@
     <!-- Toolbar button (top bar), closes the open file. Verb phrase, icon button TalkBack label. -->
     <string name="toolbar_close_file">Close file</string>
     <!-- Toolbar button (top bar, reading mode), exports the document as a PDF. Verb phrase, icon button TalkBack label. -->
-    <string name="toolbar_export_pdf">Export PDF</string>
+    <string name="toolbar_export_pdf">Export as PDF</string>
     <!-- Toolbar mode button, shown in editing mode: switches to reading mode. Verb, button label and long-press tooltip. -->
     <string name="toolbar_read">Read</string>
     <!-- Toolbar mode button, shown in reading mode: switches to editing mode. Verb, button label and long-press tooltip. -->
@@ -202,7 +202,24 @@
     <!-- The editor's TalkBack name when a file is open: the editor name, then the file name. %1$s is the editor name (Markdown text), %2$s is the file name. -->
     <string name="editor_accessibility_name_with_file">%1$s, %2$s</string>
 
-    <!-- ===== Welcome screen, banners, search, headings, preview ===== -->
+    <!-- ===== Reader words: what the reader paints that is not in the document ===== -->
+    <!-- These are the reader words the languages plan (D2, D3) moves out of code. -->
+    <!-- Default title of a callout (> [!NOTE], !!! note) that has no title of its own. Noun. -->
+    <string name="callout_title_note">Note</string>
+    <!-- Default title of a tip callout. Noun. -->
+    <string name="callout_title_tip">Tip</string>
+    <!-- Default title of an important callout. Adjective used as a title. -->
+    <string name="callout_title_important">Important</string>
+    <!-- Default title of a warning callout. Noun. -->
+    <string name="callout_title_warning">Warning</string>
+    <!-- Default title of a caution callout. Noun. -->
+    <string name="callout_title_caution">Caution</string>
+    <!-- Summary line of a collapsible section (details tag) that has no summary of its own. Noun. -->
+    <string name="details_default_summary">Details</string>
+    <!-- Column heading in the table template the editor inserts, written into the document. Noun. -->
+    <string name="format_table_column">Column</string>
+
+    <!-- ===== Welcome screen, banners, search, contents, preview ===== -->
     <!-- Welcome screen (no document open). -->
 
     <!-- Progress line under the buttons while the last document is restored. -->
@@ -212,9 +229,9 @@
     <!-- Subtitle under the wordmark. -->
     <string name="welcome_tagline">Beautiful Markdown Reading</string>
     <!-- Primary button (verb phrase, imperative): opens the file picker for a Markdown file. -->
-    <string name="welcome_open_file">Open MD File</string>
+    <string name="welcome_open_file">Open file</string>
     <!-- Secondary button (verb phrase, imperative): creates a new, empty Markdown file. -->
-    <string name="welcome_create_file">Create MD File</string>
+    <string name="welcome_create_file">New file</string>
     <!-- Low-emphasis link below the buttons: opens the file picker unfiltered. Imperative verb phrase at the end. -->
     <string name="welcome_browse_all_files">Can\'t see your file? Browse all files</string>
     <!-- Footer line under the divider; ".md" is a file extension and stays as written. -->
@@ -237,12 +254,12 @@
     <!-- Card button (verb phrase, imperative): opens the Play Store rating page. -->
     <string name="welcome_rating_rate">Rate on Play</string>
 
-    <!-- Section header above the recent files list. All caps is intentional; a noun, not a verb. -->
-    <string name="welcome_recent_header">RECENT</string>
+    <!-- Section header above the recent files list. A noun, not a verb. -->
+    <string name="welcome_recent_header">Recent</string>
     <!-- Button (verb, imperative) that clears every entry in the Recent list. Not the adjective "clear". -->
     <string name="welcome_recent_clear">Clear</string>
     <!-- Content description of the × on a recent-file row (verb phrase, imperative). -->
-    <string name="welcome_recent_remove_description">Remove from recents</string>
+    <string name="welcome_recent_remove_description">Remove from Recent</string>
     <!-- A recent row's subtitle: %1$s is how long ago it was opened (e.g. "5 minutes ago"). The suffix marks a file that can no longer be found. -->
     <string name="welcome_recent_unavailable">%1$s · unavailable</string>
 
@@ -291,9 +308,9 @@
     <!-- Content description of the × that closes the search bar (verb phrase, imperative). -->
     <string name="search_close_description">Close search</string>
 
-    <!-- Table of contents drawer. -->
+    <!-- Contents drawer. -->
     <!-- Drawer title (noun): the list of the document's headings. -->
-    <string name="headings_title">Headings</string>
+    <string name="contents_title">Contents</string>
     <!-- Text button at the right of the drawer title: folds every heading that has sub-headings. Imperative verb phrase, button label. -->
     <string name="headings_collapse_all">Collapse all</string>
     <!-- Text button at the right of the drawer title, shown once any heading is folded: unfolds every heading. Imperative verb phrase, button label. -->
@@ -325,7 +342,7 @@
     <!-- Scroll position badge: %1$d is how far through the document the reader is, as a whole percentage (e.g. "37%"). -->
     <string name="preview_scroll_percent">%1$d%%</string>
 
-    <!-- ===== Settings, licences, feedback ===== -->
+    <!-- ===== Settings, licenses, feedback ===== -->
     <!-- SettingsScreen: header title, also the pane title TalkBack speaks (noun, screen name). -->
     <string name="settings_title">Settings</string>
     <!-- SettingsScreen: one line under the header title (sentence). -->
@@ -343,7 +360,7 @@
     <!-- SettingsScreen: card title for the font-set picker (noun phrase). &amp; is a literal ampersand. -->
     <string name="settings_reading_font">Reading &amp; code font</string>
     <!-- SettingsScreen: card title for the reading text size slider (noun phrase). -->
-    <string name="settings_preview_text_size">Preview text size</string>
+    <string name="settings_reading_text_size">Reading text size</string>
     <!-- SettingsScreen: card title for the editor text size slider (noun phrase). -->
     <string name="settings_edit_text_size">Edit text size</string>
 
@@ -368,6 +385,16 @@
     <string name="settings_full_screen_reading">Full-screen reading</string>
     <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
     <string name="settings_full_screen_reading_summary">Hide the top bar and navigation bar while reading</string>
+    <!-- SettingsScreen: second switch subtitle, how the hidden bars come back (sentence). -->
+    <string name="settings_full_screen_reading_hint">Swipe in from the top or bottom edge to bring them back for a few seconds.</string>
+
+    <!-- Language (languages spec D1) -->
+    <!-- SettingsScreen: card title and dialog title for choosing the app language (noun). -->
+    <string name="settings_language">Language</string>
+    <!-- SettingsScreen: first choice in the language dialog and the card value when no language is chosen; follows the phone's language (noun phrase). -->
+    <string name="settings_language_system">System default</string>
+    <!-- SettingsScreen: button that closes the language dialog without choosing (verb, imperative). -->
+    <string name="settings_language_cancel">Cancel</string>
 
     <!-- SettingsScreen: card title that opens an email to the developer (verb phrase, imperative). -->
     <string name="settings_email_us">Email us</string>
@@ -410,12 +437,12 @@
     <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible, JetBrains Mono, IBM Plex Mono (OFL)</string>
     <!-- Settings > About > Built with: the bullet in front of each line. %1$s is the credit line. -->
     <string name="settings_credit_bullet" translatable="false">• %1$s</string>
-    <!-- SettingsScreen: row inside the About card that opens the licences screen (noun phrase). -->
+    <!-- SettingsScreen: row inside the About card that opens the licenses screen (noun phrase). -->
     <string name="settings_open_source_licenses">Open source licenses</string>
 
-    <!-- LicensesScreen: header title of the licences list (noun phrase, title case as shown). -->
-    <string name="licenses_title">Open Source Licenses</string>
-    <!-- LicensesScreen: pane title TalkBack speaks when the licences screen opens (noun phrase, lower case). -->
+    <!-- LicensesScreen: header title of the licenses list (noun phrase). -->
+    <string name="licenses_title">Open source licenses</string>
+    <!-- LicensesScreen: pane title TalkBack speaks when the licenses screen opens (noun phrase, lower case). -->
     <string name="licenses_pane_title">Open source licenses</string>
     <!-- LicensesScreen: content description of the back arrow on the list header (verb command, closes the screen). -->
     <string name="licenses_close">Close</string>

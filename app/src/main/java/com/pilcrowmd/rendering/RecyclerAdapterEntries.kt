@@ -6,6 +6,7 @@ package com.pilcrowmd.rendering
 import android.content.Context
 import com.pilcrowmd.domain.markdown.CodeBlockPiece
 import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.markdown.TablePiece
 import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.domain.markdown.isFrontmatter
@@ -72,6 +73,8 @@ object RecyclerAdapterEntries {
      *   its source with the caption, as when a render fails. The reader always passes one.
      * @param seams Where the pieces of a split paragraph meet (M-328), so they draw with no gap; null
      *   draws every paragraph with its usual gap (the PDF keeps the paragraph whole)
+     * @param words What a `<details>` without a `<summary>` paints. The reader passes the renderer's, so
+     *   the headers match the callout titles and what search finds; English is for tests.
      * @return MarkwonAdapter ready to be set on a RecyclerView
      */
     @Suppress("LongParameterList") // The reader's settings, forwarded to the entries.
@@ -87,6 +90,7 @@ object RecyclerAdapterEntries {
         codeHighlighting: CodeHighlighting? = null,
         mermaid: MermaidDiagrams? = null,
         seams: ParagraphSeamState? = null,
+        words: ReaderWords = ReaderWords.ENGLISH,
     ): MarkwonAdapter {
         fun <N : org.commonmark.node.Node, H : MarkwonAdapter.Holder> hideable(entry: MarkwonAdapter.Entry<N, H>) =
             if (details == null) entry else HideableEntry(entry, details)
@@ -109,7 +113,7 @@ object RecyclerAdapterEntries {
         // paragraphs, lists, blockquotes etc. match the reading design — NOT the unstyled SimpleEntry default.
         // The prose entry also applies search highlights at bind time.
         val adapter = MarkwonAdapter.builder(
-            hideable(ProseBlockEntry(context, fontScale, fontSet, searchHighlight, colorScheme, details, seams)),
+            hideable(ProseBlockEntry(context, words, fontScale, fontSet, searchHighlight, colorScheme, details, seams)),
         )
             // Register custom entry for YAML frontmatter
             // Must come before generic FencedCodeBlockEntry so "yaml" blocks route here first

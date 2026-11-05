@@ -14,6 +14,7 @@ import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.domain.markdown.InlineMathDelimiters
 import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
 import com.pilcrowmd.domain.markdown.PlainTextChunks
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.markdown.SourceAlignment
 import com.pilcrowmd.domain.markdown.TooDeepDocument
 import com.pilcrowmd.domain.markdown.fenceLanguage
@@ -57,12 +58,16 @@ import org.commonmark.node.Text
  * Each match keeps an exact raw-source [SearchMatch.startIndex] (reconstructed during assembly) for the
  * editor's select-and-reveal, since commonmark-java 0.13.0 carries no source spans.
  *
+ * [words] must be the ones the renderer was built with: a callout without a title of its own, and a
+ * `<details>` without a summary, paint them, so they are searchable text.
+ *
  * [emoji] must be the instance the renderer was built with (M-247): a `:shortcode:` the reader paints
  * as an emoji is modelled as that emoji, so its letters are not a match, and one it leaves literal
  * is modelled literally.
  */
 class SearchMarkdownUseCase(
     private val parseHeadingsUseCase: ParseMarkdownHeadingsUseCase,
+    private val words: ReaderWords,
     private val emoji: EmojiShortcodes = EmojiShortcodes.NONE,
 ) {
 
@@ -77,7 +82,7 @@ class SearchMarkdownUseCase(
         // A document nested too deep to render is painted as plain-text chunks (`ReaderTree`), so it
         // is searched over the same chunks: its parse is empty, but every word of it is on screen.
         if (doc is TooDeepDocument) return findPlainSearchMatches(content, PlainTextChunks.split(content), query)
-        return BlockScanner(content, query, emoji).scan(doc)
+        return BlockScanner(content, query, words, emoji).scan(doc)
     }
 
     /**
@@ -130,7 +135,12 @@ class SearchMarkdownUseCase(
      * Holds the monotonic raw-source [cursor] and the running [matches] as fields so the per-block and
      * per-node helpers stay small.
      */
-    private class BlockScanner(private val content: String, private val query: String, emoji: EmojiShortcodes) {
+    private class BlockScanner(
+        private val content: String,
+        private val query: String,
+        private val words: ReaderWords,
+        emoji: EmojiShortcodes,
+    ) {
         // Never past the end (M-401): every miss advances it from wherever it is, so a cursor that
         // overran would hand later reads an offset outside the document.
         private var cursor = 0
@@ -304,7 +314,7 @@ class SearchMarkdownUseCase(
                 // painted (fold sign, `!!!` type and quotes, `:::` type), so the cursor skips the whole
                 // line: a body that repeats the title must not be placed inside it.
                 is CalloutBlock -> {
-                    appendAnchored(node.paintedTitle + "\n", node.marker, sb, offsets)
+                    appendAnchored(node.paintedTitle(words) + "\n", node.marker, sb, offsets)
                     cursor = lineEnd(content, cursor)
                     appendChildren(node, sb, offsets)
                 }
@@ -350,7 +360,7 @@ class SearchMarkdownUseCase(
          * of the raw tags, and a lone `</details>` paints nothing. Everything else keeps the literal.
          */
         private fun appendHtmlBlock(node: HtmlBlock, sb: StringBuilder, offsets: MutableList<Int>) {
-            val header = Details.parseHeader(node.literal)
+            val header = Details.parseHeader(node.literal, words.detailsSummary)
             when {
                 header != null -> {
                     val painted = if (header.inlineBody.isEmpty()) {

@@ -118,7 +118,7 @@ class FormattingBarTest {
         val MORE_ROW = mapOf(
             "Inline code" to FormatAction.InlineCode,
             "Quote" to FormatAction.Quote,
-            "Table" to FormatAction.Table,
+            "Table" to FormatAction.Table("Column"),
             "Strikethrough" to FormatAction.Strikethrough,
             "Divider" to FormatAction.Divider,
             "Outdent" to FormatAction.Outdent,

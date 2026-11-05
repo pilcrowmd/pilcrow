@@ -46,6 +46,12 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
             markdown = "# Heading 1\n## Heading 2\n### Heading 3\n#### Heading 4",
         ),
         MarkdownSample(
+            name = "headings_wrapped",
+            markdown = "# A first-level heading long enough to wrap onto a second line\n" +
+                "## A second-level heading that also runs on long enough to wrap\n\n" +
+                "Body text under it.",
+        ),
+        MarkdownSample(
             name = "paragraph_emphasis",
             markdown = "A paragraph with **bold**, *italic*, ~~strikethrough~~, and `inline code` " +
                 "to verify body typography, line-height, and inline spans.",

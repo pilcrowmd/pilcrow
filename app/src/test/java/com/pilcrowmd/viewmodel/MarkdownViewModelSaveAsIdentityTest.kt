@@ -310,7 +310,7 @@ class MarkdownViewModelSaveAsIdentityTest {
         vm.awaitSaving()
 
         // U2: a DIFFERENT unsaved document wins the slot while the write is suspended.
-        // U1 is first typed back to empty, i.e. clean: Create MD File no longer replaces a document
+        // U1 is first typed back to empty, i.e. clean: New file no longer replaces a document
         // with unsaved edits (IF_CLEAN, M-109/M-180). The bytes being written were captured when
         // the Save-As started, so this changes nothing about what reaches disk, and the only thing
         // that can refuse the adoption is still the DocumentId comparison.

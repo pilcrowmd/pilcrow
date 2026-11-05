@@ -256,29 +256,29 @@ class MarkdownFormattingTest {
 
     @Test
     fun `table on an empty line has the cursor in the first empty cell`() {
-        assertEquals("$TABLE_HEAD| ‸ |  |\n|  |  |", format("‸", FormatAction.Table))
+        assertEquals("$TABLE_HEAD| ‸ |  |\n|  |  |", format("‸", TABLE_ACTION))
     }
 
     @Test
     fun `table after a line with text gets a blank line before it, never splitting the line`() {
-        assertEquals("text\n\n$TABLE_HEAD| ‸ |  |\n|  |  |", format("te‸xt", FormatAction.Table))
+        assertEquals("text\n\n$TABLE_HEAD| ‸ |  |\n|  |  |", format("te‸xt", TABLE_ACTION))
     }
 
     @Test
     fun `table on an empty line under a paragraph gets a blank line before it`() {
-        assertEquals("para\n\n$TABLE_HEAD| ‸ |  |\n|  |  |", format("para\n‸", FormatAction.Table))
+        assertEquals("para\n\n$TABLE_HEAD| ‸ |  |\n|  |  |", format("para\n‸", TABLE_ACTION))
     }
 
     @Test
     fun `table on an empty line under a blank line adds no other blank line`() {
-        assertEquals("para\n\n$TABLE_HEAD| ‸ |  |\n|  |  |", format("para\n\n‸", FormatAction.Table))
+        assertEquals("para\n\n$TABLE_HEAD| ‸ |  |\n|  |  |", format("para\n\n‸", TABLE_ACTION))
     }
 
     @Test
     fun `table before a line with text leaves a blank line after it`() {
         assertEquals(
             "text\n\n$TABLE_HEAD| ‸ |  |\n|  |  |\n\nnext",
-            format("text‸\nnext", FormatAction.Table),
+            format("text‸\nnext", TABLE_ACTION),
         )
     }
 
@@ -286,7 +286,15 @@ class MarkdownFormattingTest {
     fun `table before a blank line adds nothing after it`() {
         assertEquals(
             "text\n\n$TABLE_HEAD| ‸ |  |\n|  |  |\n\nmore",
-            format("text‸\n\nmore", FormatAction.Table),
+            format("text‸\n\nmore", TABLE_ACTION),
+        )
+    }
+
+    @Test
+    fun `table writes the header word it is given above both columns`() {
+        assertEquals(
+            "| Spalte | Spalte |\n| --- | --- |\n| ‸ |  |\n|  |  |",
+            format("‸", FormatAction.Table("Spalte")),
         )
     }
 
@@ -425,10 +433,11 @@ class MarkdownFormattingTest {
         const val SEL_END = '»'
         const val CURSOR = '‸'
         const val MARKS = "«»‸"
+        val TABLE_ACTION = FormatAction.Table("Column")
         val ALL = listOf(
             FormatAction.Bold, FormatAction.Italic, FormatAction.InlineCode, FormatAction.Strikethrough,
             FormatAction.Link, FormatAction.Heading, FormatAction.BulletList, FormatAction.Checkbox,
-            FormatAction.Quote, FormatAction.Indent, FormatAction.Outdent, FormatAction.Table,
+            FormatAction.Quote, FormatAction.Indent, FormatAction.Outdent, TABLE_ACTION,
             FormatAction.Divider,
         )
         const val TABLE_HEAD = "| Column | Column |\n| --- | --- |\n"

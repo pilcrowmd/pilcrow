@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.pilcrowmd.domain.markdown.EmojiShortcode
 import com.pilcrowmd.domain.markdown.EmojiShortcodes
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.repository.RelativeImageResolver
 import com.pilcrowmd.ui.theme.AmoledColorScheme
 import com.pilcrowmd.ui.theme.DarkColorScheme
@@ -67,6 +68,8 @@ import java.util.concurrent.ForkJoinPool
  */
 class MarkwonRenderer(
     private val context: Context,
+    // The words the reader paints that are not in the document; the same instance search is given.
+    val words: ReaderWords,
     // M-93: resolves `images/x.png` against the note's granted folder. Null: relative images never load.
     private val relativeImages: RelativeImageResolver? = null,
     // M-247: the `:shortcode:` table, the same instance search is given. NONE leaves every name literal.
@@ -86,7 +89,7 @@ class MarkwonRenderer(
     // matching the active scheme through [markwonFor]; nothing is shared or mutated between them, so
     // a theme toggle only switches which instance the adapter is built with.
     val markwon: Markwon by lazy {
-        buildPilcrowMarkwon(context, DarkColorScheme, images = images, emoji = emoji)
+        buildPilcrowMarkwon(context, DarkColorScheme, images = images, emoji = emoji, words = words)
     }
 
     /**
@@ -101,12 +104,12 @@ class MarkwonRenderer(
      */
     val prism4jHighlighter: Prism4jCodeHighlighter by lazy { Prism4jCodeHighlighter() }
     private val lightMarkwon: Markwon by lazy {
-        buildPilcrowMarkwon(context, LightColorScheme, images = images, emoji = emoji)
+        buildPilcrowMarkwon(context, LightColorScheme, images = images, emoji = emoji, words = words)
     }
 
     // M-92: AMOLED's own instance, since its page (the task-list tick) differs from Dark's.
     private val amoledMarkwon: Markwon by lazy {
-        buildPilcrowMarkwon(context, AmoledColorScheme, images = images, emoji = emoji)
+        buildPilcrowMarkwon(context, AmoledColorScheme, images = images, emoji = emoji, words = words)
     }
 
     // M-93: one image loader for every screen instance, so its memory cap covers them all. The PDF
@@ -117,7 +120,7 @@ class MarkwonRenderer(
 
     // The PDF export's instance: code in Light's code colours, whatever the app theme (M-178; see
     // [buildPrintMarkwon]). Built lazily, on the first export.
-    val printMarkwon: Markwon by lazy { buildPrintMarkwon(context, emoji = emoji) }
+    val printMarkwon: Markwon by lazy { buildPrintMarkwon(context, emoji = emoji, words = words) }
 
     // M-121: the export's instance for the last non-default reading size. One is enough: an export
     // runs at one size, and the next export at that size reuses it.
@@ -132,7 +135,7 @@ class MarkwonRenderer(
         if (fontScale == 1f) return printMarkwon
         return synchronized(this) {
             scaledPrint?.takeIf { it.first == fontScale }?.second
-                ?: buildPrintMarkwon(context, mathScale = fontScale, emoji = emoji)
+                ?: buildPrintMarkwon(context, mathScale = fontScale, emoji = emoji, words = words)
                     .also { scaledPrint = fontScale to it }
         }
     }
@@ -174,6 +177,7 @@ class MarkwonRenderer(
                     mathScale = fontScale,
                     images = images,
                     emoji = emoji,
+                    words = words,
                 )
             }
         }
@@ -185,7 +189,7 @@ class MarkwonRenderer(
     // lock. The parse tree does not depend on the colour scheme or the maths size (those are render
     // time), so the one Dark-built instance serves every theme and scale.
     // M-247: with the emoji table, since `:shortcode:` becomes a node at parse time.
-    private val readerParseMarkwon: Markwon by lazy { buildPilcrowMarkwon(context, emoji = emoji) }
+    private val readerParseMarkwon: Markwon by lazy { buildPilcrowMarkwon(context, emoji = emoji, words = words) }
 
     /** Parse [content] for the reader, with the reader's full plugin chain. Thread-safe; blocking. */
     fun parseForReader(content: String): Node = synchronized(readerParseMarkwon) { readerParseMarkwon.parse(content) }
@@ -269,6 +273,8 @@ internal fun buildPrintMarkwon(
     context: Context,
     mathScale: Float = 1f,
     emoji: EmojiShortcodes = EmojiShortcodes.NONE,
+    // Production passes the container's words (MarkwonRenderer); English is for tests.
+    words: ReaderWords = ReaderWords.ENGLISH,
 ): Markwon = buildPilcrowMarkwon(
     context,
     PrintCodeColorScheme,
@@ -276,6 +282,7 @@ internal fun buildPrintMarkwon(
     mathScale,
     layoutWidthHeadingRule = true,
     emoji = emoji,
+    words = words,
 )
 
 /**
@@ -300,6 +307,8 @@ internal fun buildPilcrowMarkwon(
     layoutWidthHeadingRule: Boolean = false,
     // M-247: `:shortcode:` names to paint as emoji. NONE (the default) leaves every name literal.
     emoji: EmojiShortcodes = EmojiShortcodes.NONE,
+    // Production passes the container's words (MarkwonRenderer); English is for tests.
+    words: ReaderWords = ReaderWords.ENGLISH,
 ): Markwon {
     // Prism4j over the kapt-generated grammars, plus the diff/patch aliases unless told otherwise
     val prism4j = Prism4j(grammarLocator)
@@ -338,7 +347,7 @@ internal fun buildPilcrowMarkwon(
         .usePlugin(FootnotePlugin())
         // M-161: GitHub alerts (`> [!NOTE]`), already turned into CalloutBlocks by ReaderDocument;
         // M-251: also registers the `!!!`/`:::` admonition block parser, which builds them directly.
-        .usePlugin(CalloutPlugin())
+        .usePlugin(CalloutPlugin(words))
         // GFM: tables, strikethrough, task lists. M-17: wrapped so a single cell renders its own
         // content, for the reader's one-TextView-per-cell tables (TableBlockEntry).
         .usePlugin(TableCellRenderPlugin(TablePlugin.create(context)))

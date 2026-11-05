@@ -11,7 +11,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -106,7 +106,7 @@ internal class OpenFileHeaderDecoration : RecyclerView.ItemDecoration() {
  * while the line ends in "*"). Its height is worked out from the
  * text size and fixed, so the room reserved above block 0 is exactly the line's height.
  */
-internal class OpenFileCaptionView(context: Context) : TextView(context) {
+internal class OpenFileCaptionView(context: Context) : AppCompatTextView(context) {
 
     private var shown: Triple<OpenFileLine, Int, Float>? = null
     private var heightPx = 0

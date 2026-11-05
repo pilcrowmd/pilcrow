@@ -13,32 +13,40 @@ import org.junit.Test
 /** M-161: reading `<details>` headers and pairing them into sections over the top-level blocks. */
 class DetailsTest {
 
+    private fun header(literal: String) = Details.parseHeader(literal, ReaderWords.ENGLISH.detailsSummary)
+
     private fun sections(markdown: String) = Details.sections(Parser.builder().build().parse(markdown))
 
     @Test
     fun `a header carries its summary as plain text, and whether it starts open`() {
-        val header = Details.parseHeader("<details>\n<summary>Install <b>now</b> &amp; later</summary>")!!
+        val header = header("<details>\n<summary>Install <b>now</b> &amp; later</summary>")!!
         assertEquals("Install now & later", header.summary)
         assertEquals("", header.inlineBody)
         assertFalse(header.openByDefault)
         assertFalse(header.closesItself)
-        assertTrue(Details.parseHeader("<details open>\n<summary>S</summary>")!!.openByDefault)
-        assertFalse(Details.parseHeader("<details class=\"opener\">")!!.openByDefault)
+        assertTrue(header("<details open>\n<summary>S</summary>")!!.openByDefault)
+        assertFalse(header("<details class=\"opener\">")!!.openByDefault)
     }
 
     @Test
     fun `the one-line form keeps its body and closes itself`() {
-        val header = Details.parseHeader("<details><summary>Tight</summary>Its body.</details>")!!
+        val header = header("<details><summary>Tight</summary>Its body.</details>")!!
         assertEquals("Tight", header.summary)
         assertEquals("Its body.", header.inlineBody)
         assertTrue(header.closesItself)
     }
 
     @Test
+    fun `no summary reads as the default summary it is given`() {
+        assertEquals("Détails", Details.parseHeader("<details>", defaultSummary = "Détails")!!.summary)
+        assertEquals("S", Details.parseHeader("<details><summary>S</summary>", defaultSummary = "Détails")!!.summary)
+    }
+
+    @Test
     fun `no summary reads as Details, and other HTML is not a header`() {
-        assertEquals(Details.DEFAULT_SUMMARY, Details.parseHeader("<details>")!!.summary)
-        assertNull(Details.parseHeader("<div>not a section</div>"))
-        assertNull(Details.parseHeader("</details>"))
+        assertEquals("Details", header("<details>")!!.summary)
+        assertNull(header("<div>not a section</div>"))
+        assertNull(header("</details>"))
         assertTrue(Details.isCloseBlock("</details>"))
         assertFalse(Details.isCloseBlock("</details><p>more</p>"))
     }
@@ -88,7 +96,7 @@ class DetailsTest {
             ),
             found,
         )
-        assertEquals("B", Details.parseHeader("</details>\n<details>\n<summary>B</summary>")!!.summary)
+        assertEquals("B", header("</details>\n<details>\n<summary>B</summary>")!!.summary)
     }
 
     /**

@@ -25,6 +25,7 @@ import com.pilcrowmd.repository.DraftInfo
 import com.pilcrowmd.repository.DraftRepository
 import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.StrandedSlot
+import com.pilcrowmd.storage.AppLanguageStore
 import com.pilcrowmd.storage.RecentFile
 import com.pilcrowmd.storage.ScrollAnchor
 import com.pilcrowmd.storage.StorageManager
@@ -59,7 +60,7 @@ data class HeadingJump(val position: Int, val seq: Int)
 data class Document(
     /**
      * The document's backing file, or **null for a document that has never been saved** — the
-     * "Create MD File" path (M-91), which opens a blank document straight in the editor.
+     * "New file" path (M-91), which opens a blank document straight in the editor.
      *
      * Nullable rather than a sentinel URI ON PURPOSE. Every consumer of this field is a place
      * where "there is no file yet" needs a decision, and several of them are persistence keys —
@@ -158,6 +159,8 @@ constructor(
     private val drafts: DraftRepository = DraftRepository.None,
     /** S8-A46: whether a file opened from an added folder changes outside the app soon after. */
     private val changeCheck: OpenFileChangeCheck = OpenFileChangeCheck(stats = { null }),
+    /** The app's own language choice (languages spec D1). */
+    private val appLanguageStore: AppLanguageStore = AppLanguageStore.None,
 ) : ViewModel() {
     // The open document and everything derived from it. This class READS all of it, but can
     // replace the document only through the slot's adjudicated doors (M-109) — see [DocumentSlot].
@@ -462,6 +465,9 @@ constructor(
     val fullScreenReading: StateFlow<Boolean> = storage.fullScreenReading
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    // The app's own language: a BCP-47 tag, or null for the system language (languages spec D1).
+    val appLanguageTag: StateFlow<String?> = appLanguageStore.languageTag
+
     // Theme mode selection (Dark or Light). Persisted in DataStore.
     val themeMode: StateFlow<ThemeMode> = storage.themeMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.DARK)
@@ -637,9 +643,15 @@ constructor(
      * all is how a persistence bug stays invisible.
      */
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun loadDocument(uri: Uri, claim: Claim, policy: ReplacePolicy, countsAsOpen: Boolean = false) {
+    private suspend fun loadDocument(
+        uri: Uri,
+        claim: Claim,
+        policy: ReplacePolicy,
+        countsAsOpen: Boolean = false,
+        discardsDraft: Boolean = false,
+    ) {
         try {
-            loadDocumentOrThrow(uri, claim, policy, countsAsOpen)
+            loadDocumentOrThrow(uri, claim, policy, countsAsOpen, discardsDraft)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             if (_fileLoadState.value is FileLoadState.Loading) finishLoad(claim, FileLoadState.Idle)
             throw e
@@ -653,7 +665,17 @@ constructor(
         }
     }
 
-    private suspend fun loadDocumentOrThrow(uri: Uri, claim: Claim, policy: ReplacePolicy, countsAsOpen: Boolean) {
+    /**
+     * [discardsDraft]: the user chose to lose the edits (Reload over them), so the stored draft is
+     * removed, not offered.
+     */
+    private suspend fun loadDocumentOrThrow(
+        uri: Uri,
+        claim: Claim,
+        policy: ReplacePolicy,
+        countsAsOpen: Boolean,
+        discardsDraft: Boolean,
+    ) {
         // A new attempt retires the last failure's message (M-126) — one place, because this is
         // the single point every load passes through.
         slot.markLoadFailure(false)
@@ -693,7 +715,14 @@ constructor(
         when (slot.publish(claim, publication, policy)) {
             PublishOutcome.PUBLISHED -> {
                 // Before anything suspends: from here a keystroke could start overwriting the draft.
-                checkForStoredDraft(publication.document)
+                // S8-A75: a confirmed Reload never looks the draft up (the lookup would reach the store
+                // before the keeper's own delete and offer the edits back); it removes it instead, and
+                // only now, so a read that failed has lost nothing.
+                if (discardsDraft) {
+                    viewModelScope.launch { draftKeeper.discard(uri) }
+                } else {
+                    checkForStoredDraft(publication.document)
+                }
                 startChangeCheck(publication.document, file.takeIf { it.isUtf8 }?.content)
                 // The TOC is the one value allowed to arrive AFTER the document: it comes from the
                 // reader model, which [readerModel] prepares off Main once the document is published.
@@ -1626,7 +1655,7 @@ constructor(
                 val baseline = slot.baseline
                 val lineEnding = slot.lineEnding.value
                 // Any grant held before this pick (read or write, e.g. the file is in Recents from
-                // "Open MD File") is not ours to release on a refusal.
+                // "Open file") is not ours to release on a refusal.
                 val grantedBefore = withContext(Dispatchers.IO) {
                     repository.hasPersistedPermission(pickedUri) || repository.hasPersistedWritePermission(pickedUri)
                 }
@@ -1950,7 +1979,9 @@ constructor(
      * The banner's Reload: read the file again, at the stored reading position, as on any open of
      * it. Unsaved edits are dropped only when [discardEdits], after the View has asked; otherwise
      * text typed while the file is read is never replaced (M-180's Save/Discard prompt asks). The
-     * banner stays until the new text is published, so a failed read can be tried again.
+     * banner stays until the new text is published, so a failed read can be tried again. Dropping the
+     * edits also removes their stored draft once the new text is published, instead of offering it
+     * back (S8-A75); a read that fails keeps it.
      */
     fun reloadChangedFile(discardEdits: Boolean) {
         if (_writeInFlight.value) return
@@ -1958,7 +1989,12 @@ constructor(
         val claim = slot.claim()
         viewModelScope.launch {
             restoreJob.cancel()
-            loadDocument(uri, claim, if (discardEdits) ReplacePolicy.DISCARD else ReplacePolicy.IF_CLEAN)
+            loadDocument(
+                uri,
+                claim,
+                if (discardEdits) ReplacePolicy.DISCARD else ReplacePolicy.IF_CLEAN,
+                discardsDraft = discardEdits,
+            )
         }
     }
 
@@ -2024,7 +2060,7 @@ constructor(
                 previewScroll = ScrollAnchor(),
                 resetEditorScroll = true,
             )
-            // IF_CLEAN: Create MD File is offered only on the welcome screen, with nothing open, so
+            // IF_CLEAN: New file is offered only on the welcome screen, with nothing open, so
             // a refusal is unreachable today; if a dirty document were ever open, it is kept.
             if (slot.publish(claim, publication, ReplacePolicy.IF_CLEAN) == PublishOutcome.PUBLISHED) {
                 loadingClaim = null // a load still running for the restore no longer owns the screen
@@ -2054,6 +2090,12 @@ constructor(
     fun setFullScreenReading(enabled: Boolean) {
         viewModelScope.launch { storage.setFullScreenReading(enabled) }
     }
+
+    /** Applies the language app-wide; AppCompat recreates the open activities (languages spec D1). */
+    fun setAppLanguage(tag: String?) = appLanguageStore.setLanguageTag(tag)
+
+    /** Re-reads the language: Android 13+ can change it in system settings while the app is open. */
+    fun refreshAppLanguage() = appLanguageStore.refresh()
 
     fun setFormattingBarEnabled(enabled: Boolean) {
         viewModelScope.launch { storage.setFormattingBarEnabled(enabled) }
@@ -2247,6 +2289,7 @@ constructor(
                         appInfo = container.appInfo,
                         drafts = container.draftRepository,
                         changeCheck = OpenFileChangeCheck(container.notesFolderRepository::noteStats),
+                        appLanguageStore = container.appLanguageStore,
                         prepareReaderModel = PrepareReaderModelUseCase(
                             parse = container.markwonRenderer::parseForReader,
                             headings = container.parseMarkdownHeadingsUseCase,

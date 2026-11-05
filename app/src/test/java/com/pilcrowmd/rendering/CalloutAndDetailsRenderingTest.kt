@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.CalloutBlock
 import com.pilcrowmd.domain.markdown.CalloutKind
 import com.pilcrowmd.domain.markdown.Details
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.ui.theme.DarkColorScheme
@@ -63,6 +64,7 @@ class CalloutAndDetailsRenderingTest {
     fun `a details header paints its summary, and its inline body only while open`() {
         val header = Details.parseHeader(
             (firstBlock("<details><summary>Tight</summary>Its body.</details>") as HtmlBlock).literal,
+            ReaderWords.ENGLISH.detailsSummary,
         )!!
         val style = DetailsHeaderStyle(Typeface.DEFAULT_BOLD, DarkColorScheme.accent.toArgb(), 1f)
         val closed = detailsHeaderText(context, header, expanded = false, style)
@@ -141,7 +143,8 @@ class CalloutAndDetailsRenderingTest {
         val (text, title) = paint(markdown)
         assertEquals("Energy \$E=mc^2\$", title)
         val parse = ParseMarkdownHeadingsUseCase()
-        assertEquals(title, (parse.parseDocument(markdown)!!.firstChild as CalloutBlock).paintedTitle)
+        val callout = parse.parseDocument(markdown)!!.firstChild as CalloutBlock
+        assertEquals(title, callout.paintedTitle(ReaderWords.ENGLISH))
         val painted = Regex("mc").findAll(text).count()
         assertEquals(2, painted)
         assertEquals(painted, SearchMarkdownUseCase(parse).findSearchMatches(markdown, "mc").size)

@@ -16,6 +16,7 @@ import androidx.core.content.res.ResourcesCompat
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.CalloutBlock
 import com.pilcrowmd.domain.markdown.Details
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -41,6 +42,8 @@ import org.commonmark.node.Paragraph
 @Suppress("LongParameterList") // The reader's settings, forwarded from the adapter builder.
 class ProseBlockEntry(
     private val context: Context,
+    /** What a `<details>` without a `<summary>` paints. */
+    private val words: ReaderWords,
     private val fontScale: Float = 1.0f,
     private val fontSet: FontSet = FontSets.DEFAULT,
     private val searchHighlight: SearchHighlight = SearchHighlight(),
@@ -97,6 +100,13 @@ class ProseBlockEntry(
             TypedValue.COMPLEX_UNIT_SP,
             PilcrowTypography.PROSE_BODY_FONT_SIZE_SP * fontScale,
         )
+        // S8-A75: inside a heading that wraps, the lines sit about HEADING_LINE_HEIGHT of the font size
+        // apart; prose keeps the reading multiplier. Android applies the multiplier to every line but the
+        // last, so a one-line heading, and the padding above and below, do not move. Set on every bind.
+        holder.textView.setLineSpacing(
+            0f,
+            if (node is Heading) headingLineSpacing(holder.textView) else PreviewLineHeightMultiplier,
+        )
         // M-328: a piece of a split paragraph drops font padding at its top seam; every other bind
         // restores it, since a recycled holder may have shown a piece.
         holder.textView.includeFontPadding = !(node is Paragraph && continuesPrevious(node))
@@ -109,7 +119,7 @@ class ProseBlockEntry(
         // M-161: a callout draws its box and a `<details>` header takes a tap; a recycled holder must
         // shed both, so every bind starts from the plain block and adds only what this node needs.
         val callout = node as? CalloutBlock
-        val detailsHeader = (node as? HtmlBlock)?.let { Details.parseHeader(it.literal) }
+        val detailsHeader = (node as? HtmlBlock)?.let { Details.parseHeader(it.literal, words.detailsSummary) }
         applyChrome(holder, callout, detailsHeader, top, bottom)
         try {
             // Reset shared-holder state: a recycled holder may carry the fallback's secondaryText
@@ -144,6 +154,16 @@ class ProseBlockEntry(
         }
         // M-157: last, after the text and the tap target are in place. A header takes a tap instead.
         if (detailsHeader == null) holder.textView.enableBlockSelection()
+    }
+
+    /**
+     * The multiplier that puts a heading's lines [PilcrowTypography.HEADING_LINE_HEIGHT] x the font size
+     * apart, whatever the font's own height.
+     */
+    private fun headingLineSpacing(tv: TextView): Float {
+        val fm = tv.paint.fontMetrics
+        val natural = (fm.descent - fm.ascent) / tv.textSize
+        return if (natural > 0f) PilcrowTypography.HEADING_LINE_HEIGHT / natural else 1f
     }
 
     private fun continuesPrevious(node: Paragraph) = seams?.seams?.continuesPrevious(node) == true

@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.PlainReason
@@ -94,6 +95,7 @@ import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.ui.components.AccessibleCodeEditor
+import com.pilcrowmd.ui.components.AppLanguage
 import com.pilcrowmd.ui.components.EditorController
 import com.pilcrowmd.ui.components.FileNameText
 import com.pilcrowmd.ui.components.HeadingsDrawer
@@ -178,6 +180,7 @@ fun MainScreen(
     val lineNumbersEnabled = viewModel.lineNumbersEnabled.collectAsStateWithLifecycle()
     val openInEditMode = viewModel.openInEditMode.collectAsStateWithLifecycle()
     val fullScreenReading = viewModel.fullScreenReading.collectAsStateWithLifecycle()
+    val appLanguageTag = viewModel.appLanguageTag.collectAsStateWithLifecycle()
     // Separate preview/editor scales and selected font set.
     val previewFontScale = viewModel.previewFontScale.collectAsStateWithLifecycle()
     // How the reader renders the current document + whether the .txt toggle is offered.
@@ -697,14 +700,14 @@ fun MainScreen(
             saveAsLauncher.launch("Copy of ${baseName ?: "document"}.md")
         }
     }
-    // S8-A55 "Allow editing": the picker opens at the document itself (its folder) when it is a
-    // DocumentsContract URI, so the user can tap the same file; any other URI (a MediaStore one from
-    // Samsung My Files, a FileProvider one from mail) is not one the picker can start at, so it opens
-    // where Android chooses. The ViewModel adopts the pick only if it holds exactly what was opened.
+    // S8-A55 "Allow editing": the picker opens at the document's folder. S8-A75: also for a MediaStore file
+    // from Samsung My Files, via the folder MediaStore names (one local row, fine on this lambda's thread);
+    // a FileProvider one from mail still opens where Android chooses. The ViewModel adopts the pick only
+    // if it holds exactly what was opened.
     val allowEditingLauncher = rememberAllowEditingLauncher { uri -> viewModel.allowEditing(uri) }
     val launchAllowEditing = {
         val uri = currentDocument.value?.uri
-        allowEditingLauncher.launch(uri?.takeIf { android.provider.DocumentsContract.isDocumentUri(context, it) })
+        allowEditingLauncher.launch(uri?.let { pickerStartFor(context, it) })
     }
     // Save on a read-only "Open with" document (transient, read as UTF-8, not a new one) asks first:
     // allow editing, or save a copy. Every other document that cannot save in place goes to Save-As.
@@ -968,6 +971,11 @@ fun MainScreen(
 
                 // Settings screen (full-screen modal)
                 if (showSettings) {
+                    // The Language row follows a change made in system settings (App languages).
+                    LifecycleResumeEffect(Unit) {
+                        viewModel.refreshAppLanguage()
+                        onPauseOrDispose {}
+                    }
                     SettingsScreen(
                         modifier = Modifier
                             .weight(1f)
@@ -990,6 +998,8 @@ fun MainScreen(
                         onFullScreenReadingChanged = { viewModel.setFullScreenReading(it) },
                         themeMode = themeMode.value,
                         onThemeSelected = { viewModel.setThemeMode(it) },
+                        appLanguage = AppLanguage.fromTag(appLanguageTag.value),
+                        onAppLanguageSelected = { viewModel.setAppLanguage(it.tag) },
                         appVersion = aboutVersion,
                         showRateCard = isPlayInstall.value,
                         onRate = { openStoreListing(context) },

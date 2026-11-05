@@ -138,10 +138,10 @@ class WelcomeDisabledActionsTest {
     }
 
     @Test
-    fun openMdFileDimsWhileLoading() = assertDimmed("Open MD File") { composeRule.onNodeWithText("Open MD File") }
+    fun openMdFileDimsWhileLoading() = assertDimmed("Open file") { composeRule.onNodeWithText("Open file") }
 
     @Test
-    fun createMdFileDimsWhileLoading() = assertDimmed("Create MD File") { composeRule.onNodeWithText("Create MD File") }
+    fun createMdFileDimsWhileLoading() = assertDimmed("New file") { composeRule.onNodeWithText("New file") }
 
     @Test
     fun browseAllFilesDimsWhileLoading() =
@@ -155,7 +155,7 @@ class WelcomeDisabledActionsTest {
     fun theRemoveButtonStaysUndimmedBecauseItStillWorks() {
         show()
         val (idle, busy) = idleThenLoading {
-            composeRule.onAllNodesWithContentDescription("Remove from recents")[0]
+            composeRule.onAllNodesWithContentDescription("Remove from Recent")[0]
         }
         assertTrue(
             "the remove button still works during a load, so it must not dim: $idle idle vs $busy loading",
@@ -181,7 +181,7 @@ class WelcomeDisabledActionsTest {
         show()
         loading = true
         composeRule.waitForIdle()
-        val button = composeRule.onNodeWithText("Open MD File").fetchSemanticsNode().boundsInRoot
+        val button = composeRule.onNodeWithText("Open file").fetchSemanticsNode().boundsInRoot
         val image = drawContent()
         val px = composeRule.density.density
         val left = (button.left + CORNER_CLEARANCE_DP * px).toInt()

@@ -4,6 +4,7 @@
 package com.pilcrowmd.di
 
 import android.net.Uri
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
@@ -14,6 +15,7 @@ import com.pilcrowmd.repository.FileRepository
 import com.pilcrowmd.repository.FolderAccessRepository
 import com.pilcrowmd.repository.NoteLinkRepository
 import com.pilcrowmd.repository.NotesFolderRepository
+import com.pilcrowmd.storage.AppLanguageStore
 import com.pilcrowmd.storage.NoteMarksStore
 import com.pilcrowmd.storage.NotesFolderStore
 import com.pilcrowmd.storage.StorageManager
@@ -58,6 +60,12 @@ interface AppContainer {
 
     /** M-162b: the New and Updated marks of each notes folder. */
     val noteMarksStore: NoteMarksStore
+
+    /** The app's own language choice (languages spec D1). */
+    val appLanguageStore: AppLanguageStore
+
+    /** The words the reader paints that are not in the document (callout titles, `<details>` summary). */
+    val readerWords: ReaderWords
 
     /** Markdown rendering engine (lazy, one instance per process). */
     val markwonRenderer: MarkwonRenderer

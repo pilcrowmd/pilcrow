@@ -134,7 +134,7 @@ private val RESERVED_RECENTS =
 /**
  * Welcome / start screen (shown when no file is open). Visual design per the
  * reference mockup: faint ¶ pilcrow serif watermark (upper third), purple-accent
- * serif wordmark, sparkle divider, subtitle, cream "Open MD File" button, recents
+ * serif wordmark, sparkle divider, subtitle, cream "Open file" button, recent files
  * list, footer. All colors from the token layer.
  */
 /**
@@ -248,7 +248,7 @@ fun WelcomeScreen(
     modifier: Modifier = Modifier,
     recentFiles: List<RecentFileUi> = emptyList(),
     /**
-     * A document is being restored. **M-115.** While true the three ways in — Open, Create MD File
+     * A document is being restored. **M-115.** While true the three ways in — Open, New file
      * and a recent — are disabled and a progress line is shown, because a load that completes emits
      * its document straight over whatever is in the slot: a document created or opened in that
      * window is silently replaced, and anything typed into it is gone (Safeguard 1).
@@ -482,7 +482,7 @@ fun WelcomeScreen(
                                         )
                                     }
                                     NotReopenedNote(notReopenedMessage)
-                                    // M-177/M-174: between the fallback link and RECENT. In the slot below
+                                    // M-177/M-174: between the fallback link and Recent. In the slot below
                                     // the block, like the recents, so it cannot move the block (M-196).
                                     PromptSlot(
                                         showUpdateNote = showUpdateNote,
@@ -911,7 +911,7 @@ private fun UpdateNote(onDismiss: () -> Unit) {
     }
 }
 
-/** M-162b: the way into the Files screen, an outline row like Create MD File. Inert while a restore runs (M-115). */
+/** M-162b: the way into the Files screen, an outline row like New file. Inert while a restore runs (M-115). */
 @Composable
 private fun BrowseFoldersRow(isLoading: Boolean, onOpenFiles: () -> Unit) {
     val c = mdColors()
@@ -943,7 +943,7 @@ private fun BrowseFoldersRow(isLoading: Boolean, onOpenFiles: () -> Unit) {
     }
 }
 
-/** The RECENT header, its Clear action and one [RecentRow] per file; nothing when [recentFiles] is empty. */
+/** The Recent header, its Clear action and one [RecentRow] per file; nothing when [recentFiles] is empty. */
 @Composable
 private fun RecentsSection(
     recentFiles: List<RecentFileUi>,
@@ -1053,7 +1053,7 @@ internal fun RecentRow(
  * Translucent by design, which is right for a control with no fill of its own (an outline, text, an
  * icon): whatever is behind it, the scrolling ¶ watermark included, already shows through it when it
  * is enabled, so dimming cannot reveal anything new. A FILLED control is different: dimming turns
- * its opaque fill translucent. The Open MD File button is the one such control, and uses
+ * its opaque fill translucent. The Open file button is the one such control, and uses
  * [dimmedOverWhen] instead.
  */
 private fun Modifier.dimmedWhen(disabled: Boolean): Modifier = if (disabled) alpha(DISABLED_ACTION_ALPHA) else this

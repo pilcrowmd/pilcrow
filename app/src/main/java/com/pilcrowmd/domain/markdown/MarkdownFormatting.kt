@@ -22,7 +22,10 @@ sealed interface FormatAction {
     data object Quote : LinePrefix
     data object Indent : LinePrefix
     data object Outdent : LinePrefix
-    data object Table : FormatAction
+
+    /** A two-column table; [columnHeader] is the word above each column, in the app's language. */
+    data class Table(val columnHeader: String) : FormatAction
+
     data object Divider : FormatAction
 }
 
@@ -56,10 +59,9 @@ object MarkdownFormatting {
     private const val INDENT = "    "
     private const val MAX_HEADING_CYCLE = 3
     private const val DIVIDER = "---"
-    private const val TABLE = "| Column | Column |\n| --- | --- |\n|  |  |\n|  |  |"
 
-    // Between the two spaces of the first body cell.
-    private val TABLE_CURSOR = TABLE.indexOf("|  |") + 2
+    // The two empty body rows; the cursor goes between the two spaces of the first cell.
+    private const val TABLE_BODY = "|  |  |\n|  |  |"
 
     private val HEADING = Regex("""^(#{1,6})(?:[ \t]+|$)""")
 
@@ -74,7 +76,10 @@ object MarkdownFormatting {
             is FormatAction.Inline -> inline(text, start, end, action)
             is FormatAction.LinePrefix -> prefixLines(text, start, end, action)
             FormatAction.Link -> link(start, end)
-            FormatAction.Table -> block(text, end, TABLE, TABLE_CURSOR, blankLineAfter = true)
+            is FormatAction.Table -> {
+                val head = "| ${action.columnHeader} | ${action.columnHeader} |\n| --- | --- |\n"
+                block(text, end, head + TABLE_BODY, head.length + "| ".length, blankLineAfter = true)
+            }
             FormatAction.Divider -> block(text, end, DIVIDER, DIVIDER.length, blankLineAfter = false)
         }
     }

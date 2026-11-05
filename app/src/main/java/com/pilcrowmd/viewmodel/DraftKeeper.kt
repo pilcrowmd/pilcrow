@@ -58,8 +58,8 @@ data class OrphanDraft(val uri: Uri, val displayName: String, val savedAt: Long)
  *
  * Documents without a file (never saved, M-91) have no draft: a draft is found again by its file.
  */
-// One over the threshold since S8-A55 (moveDraft): moving a draft is this class's job, and it needs
-// the same scope, store and hold list as writing one.
+// Two over the threshold, since S8-A55 (moveDraft) and S8-A75 (discard): moving or dropping a draft is this
+// class's job, and each needs the same scope, store and hold list as writing one.
 @Suppress("TooManyFunctions")
 internal class DraftKeeper(
     private val drafts: DraftRepository,
@@ -162,6 +162,15 @@ internal class DraftKeeper(
                 RecoveryOffer(uri, displayName, draft.savedAt, diskChanged = changed)
             }
         }
+    }
+
+    /**
+     * The user threw the edits away on purpose (Reload over them, and the file is read again): the stored
+     * draft goes, and the load that replaced the edits does not look it up, so it is never offered back.
+     */
+    suspend fun discard(uri: Uri) {
+        cancelPending()
+        drafts.delete(uri)
     }
 
     private fun cancelPending() {

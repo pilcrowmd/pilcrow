@@ -120,7 +120,7 @@ fun HeadingsDrawer(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(R.string.headings_title),
+                text = stringResource(R.string.contents_title),
                 color = c.primaryText,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -142,7 +142,7 @@ fun HeadingsDrawer(
             }
         }
 
-        // Headings list
+        // Contents list
         LazyColumn(state = listState) {
             items(visible, key = { it }) { index ->
                 val heading = headings[index]

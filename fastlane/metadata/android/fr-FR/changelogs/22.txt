@@ -1,0 +1,6 @@
+- Sept nouvelles langues : allemand, français, espagnol, chinois (simplifié), italien, ukrainien et hindi.
+- Nouvelle option « Langue » dans les Paramètres : en choisir une ou suivre le téléphone.
+- Titres sur plusieurs lignes plus resserrés.
+- Les Paramètres disent comment réafficher les barres en Lecture en plein écran.
+- « Autoriser la modification » ouvre le sélecteur dans le dossier du fichier.
+- Plus de seconde fenêtre « Modifications non enregistrées » une fois « Recharger » confirmé.

@@ -31,6 +31,9 @@ class CalloutsTest {
 
     private fun first(markdown: String): Node = parse(markdown).firstChild!!
 
+    // What the callout paints, in the source-language reader words.
+    private val CalloutBlock.painted get() = paintedTitle(ReaderWords.ENGLISH)
+
     /** Each top-level block of [root]: its type and its text. */
     private fun shape(root: Node): List<String> = buildList {
         var node = root.firstChild
@@ -86,7 +89,7 @@ class CalloutsTest {
         val node = first("> [!NOTE] Custom callout title\n> Body") as CalloutBlock
         assertEquals(CalloutKind.NOTE, node.kind)
         assertEquals("Custom callout title", node.title)
-        assertEquals("Custom callout title", node.paintedTitle)
+        assertEquals("Custom callout title", node.painted)
         assertEquals("[!NOTE]", node.marker)
         assertEquals("Body", text(node))
     }
@@ -94,14 +97,14 @@ class CalloutsTest {
     @Test
     fun `a title-only callout keeps its title and has no content`() {
         val node = first("> [!NOTE] Body on the same line") as CalloutBlock
-        assertEquals("Body on the same line", node.paintedTitle)
+        assertEquals("Body on the same line", node.painted)
         assertNull(node.firstChild)
     }
 
     @Test
     fun `a title is plain text, its inline formatting flattened`() {
         val node = first("> [!TIP] A **bold** `code` title\n> Body") as CalloutBlock
-        assertEquals("A bold code title", node.paintedTitle)
+        assertEquals("A bold code title", node.painted)
         assertEquals("Body", text(node))
     }
 
@@ -109,21 +112,28 @@ class CalloutsTest {
     fun `with no title the kind's own title is painted`() {
         val node = first("> [!WARNING]\n> Body") as CalloutBlock
         assertNull(node.title)
-        assertEquals("Warning", node.paintedTitle)
+        assertEquals("Warning", node.painted)
+    }
+
+    @Test
+    fun `with no title the kind's title is the one in the words it is given`() {
+        val words = ReaderWords(CalloutKind.entries.associateWith { "<${it.name}>" }, detailsSummary = "")
+        assertEquals("<WARNING>", (first("> [!WARNING]\n> Body") as CalloutBlock).paintedTitle(words))
+        assertEquals("Own title", (first("> [!WARNING] Own title\n> Body") as CalloutBlock).paintedTitle(words))
     }
 
     @Test
     fun `a fold sign is accepted and never painted, with or without a title`() {
         val closed = first("> [!TIP]- Collapsible callout\n> Body") as CalloutBlock
         assertEquals(CalloutKind.TIP, closed.kind)
-        assertEquals("Collapsible callout", closed.paintedTitle)
+        assertEquals("Collapsible callout", closed.painted)
         assertEquals("Body", text(closed))
         val open = first("> [!WARNING]+ Starts open\n> Body") as CalloutBlock
-        assertEquals("Starts open", open.paintedTitle)
+        assertEquals("Starts open", open.painted)
         val bare = first("> [!TIP]-\n> Body") as CalloutBlock
-        assertEquals("Tip", bare.paintedTitle)
+        assertEquals("Tip", bare.painted)
         assertEquals("Body", text(bare))
-        assertEquals("Note", (first("> [!NOTE]+") as CalloutBlock).paintedTitle)
+        assertEquals("Note", (first("> [!NOTE]+") as CalloutBlock).painted)
     }
 
     @Test
@@ -150,7 +160,7 @@ class CalloutsTest {
     fun `a Python-Markdown admonition is a callout with its quoted title and indented body`() {
         val node = first("!!! info \"Fieldwork note (Python-Markdown)\"\n    Rainfall was measured.") as CalloutBlock
         assertEquals(CalloutKind.NOTE, node.kind)
-        assertEquals("Fieldwork note (Python-Markdown)", node.paintedTitle)
+        assertEquals("Fieldwork note (Python-Markdown)", node.painted)
         assertEquals("!!!", node.marker)
         assertEquals("Rainfall was measured.", text(node))
     }
@@ -160,7 +170,7 @@ class CalloutsTest {
         val node = first("!!! warning\n    Body") as CalloutBlock
         assertEquals(CalloutKind.WARNING, node.kind)
         assertNull(node.title)
-        assertEquals("Warning", node.paintedTitle)
+        assertEquals("Warning", node.painted)
     }
 
     @Test
@@ -200,8 +210,8 @@ class CalloutsTest {
 
     @Test
     fun `the collapsible form is shown open like the plain one`() {
-        assertEquals("T", (first("??? note \"T\"\n    Body") as CalloutBlock).paintedTitle)
-        assertEquals("Tip", (first("???+ tip\n    Body") as CalloutBlock).paintedTitle)
+        assertEquals("T", (first("??? note \"T\"\n    Body") as CalloutBlock).painted)
+        assertEquals("Tip", (first("???+ tip\n    Body") as CalloutBlock).painted)
     }
 
     @Test
@@ -218,7 +228,7 @@ class CalloutsTest {
     @Test
     fun `a fenced admonition takes the rest of its first line as the title`() {
         val node = first(":::tip Custom title\nBody\n:::") as CalloutBlock
-        assertEquals("Custom title", node.paintedTitle)
+        assertEquals("Custom title", node.painted)
         assertEquals("Body", text(node))
     }
 
@@ -306,14 +316,14 @@ class CalloutsTest {
     fun `a long run of blanks inside a title does not stall the parse`() {
         // A lazy title group backtracks quadratically over the run; 200k blanks would take minutes.
         val gap = " ".repeat(200_000)
-        assertEquals("a${gap}b", (first("> [!NOTE] a${gap}b\n> Body") as CalloutBlock).paintedTitle)
-        assertEquals("a${gap}b", (first("::: note a${gap}b \t\nBody\n:::") as CalloutBlock).paintedTitle)
+        assertEquals("a${gap}b", (first("> [!NOTE] a${gap}b\n> Body") as CalloutBlock).painted)
+        assertEquals("a${gap}b", (first("::: note a${gap}b \t\nBody\n:::") as CalloutBlock).painted)
     }
 
     @Test
     fun `trailing blanks after a title are not part of it`() {
-        assertEquals("Title", (first("> [!NOTE] Title \t\n> Body") as CalloutBlock).paintedTitle)
-        assertEquals("Title", (first("::: note Title \t\nBody\n:::") as CalloutBlock).paintedTitle)
+        assertEquals("Title", (first("> [!NOTE] Title \t\n> Body") as CalloutBlock).painted)
+        assertEquals("Title", (first("::: note Title \t\nBody\n:::") as CalloutBlock).painted)
         assertNull((first("::: note \t\nBody\n:::") as CalloutBlock).title)
     }
 }

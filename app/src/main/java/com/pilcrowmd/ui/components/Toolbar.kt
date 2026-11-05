@@ -65,7 +65,7 @@ import com.pilcrowmd.viewmodel.ViewMode
  * Read/Edit switch's 48dp touch area lies inside the bar; Compose does not route a tap outside a parent.
  *
  * Left: one mode button showing the action (Edit in Read mode, Read in Edit mode).
- * Right: Search, TOC, then explicit Save (Edit mode only; no auto-save) or Export PDF (Read mode
+ * Right: Search, Contents, then explicit Save (Edit mode only; no auto-save) or PDF export (Read mode
  * only), Undo/Redo (Edit mode), overflow and Close. Opening/switching a file is done from the
  * Home screen: the folder icon was removed so the remaining actions can hit a 42dp touch target
  * within phone width; Close returns to Home, where Open lives.
@@ -117,7 +117,7 @@ fun PilcrowToolbar(
             // offers Read; long-press shows the same word.
             ModeButton(currentMode = currentMode, onModeSelected = onModeSelected)
 
-            // Actions (right): Search + TOC, then Save (Edit only) or Export PDF (Read only), Undo + Redo,
+            // Actions (right): Search + Contents, then Save (Edit only) or PDF export (Read only), Undo + Redo,
             // overflow, Close.
             // Icons are 22dp glyphs (PDF export 24dp so its "PDF" lettering stays legible) inside 42dp
             // touch targets (glyph bumped from 18dp so the icons read visibly larger; target
@@ -133,7 +133,7 @@ fun PilcrowToolbar(
                 )
                 ActionIcon(
                     icon = Icons.AutoMirrored.Outlined.Toc,
-                    contentDescription = stringResource(R.string.toolbar_table_of_contents),
+                    contentDescription = stringResource(R.string.toolbar_contents),
                     onClick = onTOC,
                     enabled = !isSaving,
                 )
@@ -155,7 +155,7 @@ fun PilcrowToolbar(
                         },
                     )
                 }
-                // Export PDF button (preview mode only) — custom PDF icon with brand-purple badge.
+                // PDF export button (preview mode only) — custom PDF icon with brand-purple badge.
                 if (currentMode == ViewMode.READER) {
                     PdfExportActionIcon(
                         onClick = onExportPdf,

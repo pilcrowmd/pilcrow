@@ -7,6 +7,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-05
+
+### Added
+
+- **Seven languages: German, French, Spanish, Chinese (Simplified), Italian, Ukrainian, Hindi.**
+  Pick one under Settings, Language, or let the app follow the phone.
+- **A Language setting.** Settings offers **System default** (the default), English, Deutsch,
+  Français, Español, 中文 (简体), Italiano, Українська and हिन्दी. The app's language can also be set
+  in Android 13+ system settings, App languages.
+
+### Changed
+
+- **Headings that wrap to two or more lines are set tighter.**
+- **Settings says how the hidden bars come back in full-screen reading:** swipe in from the top or
+  bottom edge.
+- **Allow editing opens Android's file picker in the file's own folder,** also for a file opened from
+  Samsung My Files.
+- **Clearer names, the same as in the Mac app:** the Welcome buttons are **Open file** and
+  **New file**; the headings panel and its button are **Contents**; **Export as PDF**; the Settings
+  size for reading is **Reading text size**; the Welcome list header is **Recent** and its row
+  action **Remove from Recent**; one spelling, **Open source licenses**.
+
+### Fixed
+
+- **No second "Unsaved changes" dialog after you confirm Reload.** Reloading a file that changed
+  outside PilcrowMD over your unsaved edits now drops those edits, as the question says, instead of
+  offering them back a moment later.
+
 ## [1.1.2] - 2026-11-03
 
 ### Added
@@ -53,7 +81,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Notes folders.** Add a folder of notes and browse it in the new My folders screen, from Welcome
   ("My folders") or from the reader's menu. Folders stay in the order you added them, the list
   updates when files change, and new or updated notes carry a small mark until you open them.
-  Closing a note you opened there takes you back to My folders. Adding or browsing a folder never
+  Closing a note you opened there takes you back to My folders, except after you followed a link
+  to another note: closing that one with X goes to Welcome. Adding or browsing a folder never
   changes, renames or deletes your files.
 - **Links between notes.** In a notes folder, tap a link to another note to open it, at its heading
   if the link names one, and press Back to return to the note you came from. Links to files with

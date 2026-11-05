@@ -60,18 +60,18 @@ class DisplayCutoutPaddingTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun headingsDrawerKeepsItsTitleOutOfTheCutout() = assertMovedByCutout("Headings") { HeadingsDrawer() }
+    fun headingsDrawerKeepsItsTitleOutOfTheCutout() = assertMovedByCutout("Contents") { HeadingsDrawer() }
 
     @Test
     fun headingsDrawerIgnoresACutoutOnTheEndSide() {
         setContent { HeadingsDrawer(headings = listOf(HeadingNode(level = 1, text = "Intro", adapterPosition = 0))) }
-        val titleBefore = leftEdgeOf("Headings")
+        val titleBefore = leftEdgeOf("Contents")
         val itemRightBefore = rightEdgeOf("Intro")
         assertTrue("control: the heading row has a real width, ${itemRightBefore}px", itemRightBefore > CUTOUT_PX)
 
         dispatchCutout(Insets.of(0, 0, CUTOUT_PX, 0))
 
-        assertEquals("an end-side cutout must not move the title", titleBefore, leftEdgeOf("Headings"), 0.5f)
+        assertEquals("an end-side cutout must not move the title", titleBefore, leftEdgeOf("Contents"), 0.5f)
         assertEquals(
             "an end-side cutout must not pull the content's right edge in",
             itemRightBefore,
@@ -85,7 +85,7 @@ class DisplayCutoutPaddingTest {
 
     @Test
     fun licensesListKeepsItsTitleOutOfTheCutout() =
-        assertMovedByCutout("Open Source Licenses") { LicensesScreen(onClose = {}) }
+        assertMovedByCutout("Open source licenses") { LicensesScreen(onClose = {}) }
 
     @Test
     fun licenseDetailKeepsItsTitleOutOfTheCutout() = assertMovedByCutout("Example Library") {

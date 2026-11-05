@@ -17,20 +17,20 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
   of the file). It should show as a tidy key/value card, not as raw text.
 - Every section below should look finished: no stray `*`, `#` or `|` characters, nothing cut off at
   the right edge, nothing overlapping.
-- Change **Settings → Theme** and **Preview text size**, then come back. Everything should still
+- Change **Settings → Theme** and **Reading text size**, then come back. Everything should still
   fit and stay readable.
 - Open the headings drawer: every heading in this file should be listed, in order.
 - Search for the word *lighthouse*. It appears three times: in this line, in section 4 and in section 8.
 - The very last line of the file says **End of the General pack**. If you can read it, nothing
   was lost on the way.
 
-**Known gaps in version 1.1.2** – we know about these, no need to report them:
+**Known gaps in version 1.1.3** – we know about these, no need to report them:
 
 - A web address written without angle brackets (`https://…`) is not a link; `<https://…>` is.
 - Task boxes cannot be ticked in reading mode (by design: reading mode never changes your file).
 - Gantt charts (Mermaid) are drawn very small.
 - An HTML `<table>` runs its cells together on one line.
-- A new note made with Create MD File and not yet saved has no kept copy: if the app is closed before
+- A new note made with New file and not yet saved has no kept copy: if the app is closed before
   its first save, the text is lost.
 - A link in a note that is not inside a folder you added does nothing, with no message.
 - In a cloud folder such as Google Drive, a change made on another device in the 2 minutes after
@@ -38,9 +38,6 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
   holds when you reopen the note in those 2 minutes.
 - In a cloud folder, if you leave PilcrowMD within 20 seconds of saving a note and do not come
   back to My folders within 2 minutes, your own save can mark that note as updated.
-- With unsaved edits, after you tap Reload on the "This file was just changed outside PilcrowMD."
-  notice and confirm, the app can ask a second time and offer to restore your edits. Tap Discard
-  to drop them.
 
 Found something not on this list? Please open an issue at
 <https://github.com/pilcrowmd/pilcrow/issues> and say which pack and which section.

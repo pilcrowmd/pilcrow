@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import androidx.compose.ui.graphics.toArgb
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.ParagraphSplitter
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import io.mockk.every
 import io.mockk.mockk
@@ -47,7 +48,7 @@ class ProseBlockEntryTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        entry = ProseBlockEntry(context)
+        entry = ProseBlockEntry(context, ReaderWords.ENGLISH)
         holder = entry.createHolder(LayoutInflater.from(context), FrameLayout(context))
     }
 
@@ -195,7 +196,7 @@ class ProseBlockEntryTest {
         val state = ParagraphSeamState()
         val pieces = splitPieces(state)
         assertTrue("400 children must have been cut into at least three pieces", pieces.size >= 3)
-        val seamEntry = ProseBlockEntry(context, seams = state)
+        val seamEntry = ProseBlockEntry(context, ReaderWords.ENGLISH, seams = state)
         val seamHolder = seamEntry.createHolder(LayoutInflater.from(context), FrameLayout(context))
         val markwon = buildPilcrowMarkwon(context)
         val tv = seamHolder.textView
@@ -239,7 +240,7 @@ class ProseBlockEntryTest {
     fun `a holder that showed a piece recovers the usual paragraph gap and font padding`() {
         val state = ParagraphSeamState()
         val pieces = splitPieces(state)
-        val seamEntry = ProseBlockEntry(context, seams = state)
+        val seamEntry = ProseBlockEntry(context, ReaderWords.ENGLISH, seams = state)
         val seamHolder = seamEntry.createHolder(LayoutInflater.from(context), FrameLayout(context))
         val markwon = buildPilcrowMarkwon(context)
         val tv = seamHolder.textView
@@ -259,7 +260,7 @@ class ProseBlockEntryTest {
     fun `a heading bound into a holder that showed a middle piece gets font padding and its own gaps`() {
         val state = ParagraphSeamState()
         val pieces = splitPieces(state)
-        val seamEntry = ProseBlockEntry(context, seams = state)
+        val seamEntry = ProseBlockEntry(context, ReaderWords.ENGLISH, seams = state)
         val seamHolder = seamEntry.createHolder(LayoutInflater.from(context), FrameLayout(context))
         val markwon = buildPilcrowMarkwon(context)
         val tv = seamHolder.textView

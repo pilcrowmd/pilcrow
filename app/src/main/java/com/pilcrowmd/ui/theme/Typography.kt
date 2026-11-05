@@ -118,6 +118,9 @@ object PilcrowTypography {
      */
     const val PROSE_BODY_FONT_SIZE_SP: Float = 17f
 
+    /** Distance between the lines of a wrapped reader heading, as a multiple of its font size (S8-A75). */
+    const val HEADING_LINE_HEIGHT: Float = 1.2f
+
     /**
      * Code block font size (fenced code, frontmatter, LaTeX blocks).
      * Base value: 14sp.

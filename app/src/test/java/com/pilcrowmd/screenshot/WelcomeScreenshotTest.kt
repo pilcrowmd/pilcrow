@@ -126,9 +126,9 @@ class WelcomeScreenshotTest(private val themeMode: ThemeMode) {
         captureWelcome(suffix = themeSuffix() + "_loading_recents", recentFiles = sampleRecents(), isLoading = true)
 
     /**
-     * M-177: the one-time rating card, between "Browse all files" and RECENT, with the recents
+     * M-177: the one-time rating card, between "Browse all files" and Recent, with the recents
      * list full. New goldens; every existing one must stay byte-identical, because the card
-     * defaults to hidden. The row asks what the card costs RECENT on screen — this is the picture.
+     * defaults to hidden. The row asks what the card costs Recent on screen — this is the picture.
      */
     @Test
     fun goldenRatingCardWithRecents() = captureWelcome(

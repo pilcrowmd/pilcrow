@@ -59,16 +59,16 @@ object Details {
     private val TAG = Regex("""<[^>]*>""")
     private val WHITESPACE = Regex("""\s+""")
 
-    /** Browsers label a `<details>` without a `<summary>` this way. */
-    const val DEFAULT_SUMMARY = "Details"
-
-    /** The header this HTML literal opens, or null when it does not start with `<details>` (after any `</details>`). */
-    fun parseHeader(literal: String): DetailsHeader? {
+    /**
+     * The header this HTML literal opens, or null when it does not start with `<details>` (after any
+     * `</details>`). [defaultSummary] is what a `<details>` without a `<summary>` paints, as browsers do.
+     */
+    fun parseHeader(literal: String, defaultSummary: String): DetailsHeader? {
         val open = OPEN_TAG.find(literal) ?: return null
         val attributes = open.groupValues[2]
         val afterOpen = literal.substring(open.range.last + 1)
         val summaryMatch = SUMMARY.find(afterOpen)
-        val summary = summaryMatch?.groupValues?.get(2)?.let(::plainText).orEmpty().ifEmpty { DEFAULT_SUMMARY }
+        val summary = summaryMatch?.groupValues?.get(2)?.let(::plainText).orEmpty().ifEmpty { defaultSummary }
         val rest = if (summaryMatch != null) afterOpen.substring(summaryMatch.range.last + 1) else afterOpen
         val close = CLOSE_TAG.find(rest)
         return DetailsHeader(
@@ -94,7 +94,8 @@ object Details {
         val openHeaders = ArrayDeque<Pair<Int, DetailsHeader>>()
         blocks.forEachIndexed { index, block ->
             if (block !is HtmlBlock) return@forEachIndexed
-            val header = parseHeader(block.literal)
+            // The summary text is not read here, only where the section starts and ends.
+            val header = parseHeader(block.literal, defaultSummary = "")
             val closeOnly = header == null && isCloseBlock(block.literal)
             repeat(header?.closesBefore ?: leadingCloses(block.literal)) {
                 val (start, opened) = openHeaders.removeLastOrNull() ?: return@repeat

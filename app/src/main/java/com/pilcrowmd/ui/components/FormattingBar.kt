@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,10 +70,11 @@ private val MAIN_BUTTONS = listOf(
     FormatButton(FormatAction.Link, Icons.Outlined.Link, R.string.format_link),
 )
 
-private val MORE_BUTTONS = listOf(
+/** The second row. [columnHeader] is the word the Table button writes above each column. */
+private fun moreButtons(columnHeader: String) = listOf(
     FormatButton(FormatAction.InlineCode, Icons.Outlined.Code, R.string.format_inline_code),
     FormatButton(FormatAction.Quote, Icons.Outlined.FormatQuote, R.string.format_quote),
-    FormatButton(FormatAction.Table, Icons.Outlined.TableChart, R.string.format_table),
+    FormatButton(FormatAction.Table(columnHeader), Icons.Outlined.TableChart, R.string.format_table),
     FormatButton(FormatAction.Strikethrough, Icons.Outlined.StrikethroughS, R.string.format_strikethrough),
     FormatButton(FormatAction.Divider, Icons.Outlined.HorizontalRule, R.string.format_divider),
     FormatButton(FormatAction.Outdent, Icons.AutoMirrored.Outlined.FormatIndentDecrease, R.string.format_outdent),
@@ -99,6 +101,8 @@ fun FormattingBar(
 ) {
     val c = mdColors()
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val columnHeader = stringResource(R.string.format_table_column)
+    val moreButtons = remember(columnHeader) { moreButtons(columnHeader) }
     Column(modifier = modifier.fillMaxWidth().background(c.secondarySurface)) {
         Spacer(
             modifier = Modifier
@@ -108,7 +112,7 @@ fun FormattingBar(
         )
         if (expanded) {
             Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                MORE_BUTTONS.forEach { BarButton(it.icon, it.label) { onAction(it.action) } }
+                moreButtons.forEach { BarButton(it.icon, it.label) { onAction(it.action) } }
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

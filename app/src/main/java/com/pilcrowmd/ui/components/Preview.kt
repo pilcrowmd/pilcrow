@@ -329,6 +329,7 @@ fun MarkdownPreview(
                         codeHighlighting,
                         mermaidDiagrams,
                         seams = seamState,
+                        words = renderer.words,
                     )
                     addOnScrollListener(object : RecyclerView.OnScrollListener() {
                         override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -486,6 +487,7 @@ fun MarkdownPreview(
                         codeHighlighting,
                         mermaidDiagrams,
                         seams = seamState,
+                        words = renderer.words,
                     )
                     // Populate before attaching → no empty frame.
                     val markwon = renderer.markwonFor(c, liveFontScale.value)

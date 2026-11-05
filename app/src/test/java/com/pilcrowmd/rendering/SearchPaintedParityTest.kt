@@ -11,6 +11,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.AdapterBlocks
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import io.noties.markwon.Markwon
@@ -69,7 +70,7 @@ class SearchPaintedParityTest {
     /** The text of every TextView [block] paints: one for a prose block, one per cell for a table. */
     private fun paintedTexts(markwon: Markwon, block: Node): List<CharSequence> {
         if (block !is TableBlock) {
-            val entry = ProseBlockEntry(context)
+            val entry = ProseBlockEntry(context, ReaderWords.ENGLISH)
             val holder = entry.createHolder(LayoutInflater.from(context), FrameLayout(context))
             entry.bindHolder(markwon, holder, block)
             return listOf(holder.textView.text)

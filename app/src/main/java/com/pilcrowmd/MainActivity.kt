@@ -8,8 +8,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -40,7 +40,7 @@ private const val KEY_INTENT_HANDLED = "com.pilcrowmd.INTENT_HANDLED"
  * - Render never crashes: MarkwonRenderer handles unsupported syntax gracefully
  * - Design fidelity: All colors from token layer, no hardcoded hex
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     // The most recent intent-provided file URI, held as Compose *state* so the app
     // reacts both at launch (cold) and while already running (warm). The earlier version stored
     // a plain field read once by a LaunchedEffect(Unit), so a file opened while running never

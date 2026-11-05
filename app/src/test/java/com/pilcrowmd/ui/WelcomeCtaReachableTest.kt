@@ -24,7 +24,7 @@ import org.robolectric.annotation.Config
 
 /**
  * The welcome screen's primary action must be ON SCREEN at every viewport, not merely present in a
- * scroll. It was not: in landscape the cream "Open MD File" button sat entirely below the fold, so a
+ * scroll. It was not: in landscape the cream "Open file" button sat entirely below the fold, so a
  * first-time user holding the phone sideways saw a wordmark, a tagline and no way to proceed.
  *
  * This asserts GEOMETRY rather than leaving the guarantee to a screenshot golden. The goldens for
@@ -82,7 +82,7 @@ class WelcomeCtaReachableTest {
         composeRule.waitForIdle()
 
         val viewportBottom = composeRule.onRoot().fetchSemanticsNode().size.height
-        val cta = composeRule.onNodeWithText("Open MD File").fetchSemanticsNode()
+        val cta = composeRule.onNodeWithText("Open file").fetchSemanticsNode()
         // positionInRoot, NOT boundsInRoot. boundsInRoot is CLIPPED by the scroll container, so a
         // button pushed below the fold reports its bottom edge AT the viewport edge and any
         // "bottom <= viewport" check passes by construction. Two earlier versions of this test did
@@ -96,7 +96,7 @@ class WelcomeCtaReachableTest {
         val fallbackBottom = fallback.positionInRoot.y + fallback.size.height
 
         assertTrue(
-            "The \"Open MD File\" button must be fully on screen: its bottom is ${ctaBottom.toInt()}px " +
+            "The \"Open file\" button must be fully on screen: its bottom is ${ctaBottom.toInt()}px " +
                 "against a viewport of ${viewportBottom}px.",
             ctaBottom <= viewportBottom.toFloat(),
         )

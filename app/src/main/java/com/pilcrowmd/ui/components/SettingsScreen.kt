@@ -119,6 +119,8 @@ fun SettingsScreen(
     onFullScreenReadingChanged: (Boolean) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.DARK,
     onThemeSelected: (ThemeMode) -> Unit = {},
+    appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    onAppLanguageSelected: (AppLanguage) -> Unit = {},
     appVersion: String = "",
     /** M-176: Google Play installed the app. False by default, so every existing golden is unchanged. */
     showRateCard: Boolean = false,
@@ -190,6 +192,11 @@ fun SettingsScreen(
 
         CardGap()
         SettingsCard {
+            LanguageRow(appLanguage = appLanguage, onAppLanguageSelected = onAppLanguageSelected)
+        }
+
+        CardGap()
+        SettingsCard {
             CardTitle(stringResource(R.string.settings_reading_font))
             Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -201,7 +208,7 @@ fun SettingsScreen(
 
         CardGap()
         SettingsCard {
-            CardTitle(stringResource(R.string.settings_preview_text_size))
+            CardTitle(stringResource(R.string.settings_reading_text_size))
             Spacer(Modifier.height(4.dp))
             SizeControl(scale = previewFontScale, onChange = onPreviewFontScaleChanged)
             Spacer(Modifier.height(8.dp))
@@ -387,6 +394,11 @@ fun SettingsScreen(
                         color = c.secondaryText,
                         fontSize = 12.sp,
                     )
+                    Text(
+                        text = stringResource(R.string.settings_full_screen_reading_hint),
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
                 }
                 Switch(
                     checked = fullScreenReading,
@@ -507,6 +519,30 @@ private fun CardTitle(text: String) {
         fontSize = 14.sp,
         fontWeight = FontWeight.Medium,
     )
+}
+
+/** The Language card (languages spec D1): the current choice, opening [LanguageDialog] on tap. */
+@Composable
+private fun LanguageRow(appLanguage: AppLanguage, onAppLanguageSelected: (AppLanguage) -> Unit) {
+    val c = mdColors()
+    var dialogOpen by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button) { dialogOpen = true },
+        verticalArrangement = Arrangement.Center,
+    ) {
+        CardTitle(stringResource(R.string.settings_language))
+        Text(text = appLanguage.label(), color = c.secondaryText, fontSize = 12.sp)
+    }
+    if (dialogOpen) {
+        LanguageDialog(
+            selected = appLanguage,
+            onSelected = onAppLanguageSelected,
+            onDismiss = { dialogOpen = false },
+        )
+    }
 }
 
 private class ThemeChoice(val icon: ImageVector, @StringRes val labelRes: Int, val mode: ThemeMode)

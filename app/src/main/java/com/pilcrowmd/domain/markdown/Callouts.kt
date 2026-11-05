@@ -13,13 +13,13 @@ import org.commonmark.node.Paragraph
 import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
 
-/** The five GitHub alert types (M-161), with the title each one paints. */
-enum class CalloutKind(val title: String) {
-    NOTE("Note"),
-    TIP("Tip"),
-    IMPORTANT("Important"),
-    WARNING("Warning"),
-    CAUTION("Caution"),
+/** The five GitHub alert types (M-161). The title each one paints by default is in [ReaderWords]. */
+enum class CalloutKind {
+    NOTE,
+    TIP,
+    IMPORTANT,
+    WARNING,
+    CAUTION,
 }
 
 /**
@@ -29,8 +29,8 @@ enum class CalloutKind(val title: String) {
  * anchor the painted title on it. [title] is the header's own title, as plain text, or null.
  */
 class CalloutBlock(val kind: CalloutKind, val marker: String, val title: String? = null) : CustomBlock() {
-    /** What the callout paints on its first line: its own [title], else the kind's. */
-    val paintedTitle: String get() = title ?: kind.title
+    /** What the callout paints on its first line: its own [title], else the kind's title in [words]. */
+    fun paintedTitle(words: ReaderWords): String = title ?: words.calloutTitle(kind)
 }
 
 /**

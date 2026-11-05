@@ -183,6 +183,16 @@ class MarkdownViewModelDraftRecoveryTest {
         }
     }
 
+    /** The real store, counting every lookup as it is asked (before the store is reached). */
+    private class RecordingDrafts(private val inner: DraftRepository) : DraftRepository by inner {
+        val reads = AtomicInteger()
+
+        override suspend fun read(uri: Uri): Draft? {
+            reads.incrementAndGet()
+            return inner.read(uri)
+        }
+    }
+
     private fun newStorage(): LocalStorageManager {
         val dataStore = PreferenceDataStoreFactory.create(scope = storageScope) {
             tempFolder.newFile("prefs-${storageSeq++}.preferences_pb")
@@ -549,6 +559,43 @@ class MarkdownViewModelDraftRecoveryTest {
         assertEquals("the second file is the open one", fileA, vm.currentDocument.value?.uri)
         assertNull("no modal for the first file over the second", vm.recoveryOffer.value)
         assertEquals("the first file's draft is still stored", 1, draftFiles().size)
+    }
+
+    // ── (h) Reload over the edits (S8-A75) ─────────────────────────────────────────────────────
+
+    /**
+     * Reload over unsaved edits promises "your unsaved edits will be lost", so no draft offer may follow.
+     * Before the fix the offer came from the draft lookup every load starts: Main is immediate, so that
+     * lookup was dispatched to IO BEFORE the document collector handed the new, clean document to the
+     * keeper and the keeper launched its delete; the lookup won and found the draft. The fix makes a
+     * confirmed Reload remove the draft after the publish instead of looking it up. So the assertion is
+     * that the reload asked the store for NO draft at all (counted as the lookup is asked, which before
+     * the fix happens before the draft file can be gone), not only that the offer is null, which it also
+     * is while a lookup is still running.
+     */
+    @Test
+    fun `a confirmed Reload over unsaved edits removes the draft and offers nothing back`() = inRealTime {
+        files.texts[uri] = "original\n"
+        val drafts = RecordingDrafts(LocalDraftRepository(draftDir))
+        val vm = newVm(drafts = drafts)
+        vm.loadFile(uri)
+        vm.awaitOpen()
+        vm.type("original\ntyped\n")
+        poll("the draft to be written") {
+            vm.flushDraft()
+            draftFiles().size == 1
+        }
+        assertTrue("fixture: unsaved edits", vm.currentDocument.value!!.dirty)
+        files.texts[uri] = "changed in another app\n"
+        val readsBefore = drafts.reads.get()
+
+        vm.reloadChangedFile(discardEdits = true)
+        vm.currentDocument.first { it?.content == "changed in another app\n" }
+        poll("the draft file to be gone") { draftFiles().isEmpty() }
+
+        assertEquals("a confirmed reload looks no draft up", readsBefore, drafts.reads.get())
+        assertNull("no draft offer after a confirmed reload", vm.recoveryOffer.value)
+        assertFalse(vm.currentDocument.value!!.dirty)
     }
 
     // ── (g) a draft equal to the file ──────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.ui.theme.FontSets
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -166,7 +167,7 @@ class FootnoteJumpClampTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         for (fontSet in FontSets.ALL) {
             for (fontScale in listOf(1.0f, 1.5f)) {
-                val entry = ProseBlockEntry(context, fontScale = fontScale, fontSet = fontSet)
+                val entry = ProseBlockEntry(context, ReaderWords.ENGLISH, fontScale = fontScale, fontSet = fontSet)
                 val textView = entry.createHolder(LayoutInflater.from(context), FrameLayout(context)).textView
                 assertEquals(
                     "font set ${fontSet.id} at scale $fontScale",

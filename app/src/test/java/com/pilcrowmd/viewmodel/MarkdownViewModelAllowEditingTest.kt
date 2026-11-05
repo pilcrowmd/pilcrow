@@ -218,7 +218,7 @@ class MarkdownViewModelAllowEditingTest {
         val repo = FakeRepo(
             mapOf(opened to FileText("mine\n", isUtf8 = true), picked to FileText("other\n", isUtf8 = true)),
         )
-        repo.writableUris += picked // already opened with "Open MD File" earlier
+        repo.writableUris += picked // already opened with "Open file" earlier
         val vm = openReadOnly(repo)
 
         vm.allowEditing(picked)

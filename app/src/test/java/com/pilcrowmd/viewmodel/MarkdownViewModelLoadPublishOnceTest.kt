@@ -240,7 +240,7 @@ class MarkdownViewModelLoadPublishOnceTest {
     fun `a startup restore cancelled mid-load leaves the new document's line ending and baseline alone`() {
         // M-128's reachable path, as it exists on `main` since M-145: the restore is the load, an
         // explicit open cancels it while it is inside `displayName`, and the document it would have
-        // damaged is the blank one Create MD File put on screen meanwhile (the M-109 window). B is
+        // damaged is the blank one New file put on screen meanwhile (the M-109 window). B is
         // made CRLF so its line ending differs from the new document's LF. C's read fails, so its
         // own load cannot overwrite the damage and hide it.
         val gate = CompletableDeferred<Unit>()
@@ -351,7 +351,7 @@ class MarkdownViewModelLoadPublishOnceTest {
 
     @Test
     fun `a slow TOC pass never lands on a new document that started no pass of its own`() {
-        // Create MD File publishes an empty TOC and starts no heading pass, so only the document
+        // New file publishes an empty TOC and starts no heading pass, so only the document
         // identity can tell S's late result that it is for a document no longer on screen.
         val f = SlowToc()
         f.openS()

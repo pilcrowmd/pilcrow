@@ -6,6 +6,7 @@ package com.pilcrowmd.di
 import android.content.Context
 import android.net.Uri
 import com.pilcrowmd.domain.markdown.EmojiShortcodes
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
@@ -13,6 +14,7 @@ import com.pilcrowmd.rendering.EmojiGlyphs
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.rendering.mermaid.WebViewMermaidRenderer
+import com.pilcrowmd.rendering.readerWords
 import com.pilcrowmd.repository.AssetEmojiTable
 import com.pilcrowmd.repository.DraftRepository
 import com.pilcrowmd.repository.FileRepository
@@ -26,6 +28,8 @@ import com.pilcrowmd.repository.NoteLinkRepository
 import com.pilcrowmd.repository.NotesFolderRepository
 import com.pilcrowmd.repository.ProviderDocumentTree
 import com.pilcrowmd.repository.SaveReportingFileRepository
+import com.pilcrowmd.storage.AppCompatLanguageStore
+import com.pilcrowmd.storage.AppLanguageStore
 import com.pilcrowmd.storage.LocalNoteMarksStore
 import com.pilcrowmd.storage.LocalNotesFolderStore
 import com.pilcrowmd.storage.LocalStorageManager
@@ -75,8 +79,15 @@ class DefaultAppContainer(private val appContext: Context) : AppContainer {
      * Built from applicationContext context for theme/resource resolution, safe for retained ViewModels.
      */
     override val markwonRenderer: MarkwonRenderer by lazy {
-        MarkwonRenderer(appContext, relativeImages = folderAccessRepository, emoji = emojiShortcodes)
+        MarkwonRenderer(appContext, readerWords, relativeImages = folderAccessRepository, emoji = emojiShortcodes)
     }
+
+    override val appLanguageStore: AppLanguageStore by lazy { AppCompatLanguageStore() }
+
+    // Resolved from the application context: on Android 12 and lower a per-app language set through
+    // AppCompat reaches Activity contexts only, so these words follow the system language there until
+    // the words are resolved per screen (step 3 of the languages plan).
+    override val readerWords: ReaderWords by lazy { readerWords(appContext.resources) }
 
     /**
      * M-247: the `:shortcode:` table, built once and given to both the renderer and search, so the
@@ -150,7 +161,7 @@ class DefaultAppContainer(private val appContext: Context) : AppContainer {
      * Stateless; built once and reused.
      */
     override val searchMarkdownUseCase: SearchMarkdownUseCase by lazy {
-        SearchMarkdownUseCase(parseMarkdownHeadingsUseCase, emojiShortcodes)
+        SearchMarkdownUseCase(parseMarkdownHeadingsUseCase, readerWords, emojiShortcodes)
     }
 
     /**

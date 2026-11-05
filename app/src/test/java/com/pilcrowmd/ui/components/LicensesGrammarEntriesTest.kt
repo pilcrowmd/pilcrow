@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 import java.io.File
 
 /**
- * M-136, M-243 — every grammar the reader loads has an entry in Settings → Licences whose text, as the
+ * M-136, M-243 — every grammar the reader loads has an entry in Settings → Licenses whose text, as the
  * detail view shows it, carries each upstream's own copyright line and, in full, the text of every
  * licence the grammar is under (MIT, Apache-2.0, MPL-2.0, the TextMate Bundle License).
  *
@@ -46,7 +46,7 @@ class LicensesGrammarEntriesTest {
         for (asset in grammars) {
             // Each notice file names the asset it covers; the generic MIT text names none.
             val matching = entries.filter { (_, text) -> text.contains("Shipped as app/src/main/assets/$asset,") }
-            assertEquals("$asset has exactly one Licences entry", 1, matching.size)
+            assertEquals("$asset has exactly one Licenses entry", 1, matching.size)
             val (entry, text) = matching.single()
             val required = LICENCES[asset] ?: setOf(MIT)
             assertEquals("$asset: the entry's label", required, entry.license.split(" AND ").toSet())

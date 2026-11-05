@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.CalloutBlock
 import com.pilcrowmd.domain.markdown.EmojiShortcodes
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.export.parseTopLevelBlocks
 import com.pilcrowmd.repository.AssetEmojiTable
@@ -56,7 +57,7 @@ class CalloutParseSitesTest {
     @Test
     fun aTitleWithAFormulaAndAnEmojiReadsTheSameAtEverySite() {
         val titles = firstBlockAtEachSite("> [!NOTE] Fieldwork \$x\$ :smile:\n> Body\n")
-            .mapValues { (_, block) -> (block as CalloutBlock).paintedTitle }
+            .mapValues { (_, block) -> (block as CalloutBlock).paintedTitle(ReaderWords.ENGLISH) }
         assertEquals(mapOf("reader" to TITLE, "search" to TITLE, "pdf" to TITLE), titles)
     }
 

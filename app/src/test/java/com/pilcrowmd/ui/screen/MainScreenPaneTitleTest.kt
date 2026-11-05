@@ -132,7 +132,7 @@ class MainScreenPaneTitleTest {
     }
 
     // Material3's drawer sheet is on every screen, closed or not, and names itself "Navigation menu";
-    // that is not the screen's pane. Ours ("Table of contents") is there only while the drawer opens.
+    // that is not the screen's pane. Ours ("Contents") is there only while the drawer opens.
     private fun paneTitles(): List<String> = compose
         .onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.PaneTitle), useUnmergedTree = true)
         .fetchSemanticsNodes(atLeastOneRootRequired = false)

@@ -158,7 +158,7 @@ class MarkdownViewModelDocumentSlotTest {
     // ── M-109 ─────────────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `a startup restore that finishes after Create MD File does not replace the typed document`() {
+    fun `a startup restore that finishes after New file does not replace the typed document`() {
         val repo = defaultRepo().apply { readGates[bUri] = CompletableDeferred() }
         runBlocking { storage.saveLastFileUri(bUri) }
         val vm = vm(repo)
@@ -177,7 +177,7 @@ class MarkdownViewModelDocumentSlotTest {
     }
 
     @Test
-    fun `a startup restore that finishes after Create MD File does not replace even an untouched new document`() {
+    fun `a startup restore that finishes after New file does not replace even an untouched new document`() {
         // The typed test above cannot prove the claim ordering: its document is dirty, so the
         // cheaper IF_CLEAN check refuses the restore first. Here the new document is clean, so
         // only "the operation started last wins" can keep it on screen.

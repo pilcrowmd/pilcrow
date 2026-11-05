@@ -54,7 +54,7 @@ import org.robolectric.annotation.Config
 /**
  * M-307 #3: with the TOC drawer open and a hardware keyboard, Tab walked out of the drawer into the
  * reader behind it (an Android RecyclerView inside an AndroidView), and closing the drawer did not
- * bring focus back to the Table of contents button.
+ * bring focus back to the Contents button.
  *
  * The content here is the real shape: a Compose control, the "toc" button, and an Android View
  * inside an AndroidView, so a block that only stopped Compose focus would still leak into the View.
@@ -128,7 +128,7 @@ class ThemedNavigationDrawerFocusTest {
         }
         composeRule.runOnIdle { manager.useKeyboardMode() }
         if (!composeControls) return
-        // Where the user was when they pressed the Table of contents button.
+        // Where the user was when they pressed the Contents button.
         composeRule.onNodeWithTag(TOC).performSemanticsAction(SemanticsActions.RequestFocus)
         composeRule.onNodeWithTag(TOC).assertIsFocused()
     }
@@ -285,7 +285,7 @@ class ThemedNavigationDrawerFocusTest {
     }
 
     /**
-     * No rows to move focus to: focus must not stay on the Table of contents button behind the scrim,
+     * No rows to move focus to: focus must not stay on the Contents button behind the scrim,
      * where Tab would walk the content (the group's `enter` block only stops ENTERING it).
      */
     @Test

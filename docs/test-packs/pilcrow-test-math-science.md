@@ -8,11 +8,11 @@ LaTeX that most note apps and AI assistants produce. PilcrowMD draws them on you
 - Every formula is drawn as maths, not shown as `$…$` source – except the few in **Part F**, which
   are known gaps and should fall back to their source text without breaking anything around them.
 - Inline formulas sit inside the sentence; display formulas (`$$…$$`) are centred on their own line.
-- Change **Settings → Preview text size**: formulas grow and shrink with the text.
+- Change **Settings → Reading text size**: formulas grow and shrink with the text.
 - Wide formulas should scroll or fit; nothing should be cut off at the right edge.
 - Try both themes (**Settings → Theme**): formulas stay readable on both.
 
-**Known gaps in version 1.1.2** – we know about these, no need to report them:
+**Known gaps in version 1.1.3** – we know about these, no need to report them:
 
 - `\( … \)` and `\[ … \]` are not treated as maths; use `$…$` and `$$…$$`.
 - When a file is reopened, its formulas can show as source for a moment before they are drawn.

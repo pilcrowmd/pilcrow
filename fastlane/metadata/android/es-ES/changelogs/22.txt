@@ -1,0 +1,6 @@
+- Siete idiomas nuevos: alemán, francés, español, chino (simplificado), italiano, ucraniano e hindi.
+- Nueva opción Idioma: elige uno en Ajustes o deja que la app siga al teléfono.
+- Los títulos de varias líneas quedan más compactos.
+- Ajustes explica cómo volver a mostrar las barras en Lectura a pantalla completa.
+- Permitir edición abre el selector de archivos en la carpeta del propio archivo.
+- Ya no aparece un segundo diálogo «Cambios sin guardar» al confirmar Recargar.

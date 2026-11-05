@@ -7,10 +7,13 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -34,6 +37,42 @@ private class OpenDocumentAt : ActivityResultContract<Uri?, Uri?>() {
     override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
         if (resultCode == Activity.RESULT_OK) intent?.data else null
 }
+
+/**
+ * S8-A75: where the "Allow editing" picker opens. A DocumentsContract URI is its own start (the
+ * picker shows that document's folder). A MediaStore file, which is what Samsung My Files sends,
+ * is not one the picker can start at, so its folder is looked up (RELATIVE_PATH and VOLUME_NAME,
+ * Android 10+) and named the way the external-storage provider does, e.g.
+ * `content://com.android.externalstorage.documents/document/primary%3ADownload%2FNotes`. Anything
+ * else, or a lookup that fails, gives null: the picker opens where Android chooses.
+ */
+internal fun pickerStartFor(context: Context, uri: Uri): Uri? = when {
+    DocumentsContract.isDocumentUri(context, uri) -> uri
+    uri.authority == MediaStore.AUTHORITY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+        mediaStoreFolder(context, uri)
+    else -> null
+}
+
+@RequiresApi(Build.VERSION_CODES.Q)
+@Suppress("TooGenericExceptionCaught", "SwallowedException") // A provider may throw anything: null is the answer.
+private fun mediaStoreFolder(context: Context, uri: Uri): Uri? = try {
+    val columns = arrayOf(MediaStore.MediaColumns.VOLUME_NAME, MediaStore.MediaColumns.RELATIVE_PATH)
+    context.contentResolver.query(uri, columns, null, null, null)?.use { cursor ->
+        val volume = if (cursor.moveToFirst()) cursor.getString(0) else null
+        val relativePath = if (volume != null) cursor.getString(1) else null
+        if (volume != null && relativePath != null) externalStorageFolder(volume, relativePath) else null
+    }
+} catch (_: Exception) {
+    null
+}
+
+/** The external-storage provider's document URI for a folder MediaStore names by [volume] and [relativePath]. */
+internal fun externalStorageFolder(volume: String, relativePath: String): Uri {
+    val root = if (volume == MediaStore.VOLUME_EXTERNAL_PRIMARY) "primary" else volume.uppercase()
+    return DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, "$root:${relativePath.trimEnd('/')}")
+}
+
+private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
 
 /**
  * S8-A55: what Save (or the banner) offers for a file another app opened read-only: "Allow editing"

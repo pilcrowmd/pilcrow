@@ -44,12 +44,12 @@ android {
         applicationId = "com.pilcrowmd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.1.2"
+        versionCode = 22
+        versionName = "1.1.3"
         // M-174: the release-prep date, bumped in the same edit as versionName (docs/PUBLISHING.md
         // step 1). File content, never the build clock or git, so every builder produces the same
         // bytes (F-Droid). ReleasePrepDateTest fails if it is not later than the previous release.
-        val releasePrepDate = "2026-11-03"
+        val releasePrepDate = "2026-11-04"
         LocalDate.parse(releasePrepDate) // a malformed date fails the build
         buildConfigField("String", "RELEASE_PREP_DATE", "\"$releasePrepDate\"")
 
@@ -165,6 +165,9 @@ dependencies {
 
     // Branded launch splash (AndroidX core SplashScreen API; back-ports the API 31 splash to API 26+).
     implementation("androidx.core:core-splashscreen:1.0.1")
+
+    // Per-app language (AppCompatDelegate.setApplicationLocales), languages spec D1.
+    implementation("androidx.appcompat:appcompat:1.7.0")
 
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")

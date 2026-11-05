@@ -19,6 +19,7 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
 import com.pilcrowmd.di.AppInfo
 import com.pilcrowmd.di.Clock
 import com.pilcrowmd.di.InstallSource
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.rendering.MarkwonRenderer
@@ -85,6 +86,8 @@ internal class ReaderHarness(
             override val noteLinkRepository: com.pilcrowmd.repository.NoteLinkRepository = mockk(relaxed = true)
             override val savedDocuments = kotlinx.coroutines.flow.emptyFlow<Uri>()
             override val saveStarts = kotlinx.coroutines.flow.emptyFlow<Uri>()
+            override val appLanguageStore = com.pilcrowmd.storage.AppLanguageStore.None
+            override val readerWords = ReaderWords.ENGLISH
             override val markwonRenderer by lazy { renderer }
             override val mermaidRenderer: MermaidDiagramRenderer = NullMermaidRenderer
             override val pdfExporter: com.pilcrowmd.export.PdfExporter = mockk(relaxed = true)

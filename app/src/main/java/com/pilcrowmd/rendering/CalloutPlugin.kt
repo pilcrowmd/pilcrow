@@ -11,6 +11,7 @@ import com.pilcrowmd.domain.markdown.AdmonitionFences
 import com.pilcrowmd.domain.markdown.CalloutBlock
 import com.pilcrowmd.domain.markdown.CalloutKind
 import com.pilcrowmd.domain.markdown.EmojiShortcode
+import com.pilcrowmd.domain.markdown.ReaderWords
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.MarkwonVisitor
 import io.noties.markwon.ext.latex.JLatexMathNode
@@ -23,8 +24,9 @@ import org.commonmark.parser.Parser
  *
  * The title's colour depends on the screen scheme, which this shared visitor cannot know, so the
  * [CalloutTitleSpan] only marks it; the reader entry colours it at bind time (see `CalloutStyle`).
+ * A callout with no title of its own paints its kind's title from [words].
  */
-class CalloutPlugin : AbstractMarkwonPlugin() {
+class CalloutPlugin(private val words: ReaderWords) : AbstractMarkwonPlugin() {
 
     // Which `:::` openers of the document being parsed are closed. Set per parse, as FrontmatterPlugin
     // sets its gate: `processMarkdown` runs immediately before `parse` on the same thread.
@@ -48,7 +50,7 @@ class CalloutPlugin : AbstractMarkwonPlugin() {
         builder.on(CalloutBlock::class.java) { visitor, node ->
             visitor.blockStart(node)
             val start = visitor.length()
-            visitor.builder().append(node.paintedTitle)
+            visitor.builder().append(node.paintedTitle(words))
             visitor.setSpans(start, CalloutTitleSpan(node.kind))
             if (node.firstChild != null) {
                 visitor.ensureNewLine()

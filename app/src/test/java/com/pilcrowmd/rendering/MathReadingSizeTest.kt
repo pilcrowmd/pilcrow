@@ -25,7 +25,7 @@ import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.TimeUnit
 
 /**
- * M-121: equations follow the reading size (Settings → Preview text size) like every other block.
+ * M-121: equations follow the reading size (Settings → Reading text size) like every other block.
  *
  * Measured on the real drawable JLatexMath renders, attached to a window so the async load
  * actually runs — the size is decided inside that load, so nothing short of it can observe the fix.

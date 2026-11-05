@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Pilcrow" parent="android:Theme.Material.NoActionBar">
+    <!-- AppCompat parent: MainActivity is an AppCompatActivity (per-app language), which requires an AppCompat theme. -->
+    <style name="Theme.Pilcrow" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@color/primary_background</item>
     </style>
 

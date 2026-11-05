@@ -1,0 +1,6 @@
+- Seven new languages: German, French, Spanish, Chinese (Simplified), Italian, Ukrainian and Hindi.
+- New Language setting: pick one in Settings, or let the app follow your phone.
+- Headings that wrap to two or more lines are set tighter.
+- Settings now says how the hidden bars come back in Full-screen reading.
+- Allow editing opens the file picker in the file's own folder.
+- No second "Unsaved changes" dialog after you confirm Reload.

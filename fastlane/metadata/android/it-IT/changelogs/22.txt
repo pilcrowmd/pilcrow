@@ -1,0 +1,6 @@
+- Sette nuove lingue: tedesco, francese, spagnolo, cinese (semplificato), italiano, ucraino e hindi.
+- Nuova opzione Lingua: scegline una in Impostazioni oppure lascia che l'app segua il telefono.
+- I titoli su più righe sono più compatti.
+- Le Impostazioni spiegano come far riapparire le barre in Lettura a schermo intero.
+- Consenti modifica apre il selettore di file nella cartella del file.
+- Niente più seconda finestra "Modifiche non salvate" dopo aver confermato Ricarica.

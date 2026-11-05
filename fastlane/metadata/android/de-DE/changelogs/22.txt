@@ -1,0 +1,6 @@
+- Sieben neue Sprachen: Deutsch, Französisch, Spanisch, Chinesisch (vereinfacht), Italienisch, Ukrainisch und Hindi.
+- Neue Option „Sprache“ in den Einstellungen: eine wählen oder dem Telefon folgen.
+- Überschriften über mehrere Zeilen stehen enger zusammen.
+- Die Einstellungen erklären, wie die Leisten beim Vollbild-Lesen zurückkommen.
+- „Bearbeiten erlauben“ öffnet die Dateiauswahl im Ordner der Datei.
+- Kein zweiter Dialog „Nicht gespeicherte Änderungen“ nach bestätigtem „Neu laden“.

@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import androidx.compose.ui.graphics.toArgb
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.Footnotes
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.noties.markwon.Markwon
@@ -100,7 +101,11 @@ class FootnoteRenderingTest {
 
     @Test
     fun `the marker takes the footnoteMarker colour of the active scheme, not a baked-in colour`() {
-        val entry = ProseBlockEntry(ApplicationProvider.getApplicationContext(), colorScheme = DarkColorScheme)
+        val entry = ProseBlockEntry(
+            ApplicationProvider.getApplicationContext(),
+            ReaderWords.ENGLISH,
+            colorScheme = DarkColorScheme,
+        )
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val holder = entry.createHolder(LayoutInflater.from(context), FrameLayout(context))
         entry.bindHolder(markwon, holder, firstBlock("See[^1].\n\n[^1]: body\n"))
@@ -113,7 +118,7 @@ class FootnoteRenderingTest {
         )
 
         // The PDF export binds the same entry with PrintColorScheme; the marker must follow it.
-        val printEntry = ProseBlockEntry(context, colorScheme = PrintColorScheme)
+        val printEntry = ProseBlockEntry(context, ReaderWords.ENGLISH, colorScheme = PrintColorScheme)
         val printHolder = printEntry.createHolder(LayoutInflater.from(context), FrameLayout(context))
         printEntry.bindHolder(markwon, printHolder, firstBlock("See[^1].\n\n[^1]: body\n"))
         val printed = printHolder.textView.text as Spanned
@@ -138,7 +143,7 @@ class FootnoteRenderingTest {
         // unregistered, the block must still show its body as ordinary prose. Markwon's visitor
         // falls through to visitChildren for an unhandled node, which is exactly that.
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val prose = ProseBlockEntry(context)
+        val prose = ProseBlockEntry(context, ReaderWords.ENGLISH)
         val holder = prose.createHolder(LayoutInflater.from(context), FrameLayout(context))
         val definition = Footnotes.transform(markwon.parse("Ref[^1].\n\n[^1]: the note body\n")).lastChild!!
 

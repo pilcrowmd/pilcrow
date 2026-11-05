@@ -55,7 +55,7 @@ that looks designed rather than dumped.
 - **Reader + source editor** – toggle between a polished reader and a real code editor with
   Markdown highlighting, a line-number gutter, and soft wrap.
 - **In-document search** with match highlighting and next/previous navigation.
-- **Table of contents** drawer generated from your headings, with tap-to-jump.
+- **Contents** panel generated from your headings, with tap-to-jump.
 - **Notes folders** – add a folder of notes and browse it in My folders; new or changed notes are
   marked until you open them. Browsing never changes, renames or deletes your files.
 - **Links between notes** – in a notes folder, tap a link to another note to open it (at its
@@ -72,6 +72,8 @@ that looks designed rather than dumped.
   is closed or crashes before you save, it offers to put your text back the next time you open the
   file.
 - **Adjustable type** – independent font scaling for reader and editor.
+- **Eight languages** – English, German, French, Spanish, Chinese (Simplified), Italian, Ukrainian and
+  Hindi. Pick one under Settings, Language, or let the app follow your phone.
 - **Mermaid diagrams, offline** – drawn on the phone, following the app's theme, and in
   PDF exports too. Nothing is sent anywhere. See [why there is a WebView](#why-there-is-a-webview-and-only-one).
 - **Graceful by design** – unsupported syntax, and any diagram that cannot be drawn, degrade to

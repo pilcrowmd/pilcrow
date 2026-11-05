@@ -58,13 +58,13 @@ class WelcomeAccessibilityTest {
     @Test
     fun openMdFileIsAButton() {
         show()
-        assertButton(composeRule.onNode(hasText("Open MD File") and hasClickAction()))
+        assertButton(composeRule.onNode(hasText("Open file") and hasClickAction()))
     }
 
     @Test
     fun createMdFileIsAButton() {
         show()
-        assertButton(composeRule.onNode(hasText("Create MD File") and hasClickAction()))
+        assertButton(composeRule.onNode(hasText("New file") and hasClickAction()))
     }
 
     @Test
@@ -88,7 +88,7 @@ class WelcomeAccessibilityTest {
     @Test
     fun removeFromRecentsIsAButton() {
         show()
-        assertButton(composeRule.onNode(hasContentDescription("Remove from recents") and hasClickAction()))
+        assertButton(composeRule.onNode(hasContentDescription("Remove from Recent") and hasClickAction()))
     }
 
     @Test

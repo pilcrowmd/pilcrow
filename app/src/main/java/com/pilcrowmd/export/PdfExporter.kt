@@ -46,6 +46,7 @@ class PdfExporter(
     // Internal for tests: they check its diagram memo is emptied after each export (M-70).
     internal val layoutBuilder = PdfContentLayoutBuilder(
         context,
+        markwonRenderer.words,
         markwonRenderer.codeHighlighter,
         ::diagram,
         markwonRenderer.prism4jHighlighter,

@@ -80,7 +80,7 @@ hoisted out.
   [`EditorController.kt`](../app/src/main/java/com/pilcrowmd/ui/components/EditorController.kt) – the
   source editor (Sora) wrapper and its control surface (search navigation, heading jump).
 - [`ui/components/`](../app/src/main/java/com/pilcrowmd/ui/components/) – `Toolbar`, `SearchBar`,
-  `HeadingsDrawer` (table of contents), `SettingsScreen`, `LicensesScreen`, `WelcomeScreen`.
+  `HeadingsDrawer` (the Contents panel), `SettingsScreen`, `LicensesScreen`, `WelcomeScreen`.
 
 The UI reads colors exclusively through the token layer (Safeguard 4); it never hardcodes hex.
 

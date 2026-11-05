@@ -11,6 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidStyle
@@ -54,7 +55,7 @@ class PdfMermaidOnDeviceTest {
 
     /** Exports [MATRIX] with [mermaid], writes cacheDir/[name].pdf and one PNG per page; returns the pages. */
     private fun export(mermaid: MermaidDiagramRenderer, name: String): List<Bitmap> {
-        val exporter = PdfExporter(context, MarkwonRenderer(context), mermaid)
+        val exporter = PdfExporter(context, MarkwonRenderer(context, ReaderWords.ENGLISH), mermaid)
         val pdf = File(context.cacheDir, "$name.pdf")
         runBlocking(Dispatchers.IO) {
             val document = exporter.paginateAndRenderStreaming(MATRIX)

@@ -34,7 +34,7 @@ import org.robolectric.RobolectricTestRunner
 /**
  * **NEW-37b**, the `MainScreen` column's share (`DisplayCutoutPaddingTest` covers the standalone
  * screens). The column is the only padding the welcome screen has, so it is measured through the
- * welcome screen's "Open MD File" button, whose left edge is a fixed 32 px with no cutout.
+ * welcome screen's "Open file" button, whose left edge is a fixed 32 px with no cutout.
  *
  * Same fixture rules as `DisplayCutoutPaddingTest`: a LEFT cutout of 136 px and no system-bar
  * insets, dispatched to the Compose host view, with the BEFORE measurement as the control. The
@@ -92,7 +92,7 @@ class MainScreenDisplayCutoutPaddingTest {
     }
 
     private fun leftEdgeOfOpenButton(): Float =
-        composeRule.onNodeWithText("Open MD File").fetchSemanticsNode().positionInRoot.x
+        composeRule.onNodeWithText("Open file").fetchSemanticsNode().positionInRoot.x
 
     private companion object {
         const val CUTOUT_PX = 136

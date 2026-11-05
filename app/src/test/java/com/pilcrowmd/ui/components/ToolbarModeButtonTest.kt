@@ -77,8 +77,8 @@ class ToolbarModeButtonTest {
         button("Edit").assertExists()
         button("Read").assertDoesNotExist()
         button("Save").assertDoesNotExist()
-        button("Export PDF").assertExists()
-        button("Table of contents").assertExists()
+        button("Export as PDF").assertExists()
+        button("Contents").assertExists()
 
         button("Edit").performClick()
         assertEquals(listOf(ViewMode.EDITOR), modes)
@@ -89,7 +89,7 @@ class ToolbarModeButtonTest {
         show(ViewMode.EDITOR)
         button("Read").assertExists()
         button("Edit").assertDoesNotExist()
-        button("Export PDF").assertDoesNotExist()
+        button("Export as PDF").assertDoesNotExist()
         button("Undo").assertExists()
         button("Redo").assertExists()
 
@@ -114,14 +114,14 @@ class ToolbarModeButtonTest {
     }
 
     @Test
-    fun readModeActionsFitTheBar() = assertFits(ViewMode.READER, listOf("Edit", "Export PDF"))
+    fun readModeActionsFitTheBar() = assertFits(ViewMode.READER, listOf("Edit", "Export as PDF"))
 
     @Test
     fun editModeActionsFitTheBar() = assertFits(ViewMode.EDITOR, listOf("Read", "Save", "Undo", "Redo"))
 
     private fun assertFits(mode: ViewMode, modeSpecific: List<String>) {
         show(mode)
-        val labels = modeSpecific + listOf("Search", "Table of contents", "More actions", "Close file")
+        val labels = modeSpecific + listOf("Search", "Contents", "More actions", "Close file")
         labels.forEach { label ->
             button(label).assertIsDisplayed().assertWidthIsAtLeast(42.dp).assertHeightIsAtLeast(42.dp)
         }

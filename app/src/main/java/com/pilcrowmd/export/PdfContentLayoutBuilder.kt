@@ -23,6 +23,7 @@ import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
+import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.markdown.fenceLanguage
 import com.pilcrowmd.domain.markdown.isFrontmatter
 import com.pilcrowmd.rendering.CodeHighlighter
@@ -112,6 +113,8 @@ internal fun topLevelBlocksForMode(
  */
 internal class PdfContentLayoutBuilder(
     private val context: Context,
+    // What a `<details>` without a `<summary>` prints: the renderer's, so the PDF matches the reader.
+    private val words: ReaderWords,
     // M-136: the PDF has no scope, so the four TextMate languages are tokenised inline (export runs on IO).
     private val codeHighlighter: CodeHighlighter? = null,
     // M-70: draws a diagram synchronously, or null when it cannot. The default draws none.
@@ -251,6 +254,7 @@ internal class PdfContentLayoutBuilder(
                 // Default prose entry for headings, paragraphs, lists, blockquotes, etc.
                 com.pilcrowmd.rendering.ProseBlockEntry(
                     context,
+                    words,
                     fontScale,
                     FontSets.DEFAULT,
                     SearchHighlight(),
@@ -318,6 +322,7 @@ internal class PdfContentLayoutBuilder(
             else -> {
                 val entry = com.pilcrowmd.rendering.ProseBlockEntry(
                     context,
+                    words,
                     fontScale,
                     FontSets.DEFAULT,
                     SearchHighlight(),

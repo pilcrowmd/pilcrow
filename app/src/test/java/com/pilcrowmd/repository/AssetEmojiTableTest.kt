@@ -19,7 +19,7 @@ import java.io.InputStream
 
 /**
  * M-247: the bundled gemoji table loads whole, and a table that cannot be read is empty, never a
- * crash (Safeguard 3). Also that the data's MIT notice is in Settings, Licences.
+ * crash (Safeguard 3). Also that the data's MIT notice is in Settings, Licenses.
  */
 @RunWith(RobolectricTestRunner::class)
 class AssetEmojiTableTest {
@@ -66,7 +66,7 @@ class AssetEmojiTableTest {
     }
 
     @Test
-    fun `the gemoji notice is in Licences with its copyright and the MIT text`() {
+    fun `the gemoji notice is in Licenses with its copyright and the MIT text`() {
         val entry = loadDependencies(context).single { it.textAsset == "licenses/MIT-Gemoji.txt" }
         assertEquals("MIT", entry.license)
         val text = licenseTextFor(context, entry)

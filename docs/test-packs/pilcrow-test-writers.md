@@ -6,7 +6,7 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 **What to look for**
 
 - **Long reading.** Scroll through Part A. Lines should be comfortable to read, with even spacing
-  and no jumps while you scroll. Try **Settings → Reading & code font** and **Preview text size**.
+  and no jumps while you scroll. Try **Settings → Reading & code font** and **Reading text size**.
 - **Footnotes.** Tap a raised number to jump to its note, and the arrow to jump back.
 - **Callouts.** Five coloured boxes, each with its own icon and title.
 - **Collapsible sections.** They start closed (unless marked `open`) and open with a tap.
@@ -16,7 +16,7 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 - **Edit and save.** Switch to Edit, change a word, save, and reopen: the file must come back
   exactly as you left it, with nothing reflowed or reformatted.
 
-**Known gaps in version 1.1.2** – we know about these, no need to report them:
+**Known gaps in version 1.1.3** – we know about these, no need to report them:
 
 - A picture in a table cell is dropped.
 - A link to another note (`./notes.md`) opens only when the note you are reading is inside a folder

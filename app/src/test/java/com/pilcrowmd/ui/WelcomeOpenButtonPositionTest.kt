@@ -120,8 +120,7 @@ class WelcomeOpenButtonPositionTest {
     }
 
     // positionInRoot, not boundsInRoot: the scroll container clips bounds (see WelcomeCtaReachableTest).
-    private fun openButtonTop(): Float =
-        composeRule.onNodeWithText("Open MD File").fetchSemanticsNode().positionInRoot.y
+    private fun openButtonTop(): Float = composeRule.onNodeWithText("Open file").fetchSemanticsNode().positionInRoot.y
 
     private fun recents(count: Int): List<RecentFileUi> = (1..count).map {
         RecentFileUi(Uri.parse("content://uat/file$it.md"), "file$it.md", 1_000L * it, available = true)
