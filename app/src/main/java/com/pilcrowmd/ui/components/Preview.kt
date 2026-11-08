@@ -204,6 +204,13 @@ fun MarkdownPreview(
     val initialScroll = remember(documentUri, documentKey) { scrollPosition }
     // The model the adapter currently shows, by identity (a model is never compared by value).
     val lastModel = remember { mutableStateOf<ReaderModel?>(null) }
+    // The document that model belongs to: an edit of the same document (a ticked task box) keeps the place.
+    val lastModelUri = remember { mutableStateOf<Uri?>(null) }
+    // While an edited document's new model is prepared, the previous one stays on screen instead of a
+    // blank reader; only a Markdown model of a modest size, so a large document never holds two trees.
+    val held = (lastModel.value as? ReaderModel.Markdown)
+        ?.takeIf { model == null && lastModelUri.value == documentUri && it.content.length <= HOLD_MODEL_MAX_CHARS }
+    val shown: ReaderModel? = model ?: held
     // M-160: a restore or landing posted but not yet run. The model of the same text being swapped
     // (the bare links arriving) re-applies it; once it has run, the swap keeps the live position.
     val pendingRestore = remember { PendingRestore() }
@@ -257,7 +264,7 @@ fun MarkdownPreview(
     val scrolling = remember { mutableStateOf(false) }
     // The scroll percent badge: the number, whether the document is long enough to show it, and the
     // model and scale that decision was made for (see [refreshLongDocument]).
-    val currentModel = rememberUpdatedState(model)
+    val currentModel = rememberUpdatedState(shown)
     val scrollPercent = remember { mutableIntStateOf(0) }
     val longDocument = remember { mutableStateOf(false) }
     val decided = remember { LongDocumentDecision() }
@@ -510,7 +517,7 @@ fun MarkdownPreview(
                     )
                     // Populate before attaching → no empty frame.
                     val markwon = renderer.markwonFor(c, liveFontScale.value)
-                    newAdapter.show(markwon, model, detailsState, anchorTargets, seamState)
+                    newAdapter.show(markwon, shown, detailsState, anchorTargets, seamState)
                     rv.detailsDecoration()?.scheme = c
                     // The tail is two body lines, so it follows the scale and the font the blocks were built at.
                     setReaderBodyLineHeight(
@@ -521,7 +528,8 @@ fun MarkdownPreview(
                             ResourcesCompat.getFont(rv.context, fontSet.readingRegular),
                         ),
                     )
-                    lastModel.value = model // the model is now shown; the (1) re-render is skipped this pass
+                    lastModel.value = shown // the model is now shown; the (1) re-render is skipped this pass
+                    lastModelUri.value = documentUri
                     rv.swapAdapter(newAdapter, false)
                     (rv.layoutManager as? LinearLayoutManager)
                         ?.scrollToPositionWithOffset(restore.index, restore.offset)
@@ -544,19 +552,25 @@ fun MarkdownPreview(
                 // path above already showed it otherwise. Restore the entry-time anchor after layout
                 // settles; scrollToPositionWithOffset survives block-height changes that an absolute
                 // pixel offset could not.
-                if (model !== lastModel.value) {
+                if (shown !== lastModel.value) {
                     // M-160: the same text built again (the note's bare links arriving) is not a new
                     // document: stay where the reader is, or where a restore was posted and not yet run.
+                    // The same document edited (a ticked task box, a reload) stays where the reader is too.
                     val previous = lastModel.value
-                    val sameText = previous is ReaderModel.Markdown &&
-                        model is ReaderModel.Markdown &&
-                        previous.content === model.content
-                    val restore = if (sameText) pendingRestore.anchor ?: rv.currentScrollAnchor() else initialScroll
-                    lastModel.value = model
+                    val bothMarkdown = previous is ReaderModel.Markdown && shown is ReaderModel.Markdown
+                    val sameText = bothMarkdown && previous.content === shown.content
+                    val sameDocument = bothMarkdown && lastModelUri.value == documentUri
+                    val restore = when {
+                        sameText -> pendingRestore.anchor ?: rv.currentScrollAnchor()
+                        sameDocument -> rv.currentScrollAnchor()
+                        else -> initialScroll
+                    }
+                    lastModel.value = shown
+                    lastModelUri.value = documentUri
                     // A tint is an index into the blocks being replaced (M-06).
                     clearReaderHighlight(rv)
                     val markwon = renderer.markwonFor(c, liveFontScale.value)
-                    adapter.show(markwon, model, detailsState, anchorTargets, seamState)
+                    adapter.show(markwon, shown, detailsState, anchorTargets, seamState)
                     adapter.notifyDataSetChanged()
                     pendingRestore.post(rv, restore)
                     // Re-evaluate scrollability after the new content lays out (short-doc guard).
@@ -569,9 +583,9 @@ fun MarkdownPreview(
                 // Once per landing: this block runs on every update until the caller drops [landOn].
                 if (landOn == null) {
                     pendingRestore.landed = false
-                } else if (model != null && !pendingRestore.landed) {
+                } else if (shown != null && !pendingRestore.landed) {
                     pendingRestore.landed = true
-                    val anchors = (model as? ReaderModel.Markdown)?.anchors.orEmpty()
+                    val anchors = (shown as? ReaderModel.Markdown)?.anchors.orEmpty()
                     val index = HeadingAnchors.blockIndexOf(anchors, "#$landOn") ?: 0
                     pendingRestore.post(rv, ScrollAnchor(index, 0))
                     onLanded()
@@ -649,7 +663,7 @@ fun MarkdownPreview(
 
         // M-172: the model is prepared off Main. Until it lands the reader shows its background, and a
         // progress indicator only once the wait is long enough to notice (no flash on small files).
-        if (model == null) PreparingIndicator(Modifier.align(Alignment.Center))
+        if (shown == null) PreparingIndicator(Modifier.align(Alignment.Center))
 
         // Floating jump-to-top / jump-to-bottom controls (preview only). Subtle, token-colored.
         JumpControls(
@@ -862,6 +876,14 @@ internal fun clearPinchTextScaleBases(root: View) {
 
 /** How long the jump controls stay after the list stops scrolling, before they fade out (M-195). */
 internal const val JUMP_CONTROLS_LINGER_MS = 1_500L
+
+/**
+ * The longest document whose previous model the reader keeps on screen while an edit's new model is
+ * prepared. Past it the reader blanks for the moment, as before, so two trees of a very large document
+ * are never held at once (M-154). The length up to which a document gets work done ahead elsewhere too
+ * (`LANDING_PRECOMPUTE_MAX_CHARS`); not measured for memory at that size.
+ */
+internal const val HOLD_MODEL_MAX_CHARS = 2_000_000
 
 /**
  * True while the list is [scrolling] and for [JUMP_CONTROLS_LINGER_MS] after it stops (M-195): the
