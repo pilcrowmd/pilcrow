@@ -88,6 +88,7 @@ import com.pilcrowmd.rendering.ReaderLayoutManager
 import com.pilcrowmd.rendering.RecyclerAdapterEntries
 import com.pilcrowmd.rendering.SearchHighlight
 import com.pilcrowmd.rendering.SecondFingerEndsSelection
+import com.pilcrowmd.rendering.TaskToggleHandler
 import com.pilcrowmd.rendering.applyReaderJumpBehaviour
 import com.pilcrowmd.rendering.cancelReaderJump
 import com.pilcrowmd.rendering.clearReaderHighlight
@@ -180,6 +181,8 @@ fun MarkdownPreview(
     onImageTap: () -> Unit = {},
     // M-160: a tap on a scheme-less link; true when the screen handles it (a note in an added folder).
     onNoteLink: (String) -> Boolean = { false },
+    // A tap on a task-list box: block index, the box's position among the block's boxes, how many it has.
+    onTaskToggle: (block: Int, ordinal: Int, count: Int) -> Unit = { _, _, _ -> },
     // M-160: this note was opened by a followed link: land on this heading (raw fragment), or at the
     // top when it is empty or names no heading (K3). [onLanded] is called once it has been applied.
     landOn: String? = null,
@@ -189,6 +192,7 @@ fun MarkdownPreview(
 ) {
     val currentOnImageTap = rememberUpdatedState(onImageTap)
     val currentOnNoteLink = rememberUpdatedState(onNoteLink)
+    val currentOnTaskToggle = rememberUpdatedState(onTaskToggle)
     val currentOnJumpHandled = rememberUpdatedState(onJumpHandled)
     val currentOnCaretRevealHandled = rememberUpdatedState(onCaretRevealHandled)
     val currentImeVisible = rememberUpdatedState(imeVisible)
@@ -327,6 +331,10 @@ fun MarkdownPreview(
                     setTag(R.id.note_link_handler, NoteLinkHandler { currentOnNoteLink.value(it) })
                     // M-76: a marker tap opens its note in the sheet below.
                     setFootnoteTapHandler { openNoteAt.value(it) }
+                    setTag(
+                        R.id.task_toggle_handler,
+                        TaskToggleHandler { block, ordinal, count -> currentOnTaskToggle.value(block, ordinal, count) },
+                    )
                     addItemDecoration(DetailsDecoration(context, detailsState, c))
                     adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         context,

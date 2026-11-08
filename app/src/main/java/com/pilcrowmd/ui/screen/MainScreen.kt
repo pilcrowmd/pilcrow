@@ -1188,6 +1188,9 @@ fun MainScreen(
                                             val uri = currentDocument.value?.uri
                                             uri != null && noteLinksViewModel?.follow(uri, destination) == true
                                         },
+                                        onTaskToggle = { block, ordinal, count ->
+                                            viewModel.toggleTask(block, ordinal, count)
+                                        },
                                         landOn = linkLanding?.value?.takeIf { it.uri == currentDocument.value!!.uri }
                                             ?.let { it.heading.orEmpty() },
                                         onLanded = { noteLinksViewModel?.onLanded() },

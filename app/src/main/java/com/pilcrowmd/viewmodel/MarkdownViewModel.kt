@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pilcrowmd.domain.markdown.PlainTextChunks
 import com.pilcrowmd.domain.markdown.ReaderModel
+import com.pilcrowmd.domain.markdown.TaskListToggle
 import com.pilcrowmd.domain.model.DocumentKind
 import com.pilcrowmd.domain.model.EditorSupport
 import com.pilcrowmd.domain.model.HeadingNode
@@ -1137,6 +1138,34 @@ constructor(
     fun updateContent(expected: DocumentId, newContent: String) {
         // Dirty is measured against the baseline, not a flag, so type-then-undo is clean again.
         viewModelScope.launch { slot.updateContent(expected, newContent) }
+    }
+
+    /**
+     * The reader's [ordinal]-th task box in block [block] was tapped, of [count] boxes drawn there:
+     * flip it in the source ([TaskListToggle]). The block's lines are found as a mode switch finds
+     * them ([ParseMarkdownHeadingsUseCase.offsetOfReaderBlock]); a document or text that changed
+     * meanwhile, or a count the source does not agree with, leaves the text alone.
+     */
+    fun toggleTask(block: Int, ordinal: Int, count: Int) {
+        val doc = slot.document.value ?: return
+        val model = currentReaderModel(doc) as? ReaderModel.Markdown ?: return
+        viewModelScope.launch {
+            val toggled = withContext(cpuDispatcher) {
+                val blocks = model.blocks
+                val start =
+                    parseHeadingsUseCase.offsetOfReaderBlock(doc.content, block, blocks) ?: return@withContext null
+                val end = if (block + 1 < blocks.size) {
+                    parseHeadingsUseCase.offsetOfReaderBlock(doc.content, block + 1, blocks) ?: doc.content.length
+                } else {
+                    doc.content.length
+                }
+                TaskListToggle.toggle(doc.content, start, end, ordinal, count)
+            }
+            val current = slot.document.value
+            if (toggled != null && current?.id == doc.id && current.content === doc.content) {
+                slot.updateContent(doc.id, toggled)
+            }
+        }
     }
 
     fun toggleMode() = switchMode { if (it == ViewMode.READER) ViewMode.EDITOR else ViewMode.READER }
