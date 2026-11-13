@@ -1,0 +1,7 @@
+- Live-Neuladen: von einer anderen App geänderte Dateien laden sich neu; bei ungespeicherten Änderungen mit Rückfrage.
+- Bilder erscheinen jetzt im PDF-Export.
+- ==Markierter Text== im Lesemodus und im PDF.
+- Option „PDF-Farben“: „Hell für den Druck“ (Standard) oder „App-Design übernehmen“.
+- Fußnoten öffnen sich in einem Fenster, mit größeren Nummern.
+- Öffnen und Speichern beginnen im zuletzt genutzten Ordner.
+- Suche in großen Dateien ohne Speichermangel.

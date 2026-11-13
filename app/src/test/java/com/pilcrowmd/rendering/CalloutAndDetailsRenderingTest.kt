@@ -13,6 +13,7 @@ import com.pilcrowmd.domain.markdown.Details
 import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import com.pilcrowmd.ui.theme.LightColorScheme
 import io.noties.markwon.core.spans.BlockQuoteSpan

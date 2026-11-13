@@ -76,7 +76,7 @@ class SearchCursorOverrunTest {
     fun `a code start past the end is not inside a formula`() {
         val content = "a `b`"
 
-        assertFalse(codeOpensInMath(content, BooleanArray(content.length), content.length + 5))
+        assertFalse(codeOpensInMath(content, MathMask(emptyList()), content.length + 5))
     }
 
     @Test

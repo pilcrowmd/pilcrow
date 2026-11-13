@@ -12,6 +12,7 @@ import com.pilcrowmd.domain.markdown.CodeBlockSplitter
 import com.pilcrowmd.domain.markdown.FootnoteBlockParserFactory
 import com.pilcrowmd.domain.markdown.FrontmatterBlockParserFactory
 import com.pilcrowmd.domain.markdown.FrontmatterDetector
+import com.pilcrowmd.domain.markdown.HighlightDelimiterProcessor
 import com.pilcrowmd.domain.markdown.NestingLimit
 import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.domain.model.HeadingNode
@@ -56,6 +57,8 @@ class ParseMarkdownHeadingsUseCase {
         val frontmatterEligible = FrontmatterDetector.hasWellFormedFrontmatter(content)
         return Parser.builder()
             .extensions(listOf(TablesExtension.create(), StrikethroughExtension.create()))
+            // S8-A88: `==marked==`, the same delimiter processor the renderer registers.
+            .customDelimiterProcessor(HighlightDelimiterProcessor())
             .customBlockParserFactory(FrontmatterBlockParserFactory { frontmatterEligible })
             // Same factory the renderer registers (FootnotePlugin) — shared so the top-level block
             // sequences stay 1:1. ParseParityTest fails if one side ever gains it without the other.

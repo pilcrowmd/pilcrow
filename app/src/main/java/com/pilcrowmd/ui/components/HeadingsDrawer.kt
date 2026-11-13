@@ -6,8 +6,12 @@ package com.pilcrowmd.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -29,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,12 +47,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pilcrowmd.R
@@ -64,7 +72,8 @@ import com.pilcrowmd.ui.theme.mdColors
  * S8-A49: a heading with sub-headings has an arrow that folds them away; one title button collapses
  * or expands them all. Only the list folds, never the reading text.
  */
-@OptIn(ExperimentalComposeUiApi::class) // focusProperties.enter, as ThemedNavigationDrawer uses it
+// focusProperties.enter, as ThemedNavigationDrawer uses it; FlowRow is experimental in this Compose
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun HeadingsDrawer(
     modifier: Modifier = Modifier,
@@ -114,17 +123,17 @@ fun HeadingsDrawer(
             }
             .focusGroup(),
     ) {
-        // Title, and the one Collapse all / Expand all button when anything can fold.
-        Row(
+        // Title, and the one Collapse all / Expand all button when anything can fold. The button
+        // drops to its own line when the two do not fit side by side, so a long translation of the
+        // title ("Inhaltsverzeichnis") is never squeezed into breaking mid-word.
+        FlowRow(
             modifier = Modifier.fillMaxWidth().padding(bottom = PilcrowSpacing.md),
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
+            FittedTitle(
                 text = stringResource(R.string.contents_title),
                 color = c.primaryText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.align(Alignment.CenterVertically),
             )
             if (foldable.isNotEmpty()) {
                 Text(
@@ -135,6 +144,7 @@ fun HeadingsDrawer(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
+                        .align(Alignment.CenterVertically)
                         .focusProperties { canFocus = rowsFocusable() }
                         .clickable(role = Role.Button) { folded = if (folded.isEmpty()) foldable else emptySet() }
                         .padding(horizontal = PilcrowSpacing.xs),
@@ -156,6 +166,39 @@ fun HeadingsDrawer(
                 )
             }
         }
+    }
+}
+
+private val TitleMaxSize = 18.sp
+private val TitleMinSize = 10.sp
+
+/**
+ * The drawer title: one line, never broken mid-word, never cut. It is [TitleMaxSize] unless that is
+ * wider than the whole row (a long word at a large system font scale); then the largest whole-sp
+ * size down to [TitleMinSize] that fits. Compose 1.7 has no `autoSize` on Text, so the fit is
+ * measured here, which also avoids a first frame at the wrong size.
+ */
+@Composable
+private fun FittedTitle(text: String, color: Color, modifier: Modifier = Modifier) {
+    val measurer = rememberTextMeasurer()
+    val base = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold)
+    BoxWithConstraints(modifier) {
+        val fontSize = remember(text, base, maxWidth, measurer) {
+            var size = TitleMaxSize
+            fun widthAt(s: TextUnit) = measurer.measure(text, base.copy(fontSize = s), softWrap = false).size.width
+            while (size > TitleMinSize && widthAt(size) > constraints.maxWidth) {
+                size = (size.value - 1f).sp
+            }
+            size
+        }
+        Text(
+            text = text,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 

@@ -21,6 +21,7 @@ import com.pilcrowmd.domain.model.SearchMatch
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.PrepareReaderModelUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import com.pilcrowmd.export.PdfExporter
 import com.pilcrowmd.export.topLevelBlocksForMode
 import org.junit.Assert.assertEquals

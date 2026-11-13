@@ -5,9 +5,7 @@
 
 package com.pilcrowmd.ui.screen
 
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -16,7 +14,6 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
@@ -124,6 +121,7 @@ import com.pilcrowmd.viewmodel.NEW_DOCUMENT_NAME
 import com.pilcrowmd.viewmodel.NoteLinksViewModel
 import com.pilcrowmd.viewmodel.NotesFoldersViewModel
 import com.pilcrowmd.viewmodel.OrphanDraft
+import com.pilcrowmd.viewmodel.OverwriteFor
 import com.pilcrowmd.viewmodel.RecoveryOffer
 import com.pilcrowmd.viewmodel.ViewMode
 import com.pilcrowmd.viewmodel.WelcomePromptsViewModel
@@ -193,6 +191,7 @@ fun MainScreen(
     val formattingBarEnabled = viewModel.formattingBarEnabled.collectAsStateWithLifecycle()
     // Theme mode (Dark/Light)
     val themeMode = viewModel.themeMode.collectAsStateWithLifecycle()
+    val pdfColors = viewModel.pdfColors.collectAsStateWithLifecycle()
     // appInfo injected from ViewModel (PackageManager call deferred to AppContainer init)
     val appInfo = viewModel.appInfo
     val previewScroll = viewModel.previewScroll.collectAsStateWithLifecycle()
@@ -208,6 +207,17 @@ fun MainScreen(
 
     // Search state
     val searchQuery = viewModel.searchQuery.collectAsStateWithLifecycle()
+    // Rule 7 (large-documents spec): a search that ran out of memory says so, rather than "0/0" alone.
+    val searchMemoryContext = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(viewModel) {
+        viewModel.searchOutOfMemory.collect {
+            android.widget.Toast.makeText(
+                searchMemoryContext,
+                R.string.search_out_of_memory,
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
     val searchMatches = viewModel.searchMatches.collectAsStateWithLifecycle()
     val currentMatchIndex = viewModel.currentMatchIndex.collectAsStateWithLifecycle()
     val searchVisible = viewModel.searchVisible.collectAsStateWithLifecycle()
@@ -247,6 +257,9 @@ fun MainScreen(
     var showAllowEditing by rememberSaveable { mutableStateOf(false) }
     var showNotSameFile by rememberSaveable { mutableStateOf(false) }
     val changedOutside = viewModel.changedOutside.collectAsStateWithLifecycle()
+    val updatedOutside = viewModel.updatedOutside.collectAsStateWithLifecycle()
+    val goneOutside = viewModel.goneOutside.collectAsStateWithLifecycle()
+    val overwriteQuestion = viewModel.overwriteQuestion.collectAsStateWithLifecycle()
 
     // The ViewModel refused a close because the document has unsaved edits — typed after the UI
     // decided it was clean, or during Save-then-close. Answer it with the same close prompt, once.
@@ -587,10 +600,13 @@ fun MainScreen(
     // SAF file picker (launches ACTION_OPEN_DOCUMENT)
     // Accept text/markdown files (.md, .markdown, .txt)
     // M-93: the reader's note, for its pictures. Only in the reader: an edit in the editor is counted
-    // when the reader shows it again, not on every keystroke.
-    androidx.compose.runtime.LaunchedEffect(currentDocument.value?.uri, currentDocument.value?.content, mode.value) {
+    // when the reader shows it again, not on every keystroke. Counted in the reader's model, once it is
+    // the one for this text (large-documents spec, Rule 5).
+    androidx.compose.runtime.LaunchedEffect(currentDocument.value, readerModel.value, mode.value) {
         if (mode.value == ViewMode.READER || currentDocument.value == null) {
-            imageFolderViewModel?.onDocumentShown(currentDocument.value?.uri, currentDocument.value?.content.orEmpty())
+            val doc = currentDocument.value
+            val model = readerModel.value?.takeIf { doc != null && it.content === doc.content }
+            imageFolderViewModel?.onDocumentShown(doc?.uri, model)
         }
     }
     // Back from Android's settings, or from the picker: a grant may have come or gone.
@@ -598,6 +614,8 @@ fun MainScreen(
     // The system ends a backgrounded app without warning, so unsaved text is kept before it goes.
     // S8-A46: and the check for a change on another device ends; nothing runs in the background.
     // S8-A52: and so do the re-reads of a note just saved.
+    // S8-A90: back in the app, the open file is checked at once and then every few seconds.
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.resumeChangeCheck() }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         viewModel.flushDraft()
         viewModel.stopChangeCheck()
@@ -613,7 +631,7 @@ fun MainScreen(
     }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
+        contract = remember(viewModel) { OpenDocumentFrom(viewModel::pickerStartUri) },
     ) { uri ->
         if (uri != null) {
             // Persist read/write THEN load in one sequence so the transient check sees the granted
@@ -626,14 +644,14 @@ fun MainScreen(
     // file is selectable — OpenDocument's `arrayOf("*/*")` left non-Markdown files greyed on Samsung's
     // picker (it doesn't treat a literal "*/*" mime entry as "all"; S24+ UAT). Same read-only load.
     val openAnyFileLauncher = rememberLauncherForActivityResult(
-        contract = OpenAnyDocument(),
+        contract = remember(viewModel) { OpenAnyDocument(viewModel::pickerStartUri) },
     ) { uri ->
         if (uri != null) viewModel.openPickedFile(uri)
     }
 
     // PDF export launcher (launches ACTION_CREATE_DOCUMENT)
     val exportPdfLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/pdf"),
+        contract = remember(viewModel) { CreateDocumentFrom("application/pdf", viewModel::pickerStartUri) },
     ) { uri ->
         if (uri != null) {
             // Trigger the PDF export via ViewModel
@@ -671,13 +689,13 @@ fun MainScreen(
         pendingOrphanDraftUri = null
     }
     val saveAsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/markdown"),
+        contract = remember(viewModel) { CreateDocumentFrom("text/markdown", viewModel::pickerStartUri) },
     ) { uri -> handleSaveAsResult(uri) }
     // Second launcher for .txt sources: CreateDocument fixes the MIME type in its
     // constructor, so switching text/plain vs text/markdown at runtime needs two launchers
     // sharing the one result path. Only launchSaveAs routes here; rescue stays on the .md one.
     val saveAsPlainLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/plain"),
+        contract = remember(viewModel) { CreateDocumentFrom("text/plain", viewModel::pickerStartUri) },
     ) { uri -> handleSaveAsResult(uri) }
     // Default filename for the create dialog: a "Copy of <name>.md" so the suggested name never
     // collides with the source (Save-As is "save a COPY"). Critical for a transient doc opened from
@@ -807,7 +825,7 @@ fun MainScreen(
                     if (savesOnlyAsCopy()) {
                         saveReadOnly()
                     } else {
-                        viewModel.saveFile()
+                        viewModel.saveFile() // S8-A90: asks first when another app's version is on disk
                     }
                 },
                 onSaveACopy = { launchSaveAs() },
@@ -933,6 +951,21 @@ fun MainScreen(
                             onKeepMine = { viewModel.keepMyVersion() },
                         )
                     }
+                    // S8-A90: reloaded by itself, or deleted, by another app. The text stays either way.
+                    if (updatedOutside.value) {
+                        TransientBanner(
+                            text = stringResource(R.string.main_notice_updated),
+                            onClick = { viewModel.closeUpdatedNotice() },
+                            onClose = { viewModel.closeUpdatedNotice() },
+                        )
+                    }
+                    if (goneOutside.value) {
+                        TransientBanner(
+                            text = stringResource(R.string.main_notice_deleted),
+                            onClick = { viewModel.closeGoneNotice() },
+                            onClose = { viewModel.closeGoneNotice() },
+                        )
+                    }
 
                     // M-93: why the note's pictures are missing, once per folder. Reader only.
                     val folderBanner = imageFolder?.value?.banner
@@ -960,6 +993,7 @@ fun MainScreen(
                             query = searchQuery.value,
                             onQueryChange = { viewModel.updateSearchQuery(it) },
                             matchCount = searchMatches.value.size,
+                            matchCountCapped = searchMatches.value.capped,
                             currentIndex = currentMatchIndex.value,
                             onPrevious = { viewModel.previousMatch() },
                             onNext = { viewModel.nextMatch() },
@@ -998,6 +1032,8 @@ fun MainScreen(
                         onFullScreenReadingChanged = { viewModel.setFullScreenReading(it) },
                         themeMode = themeMode.value,
                         onThemeSelected = { viewModel.setThemeMode(it) },
+                        pdfColors = pdfColors.value,
+                        onPdfColorsSelected = { viewModel.setPdfColors(it) },
                         appLanguage = AppLanguage.fromTag(appLanguageTag.value),
                         onAppLanguageSelected = { viewModel.setAppLanguage(it.tag) },
                         appVersion = aboutVersion,
@@ -1144,6 +1180,7 @@ fun MainScreen(
                                         onReaderMiddleChanged = viewModel::updateReaderMiddle,
                                         imeVisible = WindowInsets.isImeVisible,
                                         documentUri = currentDocument.value!!.uri,
+                                        documentKey = currentDocument.value!!.id,
                                         imageAccessKey = imageFolder?.value?.accessKey.orEmpty(),
                                         onImageTap = { imageFolderViewModel?.requestFolderAccess() },
                                         onNoteLink = { destination ->
@@ -1294,6 +1331,26 @@ fun MainScreen(
                             launchAllowEditing()
                         },
                         onDismiss = { showNotSameFile = false },
+                    )
+                }
+
+                // S8-A90: any in-place Save (toolbar, close prompt, open-another prompt) of a file another
+                // app changed asks first; Overwrite runs that same Save, confirmed.
+                overwriteQuestion.value?.let { save ->
+                    OverwriteChangedFileDialog(
+                        onSaveACopy = {
+                            viewModel.dismissOverwriteQuestion()
+                            launchSaveAs()
+                        },
+                        onOverwrite = {
+                            viewModel.dismissOverwriteQuestion()
+                            when (save) {
+                                OverwriteFor.SAVE -> viewModel.saveFile(overwriteConfirmed = true)
+                                OverwriteFor.CLOSE -> viewModel.saveAndClose(overwriteConfirmed = true)
+                                OverwriteFor.OPEN_PENDING -> viewModel.saveAndOpenPending(overwriteConfirmed = true)
+                            }
+                        },
+                        onDismiss = { viewModel.dismissOverwriteQuestion() },
                     )
                 }
 
@@ -1587,23 +1644,6 @@ private fun StrandedSlotIndicator(count: Int, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     )
-}
-
-/**
- * "Open any document" SAF contract — like [ActivityResultContracts.OpenDocument] but with **no**
- * `EXTRA_MIME_TYPES`, so the system picker leaves every openable file selectable. The standard
- * `OpenDocument` always sets `EXTRA_MIME_TYPES`, and some providers (notably Samsung's picker) do not
- * treat a literal all-types wildcard entry there as "all" — they keep non-matching files greyed out.
- * Omitting the extra entirely (only the wildcard `type`) is the reliable "show all files" path that
- * backs the "Browse all files" fallback for a mislabeled `.md` (S24+ UAT). Read-only — never writes.
- */
-private class OpenAnyDocument : ActivityResultContract<Unit, Uri?>() {
-    override fun createIntent(context: Context, input: Unit): Intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-        .addCategory(Intent.CATEGORY_OPENABLE)
-        .setType("*/*")
-
-    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
-        if (resultCode == Activity.RESULT_OK) intent?.data else null
 }
 
 /**

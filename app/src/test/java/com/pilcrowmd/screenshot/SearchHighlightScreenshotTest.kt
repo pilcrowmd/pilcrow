@@ -18,6 +18,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import com.pilcrowmd.rendering.NullMermaidRenderer
 import com.pilcrowmd.rendering.warmedMarkwonRenderer
 import com.pilcrowmd.testing.readerModelFor

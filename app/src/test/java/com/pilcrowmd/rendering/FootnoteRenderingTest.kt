@@ -9,6 +9,7 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.SuperscriptSpan
 import android.view.LayoutInflater
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.Footnotes
@@ -18,7 +19,6 @@ import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.noties.markwon.Markwon
 import org.commonmark.node.Node
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -56,8 +56,33 @@ class FootnoteRenderingTest {
     }
 
     @Test
-    fun `the marker draws as a small superscript, not as bare text`() {
+    fun `in the reader the marker draws as a box over the unchanged digits, not as a superscript`() {
         val rendered = renderFirstBlock("See[^1].\n\n[^1]: body\n")
+        assertEquals(
+            "the digits stay the text: search models the marker as exactly them",
+            "See1.",
+            rendered.toString().trim(),
+        )
+        val start = rendered.toString().indexOf('1')
+        assertEquals(1, rendered.getSpans(start, start + 1, FootnoteMarkerSpan::class.java).size)
+        assertEquals(0, rendered.getSpans(start, start + 1, SuperscriptSpan::class.java).size)
+        assertEquals(0, rendered.getSpans(start, start + 1, RelativeSizeSpan::class.java).size)
+    }
+
+    @Test
+    fun `the app-theme PDF keeps the superscript too`() {
+        val print = buildPrintMarkwon(ApplicationProvider.getApplicationContext(), codeColors = DarkColorScheme)
+        val block = Footnotes.transform(print.parse("See[^1].\n\n[^1]: body\n")).firstChild!!
+        val rendered = print.render(block) as Spanned
+        assertEquals(1, rendered.getSpans(0, rendered.length, SuperscriptSpan::class.java).size)
+        assertEquals(0, rendered.getSpans(0, rendered.length, FootnoteMarkerSpan::class.java).size)
+    }
+
+    @Test
+    fun `in print the marker stays small superscript digits, with no box`() {
+        val print = buildPrintMarkwon(ApplicationProvider.getApplicationContext())
+        val block = Footnotes.transform(print.parse("See[^1].\n\n[^1]: body\n")).firstChild!!
+        val rendered = print.render(block) as Spanned
         val start = rendered.toString().indexOf('1')
         assertTrue("the ordinal must be painted", start >= 0)
         assertEquals(1, rendered.getSpans(start, start + 1, SuperscriptSpan::class.java).size)
@@ -66,16 +91,28 @@ class FootnoteRenderingTest {
             rendered.getSpans(start, start + 1, RelativeSizeSpan::class.java).single().sizeChange,
             0f,
         )
+        assertEquals(
+            "the PDF must not change: no box in print",
+            0,
+            rendered.getSpans(0, rendered.length, FootnoteMarkerSpan::class.java).size,
+        )
     }
 
     @Test
-    fun `the marker is tappable and jumps to the definition block`() {
+    fun `a marker tap goes to the reader's handler with the definition's block, and is inert without one`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val rendered = renderFirstBlock("See[^1].\n\n# Notes\n\n[^1]: body\n")
         val span = rendered.getSpans(0, rendered.length, FootnoteJumpSpan::class.java).single()
-        assertNotNull(span)
-        // No RecyclerView ancestor here (and none in the PDF export): the tap must be inert, not
-        // throw — Safeguard 3 applies to the interaction as much as to the render.
-        span.onClick(FrameLayout(ApplicationProvider.getApplicationContext()))
+        // No handler above it (the PDF export, a bare view): the tap must be inert, not throw.
+        // Safeguard 3 applies to the interaction as much as to the render.
+        span.onClick(FrameLayout(context))
+
+        val calls = mutableListOf<Int>()
+        val reader = FrameLayout(context).apply { setFootnoteTapHandler { calls += it } }
+        val textView = TextView(context)
+        reader.addView(textView)
+        span.onClick(textView)
+        assertEquals("the definition is the third top-level block", listOf(2), calls)
     }
 
     @Test
@@ -134,7 +171,7 @@ class FootnoteRenderingTest {
         // in processMarkdown, and any rewrite would shift every editor and search offset off the
         // raw source. FootnotePlugin must hand the identical instance straight through.
         val source = "Newton[^1] wrote it.\n\n[^1]: gravity\n"
-        assertSame(source, FootnotePlugin().processMarkdown(source))
+        assertSame(source, FootnotePlugin(forPrint = false, density = 1f).processMarkdown(source))
     }
 
     @Test

@@ -4,6 +4,7 @@
 package com.pilcrowmd.domain.markdown
 
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
 import org.commonmark.ext.gfm.tables.TableCell

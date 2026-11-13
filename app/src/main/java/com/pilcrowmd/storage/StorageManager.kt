@@ -4,6 +4,7 @@
 package com.pilcrowmd.storage
 
 import android.net.Uri
+import com.pilcrowmd.domain.model.PdfColors
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
@@ -167,6 +168,12 @@ interface StorageManager {
 
     /** Persist the code-block wrap setting. */
     suspend fun setWrapCodeLines(enabled: Boolean)
+
+    /** Flow of the "PDF colors" setting. Default: light for printing, so nobody's PDF changes unasked. */
+    val pdfColors: Flow<PdfColors>
+
+    /** Persist the "PDF colors" setting. */
+    suspend fun setPdfColors(colors: PdfColors)
 
     /** Flow of the editor's "Show formatting bar" setting. Default: true (M-217). */
     val formattingBarEnabled: Flow<Boolean>

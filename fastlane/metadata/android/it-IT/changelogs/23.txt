@@ -1,0 +1,7 @@
+- Ricarica automatica: se un'altra app modifica il file, si ricarica da sé; con modifiche non salvate chiede prima.
+- Le immagini ora compaiono nell'esportazione PDF.
+- ==Testo evidenziato== nella lettura e nel PDF.
+- Nuova opzione Colori del PDF: Chiaro per la stampa (predefinito) o Usa il tema dell'app.
+- Le note a piè di pagina si aprono in un pannello, con numeri più grandi.
+- Apri e Salva partono dall'ultima cartella usata.
+- La ricerca nei file grandi non esaurisce più la memoria.

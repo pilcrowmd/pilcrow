@@ -1,0 +1,8 @@
+- Live reload: a file changed by another app reloads by itself; with unsaved edits it asks first.
+- Pictures now print in PDF export.
+- ==Highlighted text== shows in the reader and in PDF.
+- New PDF colors setting: Light for printing (default) or Match app theme.
+- Footnotes open in a sheet, with bigger numbers.
+- Open and Save start in the last folder used.
+- Search in big files no longer runs out of memory.
+- Better Spanish, German and Ukrainian wording.

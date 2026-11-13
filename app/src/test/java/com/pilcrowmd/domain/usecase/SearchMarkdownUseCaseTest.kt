@@ -821,4 +821,21 @@ class SearchMarkdownUseCaseTest {
         assertEquals(listOf(0, 1, 0, 0), matches.map { it.occurrenceInBlock })
         matches.forEach { assertEquals("NEEDLE", content.substring(it.startIndex, it.startIndex + 6)) }
     }
+
+    /**
+     * S8-A96: table cells share one text buffer, cleared per cell. Every cell's matches must stay
+     * exactly as before: overlapping hits inside a cell, no hit made from a previous cell's leftover
+     * text ("aaa" then "a" would read "aaaa"), none across two cells, and one ordinal threaded in
+     * row-major order with exact raw offsets.
+     */
+    @Test
+    fun `multi-cell table matches are unchanged by the shared cell buffer`() {
+        val content = "| aaa | a |\n|---|---|\n| a | xaa |\n"
+        val matches = useCase.findSearchMatches(content, "aa")
+
+        assertEquals(listOf(2, 3, 29), matches.map { it.startIndex })
+        assertEquals(listOf(0, 1, 2), matches.map { it.occurrenceInBlock })
+        assertEquals(listOf(0, 0, 0), matches.map { it.adapterPosition })
+        matches.forEach { assertEquals("aa", content.substring(it.startIndex, it.startIndex + 2)) }
+    }
 }

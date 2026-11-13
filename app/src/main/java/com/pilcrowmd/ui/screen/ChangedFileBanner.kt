@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,4 +78,38 @@ internal fun ChangedFileBanner(
         // The 1 dp line under the strip, in the border token.
         Spacer(Modifier.height(1.dp))
     }
+}
+
+/**
+ * S8-A90: Save while the file on disk is another app's version (after Keep mine, or with the banner
+ * still showing). Writing over it is asked first: Save a copy (the other version stays), Overwrite,
+ * or Cancel.
+ */
+@Composable
+internal fun OverwriteChangedFileDialog(onSaveACopy: () -> Unit, onOverwrite: () -> Unit, onDismiss: () -> Unit) {
+    val c = mdColors()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.secondarySurface,
+        titleContentColor = c.primaryText,
+        textContentColor = c.secondaryText,
+        title = { Text(stringResource(R.string.main_dialog_overwrite_title)) },
+        text = { Text(stringResource(R.string.main_dialog_overwrite_text)) },
+        // Three buttons: the dialog lays its two button slots out in a row that wraps.
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.main_dialog_reload_cancel), color = c.secondaryText)
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = onOverwrite) {
+                    Text(stringResource(R.string.main_action_overwrite), color = c.primaryText)
+                }
+                TextButton(onClick = onSaveACopy) {
+                    Text(stringResource(R.string.main_action_save_a_copy), color = c.accent)
+                }
+            }
+        },
+    )
 }

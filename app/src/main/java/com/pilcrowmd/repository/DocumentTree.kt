@@ -11,6 +11,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import java.io.FileNotFoundException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -84,10 +85,29 @@ interface DocumentTree {
 
     /** One document's date and size, in one query (M4); null when the provider does not answer. */
     fun documentStats(documentUri: Uri): DocumentStats?
+
+    /**
+     * S8-A90: [documentStats], but telling a document the provider says is gone from one it did not
+     * answer about (offline, slow, refused). Only the first is a delete.
+     */
+    fun documentAnswer(documentUri: Uri): StatsAnswer =
+        documentStats(documentUri)?.let { StatsAnswer.Known(it) } ?: StatsAnswer.Unknown
 }
 
 /** A document's last-modified time and size; each null when the provider does not give it. */
 data class DocumentStats(val lastModified: Long?, val size: Long?)
+
+/** S8-A90: what the provider said about one document. */
+sealed interface StatsAnswer {
+    /** Its date and size. */
+    data class Known(val stats: DocumentStats) : StatsAnswer
+
+    /** The provider says there is no such document: it was deleted. */
+    data object Gone : StatsAnswer
+
+    /** No answer either way: offline, slow, refused, or no row-level reply. Not a delete. */
+    data object Unknown : StatsAnswer
+}
 
 /** [DocumentTree] over the real content resolver. */
 @Suppress("TooManyFunctions") // implements DocumentTree, one function per call
@@ -220,17 +240,28 @@ class ProviderDocumentTree(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught", "SwallowedException") // a provider fails in several ways
-    override fun documentStats(documentUri: Uri): DocumentStats? = try {
+    override fun documentStats(documentUri: Uri): DocumentStats? =
+        (documentAnswer(documentUri) as? StatsAnswer.Known)?.stats
+
+    // A missing document: the provider throws FileNotFoundException, or answers with no row. Every
+    // other failure (a provider that is offline or dead, a refused grant) says nothing about it.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    override fun documentAnswer(documentUri: Uri): StatsAnswer = try {
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_LAST_MODIFIED,
             DocumentsContract.Document.COLUMN_SIZE,
         )
         resolver.query(documentUri, projection, null, null, null)?.use {
-            if (it.moveToFirst()) DocumentStats(it.longOrNull(0), it.longOrNull(1)) else null
-        }
+            if (!it.moveToFirst()) {
+                StatsAnswer.Gone
+            } else {
+                StatsAnswer.Known(DocumentStats(it.longOrNull(0), it.longOrNull(1)))
+            }
+        } ?: StatsAnswer.Unknown
+    } catch (e: FileNotFoundException) {
+        StatsAnswer.Gone
     } catch (e: Exception) {
-        null
+        StatsAnswer.Unknown
     }
 }
 

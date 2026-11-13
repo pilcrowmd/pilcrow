@@ -24,7 +24,7 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
 - The very last line of the file says **End of the General pack**. If you can read it, nothing
   was lost on the way.
 
-**Known gaps in version 1.1.3** – we know about these, no need to report them:
+**Known gaps in version 1.1.4** – we know about these, no need to report them:
 
 - A web address written without angle brackets (`https://…`) is not a link; `<https://…>` is.
 - Task boxes cannot be ticked in reading mode (by design: reading mode never changes your file).
@@ -38,6 +38,10 @@ few minutes how it looks on your phone. Open it, read it top to bottom in readin
   holds when you reopen the note in those 2 minutes.
 - In a cloud folder, if you leave PilcrowMD within 20 seconds of saving a note and do not come
   back to My folders within 2 minutes, your own save can mark that note as updated.
+- A file in Downloads that another app changes is reloaded only after Android scans it again; file
+  managers and sync apps do that, a raw write from a computer does not.
+- If another app replaces the file with a new copy instead of changing it, PilcrowMD says the file
+  was deleted.
 
 Found something not on this list? Please open an issue at
 <https://github.com/pilcrowmd/pilcrow/issues> and say which pack and which section.

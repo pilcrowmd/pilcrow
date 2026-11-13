@@ -21,6 +21,11 @@
     <string name="main_banner_changed_edits">यह फ़ाइल अभी-अभी PilcrowMD के बाहर बदली गई है.</string>
     <string name="main_action_reload">फिर से लोड करें</string>
     <string name="main_action_keep_mine">मेरा रखें</string>
+    <string name="main_notice_updated">किसी दूसरे ऐप ने अपडेट किया.</string>
+    <string name="main_notice_deleted">यह फ़ाइल किसी दूसरे ऐप ने हटा दी.</string>
+    <string name="main_dialog_overwrite_title">दूसरे संस्करण को ओवरराइट करें?</string>
+    <string name="main_dialog_overwrite_text">किसी दूसरे ऐप ने यह फ़ाइल बदली है. ओवरराइट करने पर वह संस्करण आपके संस्करण से बदल जाएगा.</string>
+    <string name="main_action_overwrite">ओवरराइट करें</string>
     <string name="main_dialog_edit_title">इस फ़ाइल में बदलाव करें?</string>
     <string name="main_dialog_edit_text">जिस ऐप ने यह फ़ाइल भेजी है, वह PilcrowMD को केवल इसे पढ़ने देता है.</string>
     <string name="main_action_allow_editing">बदलाव की अनुमति दें</string>
@@ -141,6 +146,8 @@
     <string name="search_placeholder">खोजें</string>
     <string name="search_match_count">%1$d/%2$d</string>
     <string name="search_match_count_none">0/0</string>
+    <string name="search_match_count_capped">%1$d/%2$,d+</string>
+    <string name="search_out_of_memory">इस दस्तावेज़ में खोजने के लिए पर्याप्त मेमोरी नहीं है।</string>
     <string name="search_previous_match_description">पिछला मैच</string>
     <string name="search_next_match_description">अगला मैच</string>
     <string name="search_close_description">खोज बंद करें</string>
@@ -181,6 +188,9 @@
     <string name="settings_language">भाषा</string>
     <string name="settings_language_system">सिस्टम डिफ़ॉल्ट</string>
     <string name="settings_language_cancel">रद्द करें</string>
+    <string name="settings_pdf_colors">PDF के रंग</string>
+    <string name="settings_pdf_colors_light">प्रिंट के लिए हल्का</string>
+    <string name="settings_pdf_colors_theme">ऐप की थीम जैसा</string>
     <string name="settings_email_us">हमें ईमेल करें</string>
     <string name="settings_email_us_summary">बताएं कि हमें क्या बनाना चाहिए</string>
     <string name="settings_report_issue">GitHub पर समस्या बताएं</string>
@@ -299,4 +309,6 @@
     <string name="welcome_browse_folders">मेरे फ़ोल्डर</string>
     <string name="note_link_cannot_open">यह फ़ाइल नहीं खोली जा सकती</string>
     <string name="note_link_not_found">नोट नहीं मिला: %1$s</string>
+    <string name="footnote_marker">फ़ुटनोट %1$s</string>
+    <string name="footnote_sheet_close">बंद करें</string>
 </resources>

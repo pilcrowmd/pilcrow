@@ -21,6 +21,11 @@
     <string name="main_banner_changed_edits">此文件刚刚在 PilcrowMD 之外被更改。</string>
     <string name="main_action_reload">重新加载</string>
     <string name="main_action_keep_mine">保留我的</string>
+    <string name="main_notice_updated">已被其他应用更新。</string>
+    <string name="main_notice_deleted">此文件已被其他应用删除。</string>
+    <string name="main_dialog_overwrite_title">覆盖另一个版本？</string>
+    <string name="main_dialog_overwrite_text">其他应用已更改此文件。覆盖会用你的版本替换那个版本。</string>
+    <string name="main_action_overwrite">覆盖</string>
     <string name="main_dialog_edit_title">要编辑此文件吗？</string>
     <string name="main_dialog_edit_text">发送此文件的应用只允许 PilcrowMD 读取它。</string>
     <string name="main_action_allow_editing">允许编辑</string>
@@ -139,6 +144,8 @@
     <string name="search_placeholder">搜索</string>
     <string name="search_match_count">%1$d/%2$d</string>
     <string name="search_match_count_none">0/0</string>
+    <string name="search_match_count_capped">%1$d/%2$,d+</string>
+    <string name="search_out_of_memory">内存不足，无法搜索此文档。</string>
     <string name="search_previous_match_description">上一个匹配项</string>
     <string name="search_next_match_description">下一个匹配项</string>
     <string name="search_close_description">关闭搜索</string>
@@ -179,6 +186,9 @@
     <string name="settings_language">语言</string>
     <string name="settings_language_system">系统默认</string>
     <string name="settings_language_cancel">取消</string>
+    <string name="settings_pdf_colors">PDF 颜色</string>
+    <string name="settings_pdf_colors_light">浅色(适合打印)</string>
+    <string name="settings_pdf_colors_theme">跟随应用主题</string>
     <string name="settings_email_us">给我们发邮件</string>
     <string name="settings_email_us_summary">告诉我们该开发什么</string>
     <string name="settings_report_issue">在 GitHub 上报告问题</string>
@@ -290,4 +300,6 @@
     <string name="welcome_browse_folders">我的文件夹</string>
     <string name="note_link_cannot_open">无法打开此文件</string>
     <string name="note_link_not_found">未找到笔记：%1$s</string>
+    <string name="footnote_marker">脚注 %1$s</string>
+    <string name="footnote_sheet_close">关闭</string>
 </resources>

@@ -11,6 +11,7 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.pilcrowmd.domain.model.PdfColors
 import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.model.ThemeMode
 import kotlinx.coroutines.CoroutineScope
@@ -120,6 +121,7 @@ class LocalStorageManager(
     private val fullScreenReadingKey = booleanPreferencesKey("full_screen_reading")
     private val formattingBarEnabledKey = booleanPreferencesKey("formatting_bar_enabled")
     private val themeModeKey = stringPreferencesKey("theme_mode")
+    private val pdfColorsKey = stringPreferencesKey("pdf_colors")
     private val dismissedImageFoldersKey = stringSetPreferencesKey("dismissed_image_folders")
     private val documentsOpenedKey = intPreferencesKey("documents_opened")
     private val ratingCardDismissedKey = booleanPreferencesKey("rating_card_dismissed")
@@ -184,6 +186,11 @@ class LocalStorageManager(
     override val formattingBarEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[formattingBarEnabledKey] ?: true // Default: ON (M-217)
     }.distinctUntilChanged()
+
+    override val pdfColors: Flow<PdfColors> = dataStore.data.map { prefs ->
+        runCatching { PdfColors.valueOf(prefs[pdfColorsKey].orEmpty()) }
+            .getOrDefault(PdfColors.LIGHT_FOR_PRINTING) // unset, corrupt or unknown: the default
+    }
 
     override val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
         val modeStr = prefs[themeModeKey] ?: "DARK"
@@ -321,6 +328,10 @@ class LocalStorageManager(
 
     override suspend fun setFormattingBarEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[formattingBarEnabledKey] = enabled }
+    }
+
+    override suspend fun setPdfColors(colors: PdfColors) {
+        dataStore.edit { prefs -> prefs[pdfColorsKey] = colors.name }
     }
 
     override suspend fun setThemeMode(mode: ThemeMode) {

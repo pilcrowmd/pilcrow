@@ -463,8 +463,12 @@ class NotesFoldersViewModelTest {
         vm.select(b)
 
         awaitValue(true, "B's listing started") { repo.held.containsKey(b) }
-        assertEquals("B ticked", b, vm.ticked)
-        assertEquals("A's tree is not B's", ListingUi.Loading, vm.uiState.value.listing)
+        // uiState is combined on Dispatchers.Default, apart from the listing coroutine, so it may not
+        // show the tick yet when the listing starts: wait for it, then read one state (S8-A95).
+        awaitValue(b, "B ticked") { vm.ticked }
+        val shown = vm.uiState.value
+        assertEquals("B ticked", b, shown.folders.singleOrNull { it.selected }?.treeUri)
+        assertEquals("A's tree is not B's", ListingUi.Loading, shown.listing)
         repo.held.getValue(b).resume(Unit)
         awaitValue(repo.listings[b], "B listed") { vm.loadedRoot }
     }

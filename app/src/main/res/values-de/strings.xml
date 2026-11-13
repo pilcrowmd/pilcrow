@@ -21,6 +21,11 @@
     <string name="main_banner_changed_edits">Diese Datei wurde gerade außerhalb von PilcrowMD geändert.</string>
     <string name="main_action_reload">Neu laden</string>
     <string name="main_action_keep_mine">Meine behalten</string>
+    <string name="main_notice_updated">Von einer anderen App aktualisiert.</string>
+    <string name="main_notice_deleted">Diese Datei wurde von einer anderen App gelöscht.</string>
+    <string name="main_dialog_overwrite_title">Die andere Version überschreiben?</string>
+    <string name="main_dialog_overwrite_text">Eine andere App hat diese Datei geändert. Überschreiben ersetzt jene Version durch Ihre.</string>
+    <string name="main_action_overwrite">Überschreiben</string>
     <string name="main_dialog_edit_title">Diese Datei bearbeiten?</string>
     <string name="main_dialog_edit_text">Die App, die diese Datei gesendet hat, erlaubt PilcrowMD nur das Lesen.</string>
     <string name="main_action_allow_editing">Bearbeiten erlauben</string>
@@ -64,7 +69,7 @@
     <string name="main_recover_text">Diese Speichervorgänge konnten nicht an ihrem ursprünglichen Ort geschrieben werden. Speichern Sie jeweils eine Kopie, um sie zu behalten, oder verwerfen Sie sie.</string>
     <string name="main_recover_orphans_text">Diese nicht gespeicherten Änderungen wurden aufbewahrt, aber die zugehörigen Dateien lassen sich nicht mehr öffnen. Speichern Sie jeweils eine Kopie, um sie zu behalten, oder verwerfen Sie sie.</string>
     <string name="toolbar_search">Suchen</string>
-    <string name="toolbar_contents">Inhalt</string>
+    <string name="toolbar_contents">Inhaltsverzeichnis</string>
     <string name="toolbar_save">Speichern</string>
     <string name="toolbar_saving">Wird gespeichert</string>
     <string name="toolbar_undo">Rückgängig machen</string>
@@ -141,10 +146,12 @@
     <string name="search_placeholder">Suchen</string>
     <string name="search_match_count">%1$d/%2$d</string>
     <string name="search_match_count_none">0/0</string>
+    <string name="search_match_count_capped">%1$d/%2$,d+</string>
+    <string name="search_out_of_memory">Nicht genug Speicher, um dieses Dokument zu durchsuchen.</string>
     <string name="search_previous_match_description">Vorheriger Treffer</string>
     <string name="search_next_match_description">Nächster Treffer</string>
     <string name="search_close_description">Suche schließen</string>
-    <string name="contents_title">Inhalt</string>
+    <string name="contents_title">Inhaltsverzeichnis</string>
     <string name="headings_collapse_all">Alle einklappen</string>
     <string name="headings_expand_all">Alle ausklappen</string>
     <string name="headings_collapse_heading">%1$s einklappen</string>
@@ -181,6 +188,9 @@
     <string name="settings_language">Sprache</string>
     <string name="settings_language_system">Systemstandard</string>
     <string name="settings_language_cancel">Abbrechen</string>
+    <string name="settings_pdf_colors">PDF-Farben</string>
+    <string name="settings_pdf_colors_light">Hell für den Druck</string>
+    <string name="settings_pdf_colors_theme">App-Design übernehmen</string>
     <string name="settings_email_us">Schreiben Sie uns</string>
     <string name="settings_email_us_summary">Sagen Sie uns, was wir bauen sollen</string>
     <string name="settings_report_issue">Problem auf GitHub melden</string>
@@ -299,4 +309,6 @@
     <string name="welcome_browse_folders">Meine Ordner</string>
     <string name="note_link_cannot_open">Diese Datei kann nicht geöffnet werden</string>
     <string name="note_link_not_found">Notiz nicht gefunden: %1$s</string>
+    <string name="footnote_marker">Fußnote %1$s</string>
+    <string name="footnote_sheet_close">Schließen</string>
 </resources>

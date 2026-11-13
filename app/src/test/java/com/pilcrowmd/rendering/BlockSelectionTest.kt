@@ -23,7 +23,6 @@ import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.ui.components.beginPinchScaleGesture
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -60,6 +59,9 @@ class BlockSelectionTest {
     private val markwon = buildPilcrowMarkwon(activity)
 
     private class Reader(val list: RecyclerView, val details: DetailsState) {
+        /** The note blocks marker taps asked for, by the handler the reader puts on its list (M-76). */
+        val opened = mutableListOf<Int>()
+
         fun view(position: Int): View = list.findViewHolderForAdapterPosition(position)!!.itemView
         fun text(position: Int): TextView = view(position) as TextView
     }
@@ -78,7 +80,7 @@ class BlockSelectionTest {
         list.adapter = adapter
         activity.setContentView(list)
         settle(list, heightPx)
-        return Reader(list, state)
+        return Reader(list, state).also { r -> list.setFootnoteTapHandler { r.opened += it } }
     }
 
     private fun settle(list: RecyclerView, heightPx: Int = 4000) {
@@ -220,25 +222,25 @@ class BlockSelectionTest {
     }
 
     @Test
-    fun `a footnote marker jumps on an exact tap and on a near miss`() {
+    fun `a footnote marker opens its note on an exact tap and on a near miss`() {
         val exact = reader(noteDoc)
         val (x, y) = spanCentre<FootnoteJumpSpan>(exact.text(0))
         tap(exact.text(0), x, y)
-        assertNotEquals("exact tap", RecyclerView.NO_POSITION, highlightedBlock(exact.list))
+        assertEquals("exact tap", listOf(1), exact.opened)
 
         val near = reader(noteDoc)
         val (nx, ny) = nearMarker(near.text(0))
         tap(near.text(0), nx, ny)
-        assertNotEquals("near-miss tap", RecyclerView.NO_POSITION, highlightedBlock(near.list))
+        assertEquals("near-miss tap", listOf(1), near.opened)
     }
 
     @Test
-    fun `a long-press near a marker does not jump`() {
+    fun `a long-press near a marker does not open the note`() {
         val r = reader(noteDoc)
         val (x, y) = nearMarker(r.text(0))
         longPress(r.text(0), x, y)
         assertTrue("the long-press must select: that is the feature", r.text(0).hasSelection())
-        assertEquals(RecyclerView.NO_POSITION, highlightedBlock(r.list))
+        assertTrue("nothing may open", r.opened.isEmpty())
     }
 
     /**
@@ -262,26 +264,26 @@ class BlockSelectionTest {
     }
 
     @Test
-    fun `a held press near a marker that selected nothing does not jump`() {
+    fun `a held press near a marker that selected nothing does not open the note`() {
         val r = reader(noteDoc)
         val (x, y) = nearMarker(r.text(0))
         heldRelease(r.text(0), x, y)
-        assertEquals(RecyclerView.NO_POSITION, highlightedBlock(r.list))
+        assertTrue("nothing may open", r.opened.isEmpty())
     }
 
     @Test
-    fun `a long-press on a marker does not jump`() {
+    fun `a long-press on a marker does not open the note`() {
         val r = reader(noteDoc)
         val (x, y) = spanCentre<FootnoteJumpSpan>(r.text(0))
         longPress(r.text(0), x, y)
         assertTrue("the long-press must select: that is the feature", r.text(0).hasSelection())
-        assertEquals(RecyclerView.NO_POSITION, highlightedBlock(r.list))
+        assertTrue("nothing may open", r.opened.isEmpty())
     }
 
     /**
      * A near-miss tap consumes the UP, so the TextView never sees the release that would cancel the
-     * long-press its DOWN armed. In the reader the jump usually scrolls the block away, which cancels it
-     * too, so this fixture has no list: the block stays on screen and only the near-miss path's own
+     * long-press its DOWN armed. The sheet opening does not cancel it, so
+     * only the near-miss path's own
      * cancel can stop a word being selected half a second after the tap.
      */
     @Test

@@ -66,6 +66,7 @@ internal class InlineCut(private val inlineSource: (Node) -> String? = { null })
         is Emphasis -> Emphasis(node.openingDelimiter)
         is Link -> Link(node.destination, node.title)
         is Strikethrough -> Strikethrough()
+        is Highlight -> Highlight()
         else -> null
     }
 

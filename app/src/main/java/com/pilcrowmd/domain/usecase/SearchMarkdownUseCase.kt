@@ -3,22 +3,20 @@
 
 package com.pilcrowmd.domain.usecase
 
-import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.CalloutBlock
 import com.pilcrowmd.domain.markdown.CellEllipsis
 import com.pilcrowmd.domain.markdown.CodeBlockPiece
 import com.pilcrowmd.domain.markdown.Details
+import com.pilcrowmd.domain.markdown.EmojiShortcode
 import com.pilcrowmd.domain.markdown.EmojiShortcodeMatch
 import com.pilcrowmd.domain.markdown.EmojiShortcodes
 import com.pilcrowmd.domain.markdown.FootnoteReference
 import com.pilcrowmd.domain.markdown.InlineMathDelimiters
 import com.pilcrowmd.domain.markdown.MERMAID_LANGUAGE
-import com.pilcrowmd.domain.markdown.PlainTextChunks
 import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.markdown.SourceAlignment
-import com.pilcrowmd.domain.markdown.TooDeepDocument
 import com.pilcrowmd.domain.markdown.fenceLanguage
-import com.pilcrowmd.domain.model.SearchMatch
+import com.pilcrowmd.domain.model.SearchMatches
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
 import org.commonmark.ext.gfm.tables.TableCell
@@ -26,7 +24,6 @@ import org.commonmark.ext.gfm.tables.TableHead
 import org.commonmark.ext.gfm.tables.TableRow
 import org.commonmark.node.Block
 import org.commonmark.node.Code
-import org.commonmark.node.Document
 import org.commonmark.node.FencedCodeBlock
 import org.commonmark.node.HardLineBreak
 import org.commonmark.node.HtmlBlock
@@ -41,8 +38,9 @@ import org.commonmark.node.Text
 
 /**
  * UseCase for searching markdown content and finding matches.
- * Depends on [ParseMarkdownHeadingsUseCase] to parse the document with the same parity parser the
- * renderer uses, so search walks the exact top-level block sequence the MarkwonAdapter paints.
+ * Searches the reader's OWN blocks — the `ReaderModel`'s, which the MarkwonAdapter paints — so it never
+ * parses the document a second time (large-documents spec, Rule 1): two whole-document trees at once
+ * were what ran a 5 MB file out of memory (S8-A93).
  * Stateless; encapsulates the search logic extracted from MarkdownViewModel.
  *
  * Matches are found in **rendered/visible-text space**, not raw source. Each top-level block
@@ -55,8 +53,11 @@ import org.commonmark.node.Text
  *    the assembled text is concatenated exactly as the TextView is;
  *  - soft/hard line breaks are assembled as the space / newline Markwon renders, so a multi-word query
  *    spanning a break is found identically on both sides.
- * Each match keeps an exact raw-source [SearchMatch.startIndex] (reconstructed during assembly) for the
- * editor's select-and-reveal, since commonmark-java 0.13.0 carries no source spans.
+ * Each match keeps an exact raw-source [com.pilcrowmd.domain.model.SearchMatch.startIndex]
+ * (reconstructed during assembly) for the editor's select-and-reveal, since commonmark-java 0.13.0
+ * carries no source spans.
+ *
+ * At most `limit` matches are kept, in document order, and the scan stops there ([SearchMatches.capped]).
  *
  * [words] must be the ones the renderer was built with: a callout without a title of its own, and a
  * `<details>` without a summary, paint them, so they are searchable text.
@@ -64,25 +65,37 @@ import org.commonmark.node.Text
  * [emoji] must be the instance the renderer was built with (M-247): a `:shortcode:` the reader paints
  * as an emoji is modelled as that emoji, so its letters are not a match, and one it leaves literal
  * is modelled literally.
+ *
+ * [isFormula] says which nodes of the reader's tree are a formula drawn as a picture (production: the
+ * reader's maths nodes). A formula paints no searchable text: its source is the formula's run of the
+ * maths mask, as in a tree that has no maths nodes.
  */
 class SearchMarkdownUseCase(
-    private val parseHeadingsUseCase: ParseMarkdownHeadingsUseCase,
     private val words: ReaderWords,
     private val emoji: EmojiShortcodes = EmojiShortcodes.NONE,
+    private val isFormula: (Node) -> Boolean = { false },
 ) {
 
     /**
-     * Find all search matches in the markdown content.
-     * Case-insensitive; returns [SearchMatch] objects with the rendered matched text, raw-source start
-     * index, adapter position (block), and per-block occurrence ordinal (for focused highlighting).
+     * Find the search matches in [blocks], the reader's top-level blocks for [content] (the adapter's
+     * items, numbered as it numbers them). Case-insensitive; each match has the rendered matched text,
+     * raw-source start index, adapter position (block), and per-block occurrence ordinal (for focused
+     * highlighting). Stops after [limit] matches.
+     *
+     * [isCancelled] is asked once per block (and per table cell); once it says yes the scan stops there
+     * and returns what it has, which the caller throws away (S8-A95: a scan the user typed past must
+     * not keep its memory while the next one starts).
      */
-    fun findSearchMatches(content: String, query: String): List<SearchMatch> {
-        if (query.isEmpty()) return emptyList()
-        val doc = parseHeadingsUseCase.parseDocument(content) ?: return emptyList()
-        // A document nested too deep to render is painted as plain-text chunks (`ReaderTree`), so it
-        // is searched over the same chunks: its parse is empty, but every word of it is on screen.
-        if (doc is TooDeepDocument) return findPlainSearchMatches(content, PlainTextChunks.split(content), query)
-        return BlockScanner(content, query, words, emoji).scan(doc)
+    fun findSearchMatches(
+        content: String,
+        blocks: List<Node>,
+        query: String,
+        limit: Int = SearchMatches.MAX_MATCHES,
+        isCancelled: () -> Boolean = { false },
+    ): SearchMatches {
+        if (query.isEmpty()) return SearchMatches.EMPTY
+        return BlockScanner(content, query, words, emoji, isFormula, SearchMatches.Builder(limit), isCancelled)
+            .scan(blocks)
     }
 
     /**
@@ -93,16 +106,24 @@ class SearchMarkdownUseCase(
      * a long line (S8-A61) by nothing. Case-insensitive and steps by ONE char (overlaps counted) — the
      * same rules as the markdown scan and the TextView highlighter, so counts and focus ordinals never
      * diverge. A match that runs over a cut inside a line belongs to the chunk it starts in, after
-     * that chunk's own matches ([straddlingStarts]).
+     * that chunk's own matches ([straddlingStarts]). Stops after [limit] matches, or at the next chunk
+     * once [isCancelled] says yes.
      */
-    fun findPlainSearchMatches(content: String, chunkLiterals: List<String>, query: String): List<SearchMatch> {
-        if (query.isEmpty()) return emptyList()
-        val matches = mutableListOf<SearchMatch>()
+    fun findPlainSearchMatches(
+        content: String,
+        chunkLiterals: List<String>,
+        query: String,
+        limit: Int = SearchMatches.MAX_MATCHES,
+        isCancelled: () -> Boolean = { false },
+    ): SearchMatches {
+        if (query.isEmpty()) return SearchMatches.EMPTY
+        val matches = SearchMatches.Builder(limit)
         var chunkStart = 0
-        chunkLiterals.forEachIndexed { position, literal ->
+        for ((position, literal) in chunkLiterals.withIndex()) {
+            if (matches.capped || isCancelled()) break
             var ordinal = 0
             fun add(index: Int) {
-                matches += SearchMatch(
+                matches.add(
                     content = content.substring(chunkStart + index, chunkStart + index + query.length),
                     startIndex = chunkStart + index,
                     adapterPosition = position,
@@ -110,7 +131,7 @@ class SearchMarkdownUseCase(
                 )
             }
             var index = literal.indexOf(query, ignoreCase = true)
-            while (index >= 0) {
+            while (index >= 0 && !matches.capped) {
                 add(index)
                 index = literal.indexOf(query, index + 1, ignoreCase = true)
             }
@@ -127,19 +148,24 @@ class SearchMarkdownUseCase(
                 chunkStart = end + 1
             }
         }
-        return matches
+        return matches.build()
     }
 
     /**
-     * Walks the parsed document once, accumulating matches over each block's assembled visible text.
+     * Walks the reader's blocks once, accumulating matches over each block's assembled visible text.
      * Holds the monotonic raw-source [cursor] and the running [matches] as fields so the per-block and
      * per-node helpers stay small.
      */
+    // One helper per kind of node the reader paints in its own way; one field per input of the scan.
+    @Suppress("TooManyFunctions", "LongParameterList")
     private class BlockScanner(
         private val content: String,
         private val query: String,
         private val words: ReaderWords,
         emoji: EmojiShortcodes,
+        private val isFormula: (Node) -> Boolean,
+        private val matches: SearchMatches.Builder,
+        private val isCancelled: () -> Boolean,
     ) {
         // Never past the end (M-401): every miss advances it from wherever it is, so a cursor that
         // overran would hand later reads an offset outside the document.
@@ -147,11 +173,14 @@ class SearchMarkdownUseCase(
             set(value) {
                 field = value.coerceAtMost(content.length)
             }
-        private val matches = mutableListOf<SearchMatch>()
+
+        // The top-level block being scanned. The reader's blocks are detached from their Document,
+        // so "top level" is known from here, not from a node's parent.
+        private var topBlock: Node? = null
 
         // Whether the walk is currently inside a contiguous run of masked (formula) source, so the
-        // run collapses to exactly ONE U+FFFC. This is per math RUN, not per node: the parity parser
-        // has no inline-math processor, so `$a **b** c$` arrives as three inline nodes (Text /
+        // run collapses to exactly ONE U+FFFC. This is per math RUN, not per node: a tree with no
+        // inline-math processor (the parity parser's), so `$a **b** c$` arrives as three inline nodes (Text /
         // StrongEmphasis / Text) while the renderer paints one formula image. Scoped to the scanner
         // rather than to appendLiteral so a run that spans several nodes still yields one
         // placeholder — otherwise search models three images where the TextView paints one.
@@ -166,29 +195,30 @@ class SearchMarkdownUseCase(
         // Their *latex source* is excluded from prose search text so math is never a match (it renders
         // as an image, not searchable text). The renderer's highlighter + scroll
         // skip the matching `JLatexAsyncDrawableSpan`s, so all three agree on the occurrence ordinals.
-        private val mathMask: BooleanArray = BooleanArray(content.length).also { mask ->
-            for (range in InlineMathDelimiters.mathRanges(content)) {
-                for (pos in range) if (pos < mask.size) mask[pos] = true
-            }
-        }
+        // Kept as the formulas' ranges, not one flag per char (Rule 4: no document-size allocation).
+        private val mathMask = MathMask(InlineMathDelimiters.mathRanges(content))
 
         // M-247: the `:shortcode:`s the renderer paints as emoji. Its processor only sees prose, so
         // only prose Text consults this.
         private val shortcodeIndex = ShortcodeIndex(content, emoji)
 
-        fun scan(doc: Node): List<SearchMatch> {
+        fun scan(blocks: List<Node>): SearchMatches {
             // The paragraph just scanned, which the next block may continue (S8-A61), or the piece of
             // a code block, which the next piece continues where it cuts a long line (S8-A65).
             var previous: Chunk? = null
             var previousNode: Node? = null
             // Numbered as the adapter numbers its items: a link reference definition has none (M-214).
-            AdapterBlocks.of(doc).forEachIndexed { blockIndex, node ->
+            for ((blockIndex, node) in blocks.withIndex()) {
+                if (matches.capped || isCancelled()) break
+                topBlock = node
                 // occurrenceInBlock is per top-level block. A table renders as one TextView PER CELL, so
                 // its ordinal threads across cells in row-major order — the exact order TableBlockEntry
                 // paints and PreviewScroll walks; every other block is a single chunk.
                 previous = if (node is TableBlock) {
                     val occurrence = Occurrence()
-                    forEachCell(node) { cell -> scanChunk(cell, blockIndex, occurrence, before = null) }
+                    forEachCell(node) { cell ->
+                        if (!isCancelled()) scanCell(cell, blockIndex, occurrence)
+                    }
                     null
                 } else {
                     val continues = continues(previousNode, node)
@@ -197,7 +227,7 @@ class SearchMarkdownUseCase(
                 }
                 previousNode = node
             }
-            return matches
+            return matches.build()
         }
 
         /**
@@ -206,11 +236,11 @@ class SearchMarkdownUseCase(
          */
         private class Chunk(
             val text: String,
-            val rawOffsets: List<Int>,
+            val rawOffsets: IntList,
             val blockIndex: Int,
             val occurrence: Occurrence,
         ) {
-            fun match(at: Int, shown: String) = SearchMatch(
+            fun match(matches: SearchMatches.Builder, at: Int, shown: String) = matches.add(
                 content = shown,
                 startIndex = rawOffsets[at],
                 adapterPosition = blockIndex,
@@ -238,7 +268,7 @@ class SearchMarkdownUseCase(
          */
         private fun scanChunk(root: Node, blockIndex: Int, occurrence: Occurrence, before: Chunk?): Chunk? {
             val sb = StringBuilder()
-            val rawOffsets = mutableListOf<Int>()
+            val rawOffsets = IntList()
             inMath = false // each chunk (block, or table cell) starts outside any math run
             html = InlineHtmlPaint()
             appendVisible(root, sb, rawOffsets)
@@ -247,17 +277,43 @@ class SearchMarkdownUseCase(
             val chunk = Chunk(text, rawOffsets, blockIndex, occurrence)
             if (before != null && before.runsInto(chunk)) {
                 for (at in straddlingStarts(before.text, text, query)) {
-                    matches += before.match(at, (before.text.substring(at) + text).substring(0, query.length))
+                    before.match(matches, at, (before.text.substring(at) + text).substring(0, query.length))
                 }
             }
+            findMatches(text, rawOffsets, blockIndex, occurrence)
+            return chunk
+        }
+
+        // S8-A96: one buffer pair for every table cell. A cell is never `before` and its chunk is never
+        // kept, so the buffers can be cleared per cell; a big table no longer leaves a StringBuilder, an
+        // IntList, a String and a Chunk of garbage behind per cell.
+        private val cellText = StringBuilder()
+        private val cellOffsets = IntList()
+
+        /** [scanChunk] for one table cell, assembled into the shared cell buffers. */
+        private fun scanCell(cell: Node, blockIndex: Int, occurrence: Occurrence) {
+            cellText.setLength(0)
+            cellOffsets.clear()
+            inMath = false
+            html = InlineHtmlPaint()
+            appendVisible(cell, cellText, cellOffsets)
+            findMatches(cellText, cellOffsets, blockIndex, occurrence)
+        }
+
+        /** Record every case-insensitive occurrence of [query] in [text] as the next of [occurrence]. */
+        private fun findMatches(text: CharSequence, rawOffsets: IntList, blockIndex: Int, occurrence: Occurrence) {
             var from = 0
-            while (true) {
+            while (!matches.capped) {
                 val idx = text.indexOf(query, from, ignoreCase = true)
                 if (idx < 0) break
-                matches += chunk.match(idx, text.substring(idx, idx + query.length))
+                matches.add(
+                    content = text.substring(idx, idx + query.length),
+                    startIndex = rawOffsets[idx],
+                    adapterPosition = blockIndex,
+                    occurrenceInBlock = occurrence.next(),
+                )
                 from = idx + 1 // step by 1 so self-overlapping queries ("aa" in "aaa") are all found
             }
-            return chunk
         }
 
         /**
@@ -273,7 +329,7 @@ class SearchMarkdownUseCase(
         // One flat dispatch on the node type: each `is X ->` arm counts as a branch and none nests.
         // M-33's HtmlInline if/else and M-228's fence check took it past detekt's limit.
         @Suppress("CyclomaticComplexMethod")
-        private fun appendVisible(node: Node, sb: StringBuilder, offsets: MutableList<Int>) {
+        private fun appendVisible(node: Node, sb: StringBuilder, offsets: IntList) {
             when (node) {
                 // Alt text is not rendered into the TextView. The early return skips appendLiteral /
                 // appendBreak, so it must end the math run itself — otherwise two formulas separated
@@ -306,7 +362,9 @@ class SearchMarkdownUseCase(
                 // A top-level Mermaid fence is drawn as a picture, so its source is not on screen (M-228).
                 // One nested in a list or quote is painted as text inside that block, so it still counts, and so
                 // does a piece of a fence cut for being too long to draw (S8-A31): that is shown as source.
-                is FencedCodeBlock -> if (!isDrawnAsPicture(node)) appendLiteral(node.literal, sb, offsets)
+                is FencedCodeBlock -> if (!isDrawnAsPicture(node, topLevel = node === topBlock)) {
+                    appendLiteral(node.literal, sb, offsets)
+                }
                 is IndentedCodeBlock -> appendLiteral(node.literal, sb, offsets)
                 is HtmlBlock -> appendHtmlBlock(node, sb, offsets)
                 // M-161: a callout paints its title where its marker was, then its content. M-227 /
@@ -320,7 +378,7 @@ class SearchMarkdownUseCase(
                 }
                 // M-33: a tag opens with '<' and a formula with '$', so the tag is inside a formula
                 // exactly when its first character is, and then joins the formula's placeholder.
-                is HtmlInline -> if (mathMask.getOrElse(locate(node.literal)) { false }) {
+                is HtmlInline -> if (mathMask.contains(locate(node.literal))) {
                     appendLiteral(node.literal, sb, offsets, skipMath = true)
                 } else {
                     appendAnchored(html.paint(node.literal, sb), node.literal, sb, offsets)
@@ -329,11 +387,36 @@ class SearchMarkdownUseCase(
                 // appending nothing would under-model the block, and appending the raw `[^label]`
                 // would count text the TextView never draws (the phantom-match class removed).
                 is FootnoteReference -> appendFootnoteMarker(node, sb, offsets)
+                // The reader's own tree (Rule 1) has nodes the parity parser does not make: a `:name:`
+                // it paints as an emoji, and a formula drawn as a picture.
+                // The emoji it paints, anchored on the opening `:`, as one found in a Text is (appendLiteral).
+                is EmojiShortcode -> appendAnchored(node.emoji, ":" + node.alias + ":", sb, offsets)
                 is SoftLineBreak -> appendBreak(' ', sb, offsets)
                 is HardLineBreak -> appendBreak('\n', sb, offsets)
-                else -> appendChildren(node, sb, offsets)
+                else -> if (isFormula(node)) appendFormula(sb, offsets) else appendChildren(node, sb, offsets)
             }
         }
+
+        /**
+         * A formula node of the reader's tree. It paints one picture, so it joins the maths run as one
+         * U+FFFC, as the masked source of the same formula does in a tree without maths nodes; then the
+         * cursor goes past the formula's source, the mask's run that starts at or after it, with only
+         * markup (no letter or digit) before it, so the cursor never jumps over text to a later formula.
+         * When the mask has no formula there, the cursor stays and the next literal is placed from it.
+         */
+        private fun appendFormula(sb: StringBuilder, offsets: IntList) {
+            val range = mathMask.rangeFrom(cursor)
+                ?.takeIf { it.first <= cursor + LOOKAHEAD && onlyMarkupBefore(it.first) }
+            val base = range?.let { maxOf(it.first, cursor) } ?: cursor
+            if (!inMath) {
+                sb.append('\uFFFC')
+                offsets.add(base)
+                inMath = true
+            }
+            if (range != null) cursor = range.last + 1
+        }
+
+        private fun onlyMarkupBefore(end: Int): Boolean = (cursor until end).none { content[it].isLetterOrDigit() }
 
         /**
          * M-28: two blocks inside one container (the paragraphs of a quote, the items of a list) are
@@ -342,7 +425,7 @@ class SearchMarkdownUseCase(
          * separator consumes no source: it is anchored at the cursor, which does not move. A query is
          * a single line, so the '\n' can only remove such straddling matches, never add one.
          */
-        private fun appendChildren(node: Node, sb: StringBuilder, offsets: MutableList<Int>) {
+        private fun appendChildren(node: Node, sb: StringBuilder, offsets: IntList) {
             var child = node.firstChild
             while (child != null) {
                 if (child is Block && child.previous != null) {
@@ -359,7 +442,7 @@ class SearchMarkdownUseCase(
          * M-161: a `<details>` header paints its summary (and any body text in the same block) instead
          * of the raw tags, and a lone `</details>` paints nothing. Everything else keeps the literal.
          */
-        private fun appendHtmlBlock(node: HtmlBlock, sb: StringBuilder, offsets: MutableList<Int>) {
+        private fun appendHtmlBlock(node: HtmlBlock, sb: StringBuilder, offsets: IntList) {
             val header = Details.parseHeader(node.literal, words.detailsSummary)
             when {
                 header != null -> {
@@ -382,7 +465,7 @@ class SearchMarkdownUseCase(
          * anchored on [source]'s raw start, then move the cursor past [source]. The same anchoring
          * [appendFootnoteMarker] uses: painted characters that have no source position of their own.
          */
-        private fun appendAnchored(painted: String, source: String, sb: StringBuilder, offsets: MutableList<Int>) {
+        private fun appendAnchored(painted: String, source: String, sb: StringBuilder, offsets: IntList) {
             val base = locate(source)
             inMath = false
             for (char in painted) {
@@ -405,7 +488,7 @@ class SearchMarkdownUseCase(
         private fun appendLiteral(
             literal: String,
             sb: StringBuilder,
-            offsets: MutableList<Int>,
+            offsets: IntList,
             kind: Source = Source.VERBATIM,
             skipMath: Boolean = false,
         ) {
@@ -420,7 +503,7 @@ class SearchMarkdownUseCase(
                 // A missed literal is placed from the cursor, so near the end it can run past it (M-401).
                 val raw = raws?.get(k) ?: minOf(base + k, content.length)
                 val shortcode = shortcodeRaws?.let { shortcodeIndex.at(raw, room = literal.length - k) }
-                if (skipMath && raw < mathMask.size && mathMask[raw]) {
+                if (skipMath && mathMask.contains(raw)) {
                     // Replace each contiguous math run with ONE U+FFFC (object replacement char) so the
                     // text around a formula doesn't merge into a phantom word (`foo$x$bar` stays
                     // `foo<FFFC>bar`, never `foobar`). U+FFFC never appears in a user query → unmatchable.
@@ -463,11 +546,11 @@ class SearchMarkdownUseCase(
          * A marker inside a formula contributes nothing: the surrounding math run already collapses to
          * one `U+FFFC`, and adding digits there would make a formula's interior searchable.
          */
-        private fun appendFootnoteMarker(node: FootnoteReference, sb: StringBuilder, offsets: MutableList<Int>) {
+        private fun appendFootnoteMarker(node: FootnoteReference, sb: StringBuilder, offsets: IntList) {
             val source = "[^" + node.label + "]"
             val found = content.indexOf(source, cursor)
             val base = if (found in cursor..(cursor + LOOKAHEAD)) found else cursor
-            if (base < mathMask.size && mathMask[base]) {
+            if (mathMask.contains(base)) {
                 cursor = base + source.length
                 return
             }
@@ -491,11 +574,11 @@ class SearchMarkdownUseCase(
          * make the formula's interior line breaks findable, a phantom hit that can be neither
          * highlighted nor scrolled to.
          */
-        private fun appendBreak(rendered: Char, sb: StringBuilder, offsets: MutableList<Int>) {
+        private fun appendBreak(rendered: Char, sb: StringBuilder, offsets: IntList) {
             // Same bounded search as appendLiteral: a far-away `\n` must not pull the cursor forward.
             val nl = content.indexOf('\n', cursor)
             val base = if (nl in cursor..(cursor + LOOKAHEAD)) nl else cursor
-            if (base < mathMask.size && mathMask[base]) {
+            if (mathMask.contains(base)) {
                 if (!inMath) {
                     sb.append('\uFFFC')
                     offsets.add(base)
@@ -580,10 +663,10 @@ private const val LOOKAHEAD = 4096
  * characters as maths. The code's text excludes the backticks and the one space each side may carry,
  * so step back over those spaces to the backtick.
  */
-internal fun codeOpensInMath(content: String, mathMask: BooleanArray, codeStart: Int): Boolean {
+internal fun codeOpensInMath(content: String, mathMask: MathMask, codeStart: Int): Boolean {
     var pos = minOf(codeStart, content.length) - 1
     while (pos >= 0 && content[pos] == ' ') pos--
-    return pos >= 0 && content[pos] == '`' && mathMask.getOrElse(pos) { false }
+    return pos >= 0 && content[pos] == '`' && mathMask.contains(pos)
 }
 
 /** What the parser may have changed in a literal, so where to look for it in the source (M-401). */
@@ -672,9 +755,9 @@ private fun forEachCellInRow(row: TableRow, action: (TableCell) -> Unit) {
     }
 }
 
-/** Whether [block] is a top-level Mermaid fence, which the reader draws as a picture, not as text. */
-private fun isDrawnAsPicture(block: FencedCodeBlock): Boolean =
-    block !is CodeBlockPiece && block.parent is Document && fenceLanguage(block.info) == MERMAID_LANGUAGE
+/** Whether [block] is a top-level ([topLevel]) Mermaid fence, which the reader draws as a picture, not as text. */
+private fun isDrawnAsPicture(block: FencedCodeBlock, topLevel: Boolean): Boolean =
+    block !is CodeBlockPiece && topLevel && fenceLanguage(block.info) == MERMAID_LANGUAGE
 
 /** Whether search block [node] may go on with the text of [before]: two paragraphs, or two pieces of one code block. */
 private fun continues(before: Node?, node: Node): Boolean = when (node) {
@@ -682,3 +765,70 @@ private fun continues(before: Node?, node: Node): Boolean = when (node) {
     is CodeBlockPiece -> before is CodeBlockPiece && before.group === node.group
     else -> false
 }
+
+/**
+ * The raw-source positions inside a formula, kept as the formulas' sorted, non-overlapping [ranges]
+ * ([InlineMathDelimiters.mathRanges]) rather than one flag per char of the document (Rule 4). The scan
+ * asks about positions that mostly move forward, so the last range found is tried first.
+ */
+internal class MathMask(ranges: List<IntRange>) {
+    private val firsts = IntArray(ranges.size) { ranges[it].first }
+    private val lasts = IntArray(ranges.size) { ranges[it].last }
+    private var hint = 0
+
+    /** Whether [pos] is inside a formula. */
+    fun contains(pos: Int): Boolean {
+        val i = indexFrom(pos)
+        return i < firsts.size && firsts[i] <= pos
+    }
+
+    /** The first formula that ends at or after [pos], or null when none does. */
+    fun rangeFrom(pos: Int): IntRange? {
+        val i = indexFrom(pos)
+        return if (i < firsts.size) firsts[i]..lasts[i] else null
+    }
+
+    // The index of the first range whose last position is at or after [pos] (size when there is none).
+    private fun indexFrom(pos: Int): Int {
+        if (isFirstFrom(hint, pos)) return hint
+        var low = 0
+        var high = lasts.size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (lasts[mid] < pos) low = mid + 1 else high = mid
+        }
+        hint = low
+        return low
+    }
+
+    private fun isFirstFrom(i: Int, pos: Int): Boolean = i < lasts.size && lasts[i] >= pos && endsBefore(i - 1, pos)
+
+    private fun endsBefore(i: Int, pos: Int): Boolean = i < 0 || lasts[i] < pos
+}
+
+/** A growable list of ints: one raw offset per char of a block's text, without a boxed Integer each (Rule 4). */
+internal class IntList {
+    private var values = IntArray(INITIAL_INTS)
+    var size = 0
+        private set
+
+    fun add(value: Int) {
+        if (size == values.size) values = values.copyOf(size * 2)
+        values[size++] = value
+    }
+
+    operator fun get(index: Int): Int {
+        if (index !in 0 until size) throw IndexOutOfBoundsException("index $index, size $size")
+        return values[index]
+    }
+
+    fun clear() {
+        size = 0
+    }
+
+    fun first(): Int = get(0)
+
+    fun last(): Int = get(size - 1)
+}
+
+private const val INITIAL_INTS = 64

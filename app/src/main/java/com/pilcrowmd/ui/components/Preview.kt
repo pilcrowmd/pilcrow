@@ -70,6 +70,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.folders.OpenFileLine
+import com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock
 import com.pilcrowmd.domain.markdown.HeadingAnchors
 import com.pilcrowmd.domain.markdown.ParagraphSeams
 import com.pilcrowmd.domain.markdown.ReaderModel
@@ -98,6 +99,7 @@ import com.pilcrowmd.rendering.mermaid.MermaidStyle
 import com.pilcrowmd.rendering.readerBodyLineHeightPx
 import com.pilcrowmd.rendering.revealBlockInViewport
 import com.pilcrowmd.rendering.scrollToDocumentEnd
+import com.pilcrowmd.rendering.setFootnoteTapHandler
 import com.pilcrowmd.rendering.setImageTapHandler
 import com.pilcrowmd.rendering.setReaderBodyLineHeight
 import com.pilcrowmd.rendering.smoothJumpTo
@@ -171,6 +173,9 @@ fun MarkdownPreview(
     // as placeholders. [imageAccessKey] changes when the granted folders do, which re-renders the
     // pictures; [onImageTap] is a tap on a relative-image placeholder ("Tap to show").
     documentUri: Uri? = null,
+    // S8-A90: the open document's identity. A reload of the same file is a new document: it lands on
+    // the place stored when it was read again (the live position), not on the one from the first open.
+    documentKey: Any? = null,
     imageAccessKey: String = "",
     onImageTap: () -> Unit = {},
     // M-160: a tap on a scheme-less link; true when the screen handles it (a note in an added folder).
@@ -192,7 +197,7 @@ fun MarkdownPreview(
     // Captured once per composition-entry, so re-entering Reader mode (or rotating) restores the
     // saved offset without fighting live scroll updates. Again for each document (M-160): a note opened
     // in place of another (a followed link, Back) restores ITS saved place, not the first note's.
-    val initialScroll = remember(documentUri) { scrollPosition }
+    val initialScroll = remember(documentUri, documentKey) { scrollPosition }
     // The model the adapter currently shows, by identity (a model is never compared by value).
     val lastModel = remember { mutableStateOf<ReaderModel?>(null) }
     // M-160: a restore or landing posted but not yet run. The model of the same text being swapped
@@ -212,6 +217,10 @@ fun MarkdownPreview(
     val seamState = remember { ParagraphSeamState() }
     // M-159: which heading anchor is which block; the link resolver reads it off the RecyclerView's tag.
     val anchorTargets = remember { AnchorTargets() }
+    // M-76: the block of the note open in the sheet (null = no sheet). Saveable, so a rotation keeps the
+    // sheet open; keyed on the text, so another document closes it and the same text re-prepared does not.
+    var openNoteBlock by rememberSaveable(model?.content) { mutableStateOf<Int?>(null) }
+    val openNoteAt = rememberUpdatedState<(Int) -> Unit> { openNoteBlock = it }
     val lastSearchKey = remember { mutableStateOf<String?>(null) }
     val lastJumpSeq = remember { mutableStateOf(0) }
     val lastCaretRevealSeq = remember { mutableStateOf(0) }
@@ -316,6 +325,8 @@ fun MarkdownPreview(
                     setTag(R.id.anchor_targets, anchorTargets)
                     setImageTapHandler { currentOnImageTap.value() }
                     setTag(R.id.note_link_handler, NoteLinkHandler { currentOnNoteLink.value(it) })
+                    // M-76: a marker tap opens its note in the sheet below.
+                    setFootnoteTapHandler { openNoteAt.value(it) }
                     addItemDecoration(DetailsDecoration(context, detailsState, c))
                     adapter = RecyclerAdapterEntries.buildMarkdownAdapter(
                         context,
@@ -655,6 +666,17 @@ fun MarkdownPreview(
 
         // S8-A7: the style the entry drew the diagram with (same token object [c]), so the cached picture answers.
         openDiagram?.let { OpenDiagramViewer(it, mermaidRenderer, MermaidStyle.from(c)) { openDiagram = null } }
+
+        // M-76: an orphan or stale index finds no note, so no sheet (Safeguard 3).
+        (openNoteBlock?.let { model?.blocks?.getOrNull(it) } as? FootnoteDefinitionBlock)?.let { note ->
+            FootnoteSheet(
+                note = note,
+                markwon = renderer.markwonFor(c, liveFontScale.value),
+                fontScale = liveFontScale.value,
+                fontSet = fontSet,
+                onDismiss = { openNoteBlock = null },
+            )
+        }
     }
 }
 

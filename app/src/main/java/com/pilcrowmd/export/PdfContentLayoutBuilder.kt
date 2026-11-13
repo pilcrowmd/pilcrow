@@ -32,9 +32,8 @@ import com.pilcrowmd.rendering.FencedCodeBlockEntry
 import com.pilcrowmd.rendering.FrontmatterBlockEntry
 import com.pilcrowmd.rendering.SearchHighlight
 import com.pilcrowmd.ui.theme.FontSets
+import com.pilcrowmd.ui.theme.PilcrowColorScheme
 import com.pilcrowmd.ui.theme.PilcrowTypography
-import com.pilcrowmd.ui.theme.PrintCodeColorScheme
-import com.pilcrowmd.ui.theme.PrintColorScheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexAsyncDrawableSpan
 import io.noties.markwon.recycler.MarkwonAdapter
@@ -94,7 +93,7 @@ internal fun topLevelBlocksForMode(
 
 /**
  * Builds the off-screen content layout for PDF export: a vertical [LinearLayout] holding one view per
- * top-level Markdown block, rendered with [PrintColorScheme] and measured at the page-content width.
+ * top-level Markdown block, rendered with [palette] and measured at the page-content width.
  *
  * The RecyclerView-free path: parse via Markwon's plugin-aware parser, then for each top-level node
  * instantiate the matching block entry (Prose/Table/FencedCode/Frontmatter) and create+bind its holder
@@ -121,6 +120,8 @@ internal class PdfContentLayoutBuilder(
     private val diagram: (source: String, widthPx: Int) -> Bitmap? = { _, _ -> null },
     // Issue #17: colours a Prism4j block over MAX_HIGHLIGHT_CHARS in full, inline like the TextMate ones.
     private val prism4jHighlighter: CodeHighlighter? = null,
+    // S8-A89: the export's pictures (embedded, content:// and granted relative paths), or null for alt text only.
+    internal val pictures: PdfImageSource? = null,
 ) {
 
     /**
@@ -129,6 +130,13 @@ internal class PdfContentLayoutBuilder(
      * Keyed on the class itself, not its name: R8 gives unrelated classes the same short name (M-175).
      */
     private val holderPool = mutableMapOf<KClass<out org.commonmark.node.Node>, MarkwonAdapter.Holder>()
+
+    /** The colours of this export. A pooled holder keeps the colours it was made with: a change empties the pool. */
+    internal var palette: PdfPalette = PdfPalette.PRINT
+        set(value) {
+            if (value != field) holderPool.clear()
+            field = value
+        }
 
     /**
      * Test visibility: track the peak number of concurrently-live block views.
@@ -173,7 +181,7 @@ internal class PdfContentLayoutBuilder(
      *
      * The textSize/color mirror the on-screen render: the body size in px at the reading scale
      * (M-121 — before it, the maths ignored the scale here as it did on screen) and
-     * [PrintColorScheme] near-black text (Safeguard 4).
+     * the export's own text colour (Safeguard 4).
      */
     private fun resolveLatexSynchronously(view: View, fontScale: Float) {
         when (view) {
@@ -186,7 +194,7 @@ internal class PdfContentLayoutBuilder(
                 val resized = com.pilcrowmd.rendering.resolveLatexSynchronously(
                     spanned,
                     textSizePx,
-                    PrintColorScheme.primaryText.toArgb(),
+                    palette.page.primaryText.toArgb(),
                 )
                 // M-181: the text was laid out with the placeholders' size, and the export reuses one
                 // view per block type, so a view that already laid out text keeps those line heights
@@ -196,6 +204,9 @@ internal class PdfContentLayoutBuilder(
             }
         }
     }
+
+    /** Pass 1 asks pictures for their size only; Pass 2 decodes the ones on the page being drawn. */
+    private var measuringPictures = false
 
     /**
      * Per-view print fix-ups, applied to the bound tree once before measure (EXPORT ONLY):
@@ -239,17 +250,17 @@ internal class PdfContentLayoutBuilder(
                 context,
                 fontScale,
                 FontSets.DEFAULT,
-                PrintColorScheme,
+                palette.page,
             )
             is org.commonmark.node.FencedCodeBlock ->
-                fencedCodeEntry(context, node, fontScale, codeHighlighter, prism4jHighlighter)
+                fencedCodeEntry(context, node, fontScale, codeHighlighter, prism4jHighlighter, palette)
             is com.pilcrowmd.rendering.PlainTextChunk ->
                 // Plain-text chunk: literal verbatim, prose typography, print colors.
-                plainTextEntry(context, fontScale)
+                plainTextEntry(context, fontScale, palette.page)
             is com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock ->
                 // Footnote definition. The PDF has its own dispatch, so a node type added
                 // to the reader and not to this `when` silently prints as something else.
-                footnoteEntry(context, fontScale)
+                footnoteEntry(context, fontScale, palette.page)
             else -> {
                 // Default prose entry for headings, paragraphs, lists, blockquotes, etc.
                 com.pilcrowmd.rendering.ProseBlockEntry(
@@ -258,7 +269,7 @@ internal class PdfContentLayoutBuilder(
                     fontScale,
                     FontSets.DEFAULT,
                     SearchHighlight(),
-                    PrintColorScheme,
+                    palette.page,
                 )
             }
         }
@@ -280,7 +291,7 @@ internal class PdfContentLayoutBuilder(
                     context,
                     fontScale,
                     FontSets.DEFAULT,
-                    PrintColorScheme,
+                    palette.page,
                 )
                 entry.bindHolder(
                     markwon,
@@ -293,7 +304,8 @@ internal class PdfContentLayoutBuilder(
                 // The pooled holder may have printed a diagram or its caption last, and the front-matter
                 // card hides neither itself: reset first, as the reader's router does (M-120).
                 fenced.resetMermaid()
-                val entry = fencedCodeEntry(context, node, fontScale, codeHighlighter, prism4jHighlighter)
+                val entry =
+                    fencedCodeEntry(context, node, fontScale, codeHighlighter, prism4jHighlighter, palette)
                 if (entry is FencedCodeBlockEntry && fenceLanguage(node.info) == MERMAID_LANGUAGE) {
                     // The block is measured at the full content width (its layout margins only space it
                     // from its neighbours), but the panel is only DIAGRAM_MAX_WIDTH_FRACTION of that, so the
@@ -309,16 +321,17 @@ internal class PdfContentLayoutBuilder(
                     entry.bindHolder(markwon, fenced, node)
                 }
             }
-            is com.pilcrowmd.rendering.PlainTextChunk -> plainTextEntry(context, fontScale).bindHolder(
+            is com.pilcrowmd.rendering.PlainTextChunk -> plainTextEntry(context, fontScale, palette.page).bindHolder(
                 markwon,
                 holder as com.pilcrowmd.rendering.PlainTextBlockEntry.Holder,
                 node,
             )
-            is com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock -> footnoteEntry(context, fontScale).bindHolder(
-                markwon,
-                holder as com.pilcrowmd.rendering.FootnoteBlockEntry.Holder,
-                node,
-            )
+            is com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock ->
+                footnoteEntry(context, fontScale, palette.page).bindHolder(
+                    markwon,
+                    holder as com.pilcrowmd.rendering.FootnoteBlockEntry.Holder,
+                    node,
+                )
             else -> {
                 val entry = com.pilcrowmd.rendering.ProseBlockEntry(
                     context,
@@ -326,7 +339,7 @@ internal class PdfContentLayoutBuilder(
                     fontScale,
                     FontSets.DEFAULT,
                     SearchHighlight(),
-                    PrintColorScheme,
+                    palette.page,
                 )
                 entry.bindHolder(
                     markwon,
@@ -357,20 +370,23 @@ internal class PdfContentLayoutBuilder(
         val bounds = mutableListOf<Pair<Int, Int>>()
         var currentY = 0
         diagrams.clear() // A new export: Pass 1 always runs first.
-
-        // Replicate vertical LinearLayout stacking: each child's top/bottom includes its layout
-        // margins (LinearLayout does not collapse margins). Omitting them would lose the inter-block
-        // spacing the on-screen path has and shift every block, breaking print fidelity + pagination.
-        forEachBlock(ParseSpec(markwon, nodes, pageContentWidthPx, fontScale)) { _, _, blockView ->
-            val lp = blockView.layoutParams as? ViewGroup.MarginLayoutParams
-            val topMargin = lp?.topMargin ?: 0
-            val bottomMargin = lp?.bottomMargin ?: 0
-            val top = currentY + topMargin
-            val bottom = top + blockView.measuredHeight
-            bounds.add(top to bottom)
-            currentY = bottom + bottomMargin
+        measuringPictures = true
+        try {
+            // Replicate vertical LinearLayout stacking: each child's top/bottom includes its layout
+            // margins (LinearLayout does not collapse margins). Omitting them would lose the inter-block
+            // spacing the on-screen path has and shift every block, breaking print fidelity + pagination.
+            forEachBlock(ParseSpec(markwon, nodes, pageContentWidthPx, fontScale)) { _, _, blockView ->
+                val lp = blockView.layoutParams as? ViewGroup.MarginLayoutParams
+                val topMargin = lp?.topMargin ?: 0
+                val bottomMargin = lp?.bottomMargin ?: 0
+                val top = currentY + topMargin
+                val bottom = top + blockView.measuredHeight
+                bounds.add(top to bottom)
+                currentY = bottom + bottomMargin
+            }
+        } finally {
+            measuringPictures = false
         }
-
         return bounds
     }
 
@@ -459,6 +475,12 @@ internal class PdfContentLayoutBuilder(
         // Apply print fixups and resolve LaTeX
         applyPrintFixups(holder.itemView, pageContentWidthPx)
         resolveLatexSynchronously(holder.itemView, fontScale)
+        pictures?.printPictures(
+            holder.itemView,
+            pageContentWidthPx,
+            pageTextHeightFor(pageContentWidthPx),
+            measuringPictures,
+        )
 
         // Measure the holder's view
         val widthMeasureSpec = View.MeasureSpec.makeMeasureSpec(
@@ -507,21 +529,23 @@ internal class PdfContentLayoutBuilder(
  * Top-level and shared by the create + bind dispatch: the selection used to be spelled out twice,
  * so the two could drift into creating one holder and binding another.
  */
+@Suppress("LongParameterList") // The block's inputs, the two highlighters and the export's colours.
 private fun fencedCodeEntry(
     context: Context,
     node: FencedCodeBlock,
     fontScale: Float,
     codeHighlighter: CodeHighlighter?,
     prism4jHighlighter: CodeHighlighter?,
+    palette: PdfPalette,
 ): MarkwonAdapter.Entry<FencedCodeBlock, FencedCodeBlockEntry.Holder> {
     return if (node.isFrontmatter()) {
-        FrontmatterBlockEntry(context, fontScale, FontSets.DEFAULT, PrintColorScheme)
+        FrontmatterBlockEntry(context, fontScale, FontSets.DEFAULT, palette.page)
     } else {
         FencedCodeBlockEntry(
             context,
             fontScale,
             FontSets.DEFAULT,
-            PrintCodeColorScheme,
+            palette.code,
             highlighting = codeHighlighter?.let { CodeHighlighting(it, scope = null, prism4jHighlighter) },
         )
     }
@@ -589,21 +613,21 @@ private fun ImageView.fitImage(maxWidthPx: Int, maxHeightPx: Int) {
  * The back-link arrow is drawn but inert on paper — there is no list to scroll — which is the same
  * thing that happens to every other tappable span in an exported PDF.
  */
-private fun footnoteEntry(context: android.content.Context, fontScale: Float) =
+private fun footnoteEntry(context: android.content.Context, fontScale: Float, scheme: PilcrowColorScheme) =
     com.pilcrowmd.rendering.FootnoteBlockEntry(
         context,
         fontScale,
         FontSets.DEFAULT,
-        PrintColorScheme,
+        scheme,
         SearchHighlight(),
     )
 
 /** Print-styled plain-text entry — shared by the builder's create + bind dispatch. */
-private fun plainTextEntry(context: android.content.Context, fontScale: Float) =
+private fun plainTextEntry(context: android.content.Context, fontScale: Float, scheme: PilcrowColorScheme) =
     com.pilcrowmd.rendering.PlainTextBlockEntry(
         context,
         fontScale,
         FontSets.DEFAULT,
         SearchHighlight(),
-        PrintColorScheme,
+        scheme,
     )

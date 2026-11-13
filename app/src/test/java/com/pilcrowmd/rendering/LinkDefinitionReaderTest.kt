@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith

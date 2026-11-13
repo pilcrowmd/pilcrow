@@ -1,0 +1,7 @@
+- Rechargement auto : un fichier modifié par une autre appli se recharge ; s'il y a des modifications non enregistrées, il demande.
+- Images dans l'export PDF.
+- ==Texte surligné== en lecture et dans le PDF.
+- Option « Couleurs du PDF » : « Clair pour l'impression » (par défaut) ou « Suivre le thème de l'appli ».
+- Les notes de bas de page s'ouvrent dans un panneau.
+- Ouvrir et Enregistrer partent du dernier dossier utilisé.
+- La recherche dans les gros fichiers ne manque plus de mémoire.

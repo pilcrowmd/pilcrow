@@ -3,6 +3,10 @@
     <string name="app_name">PilcrowMD</string>
     <!-- Talkback label for the arrow on a footnote definition that returns to its first reference. -->
     <string name="footnote_back_link">Back to the footnote reference</string>
+    <!-- M-76: TalkBack label for a footnote marker in the text, and the title of the sheet showing its note. -->
+    <string name="footnote_marker">Footnote %1$s</string>
+    <!-- M-76: the button that closes the footnote sheet. -->
+    <string name="footnote_sheet_close">Close</string>
     <!-- TalkBack name of the editor's text box; the file name is appended after a comma (M-265). -->
     <string name="editor_accessibility_name">Markdown text</string>
 
@@ -44,6 +48,16 @@
     <string name="main_action_reload">Reload</string>
     <!-- Button on the "file changed" banner: keep the unsaved edits; saving will write them over the other version. Short phrase. -->
     <string name="main_action_keep_mine">Keep mine</string>
+    <!-- S8-A90: small notice under the toolbar: the open file, with no unsaved edits, was read again by itself after another app changed it. Has a Close button. -->
+    <string name="main_notice_updated">Updated by another app.</string>
+    <!-- S8-A90: notice under the toolbar: another app deleted the open file; its text stays on screen. Has a Close button. -->
+    <string name="main_notice_deleted">This file was deleted by another app.</string>
+    <!-- S8-A90: title of the dialog Save opens when another app changed the file since its text on screen was read (after Keep mine, or with the change banner showing). Question. -->
+    <string name="main_dialog_overwrite_title">Write over the other version?</string>
+    <!-- S8-A90: text of that dialog. Its buttons: Cancel, Overwrite, Save a copy. -->
+    <string name="main_dialog_overwrite_text">Another app changed this file. Overwrite replaces that version with yours.</string>
+    <!-- S8-A90: button in that dialog: write the text on screen over the other version. Verb, button label. -->
+    <string name="main_action_overwrite">Overwrite</string>
     <!-- S8-A55: title of the dialog Save (or the banner) opens for a file another app opened read-only. Question. -->
     <string name="main_dialog_edit_title">Edit this file?</string>
     <!-- S8-A55: text of that dialog. Full sentence. -->
@@ -301,6 +315,11 @@
     <string name="search_match_count">%1$d/%2$d</string>
     <!-- Match position when there are no matches. -->
     <string name="search_match_count_none">0/0</string>
+    <!-- Match position when the search stopped at its limit, e.g. "3/10,000+": %1$d is the 1-based current match,
+         %2$,d the limit (10000) with the language's digit grouping, "+" says there are more. Numbers only, no words. -->
+    <string name="search_match_count_capped">%1$d/%2$,d+</string>
+    <!-- Message shown when the phone ran out of memory while searching a very large document; nothing was found. Full sentence. -->
+    <string name="search_out_of_memory">Not enough memory to search this document.</string>
     <!-- Content description of the arrow that moves to the previous match (adjective phrase). -->
     <string name="search_previous_match_description">Previous match</string>
     <!-- Content description of the arrow that moves to the next match (adjective phrase). -->
@@ -395,6 +414,12 @@
     <string name="settings_language_system">System default</string>
     <!-- SettingsScreen: button that closes the language dialog without choosing (verb, imperative). -->
     <string name="settings_language_cancel">Cancel</string>
+    <!-- SettingsScreen: card title and dialog title for choosing the colours of exported PDFs (noun). -->
+    <string name="settings_pdf_colors">PDF colors</string>
+    <!-- SettingsScreen: PDF colors choice, the default: white pages for printing (noun phrase). -->
+    <string name="settings_pdf_colors_light">Light for printing</string>
+    <!-- SettingsScreen: PDF colors choice: pages take the current app theme (verb phrase). -->
+    <string name="settings_pdf_colors_theme">Match app theme</string>
 
     <!-- SettingsScreen: card title that opens an email to the developer (verb phrase, imperative). -->
     <string name="settings_email_us">Email us</string>

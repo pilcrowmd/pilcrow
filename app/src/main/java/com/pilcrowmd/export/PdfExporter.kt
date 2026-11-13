@@ -7,10 +7,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfDocument
 import android.os.Looper
+import androidx.compose.ui.graphics.toArgb
+import com.pilcrowmd.domain.model.PdfColors
+import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.rendering.MarkwonRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidStyle
-import com.pilcrowmd.ui.theme.PrintCodeColorScheme
 import io.noties.markwon.Markwon
 import kotlinx.coroutines.runBlocking
 import kotlin.runCatching
@@ -34,13 +36,29 @@ import kotlin.runCatching
  * - PRINT_SCALE: content is measured narrower (÷PRINT_SCALE) and drawn larger (×PRINT_SCALE)
  *   so body type prints at ~11pt; page geometry and the on-screen reader are unchanged.
  *
- * **Mermaid (M-70):** diagrams are drawn by [mermaidRenderer] in the print colours, see [diagram].
+ * **Mermaid (M-70):** diagrams are drawn by [mermaidRenderer] in the export's code colours, see [diagram].
  */
 class PdfExporter(
     private val context: Context,
     private val markwonRenderer: MarkwonRenderer,
     private val mermaidRenderer: MermaidDiagramRenderer,
+    // S8-A89: turns a note's relative picture path into a document inside a folder grant the app holds.
+    relativeImages: com.pilcrowmd.repository.RelativeImageResolver? = null,
 ) {
+
+    // S8-A89: the note being exported, which its relative picture paths are read against (null: the reader's).
+    private var exportNoteUri: android.net.Uri? = null
+
+    // S8-A89: pictures of the export being made; emptied when it ends, so none stays in memory.
+    private val pictures = PdfImageSource(context, relativeImages, noteUri = {
+        exportNoteUri
+            ?: markwonRenderer.imageBase.noteUri
+    })
+
+    init {
+        // The export's Markwon instances turn exactly the pictures this can print into picture spans.
+        markwonRenderer.printPictures.canPrint = { pictures.size(it) != null }
+    }
 
     // Builds the off-screen block-view tree (SRP split: layout-building vs pagination/PDF write).
     // Internal for tests: they check its diagram memo is emptied after each export (M-70).
@@ -50,6 +68,7 @@ class PdfExporter(
         markwonRenderer.codeHighlighter,
         ::diagram,
         markwonRenderer.prism4jHighlighter,
+        pictures,
     )
 
     /**
@@ -60,7 +79,8 @@ class PdfExporter(
      */
     internal fun diagram(source: String, widthPx: Int): Bitmap? {
         if (Looper.myLooper() == Looper.getMainLooper()) return null
-        return runBlocking { mermaidRenderer.render(source, widthPx, PRINT_DIAGRAM_STYLE) }
+        val style = MermaidStyle.from(layoutBuilder.palette.code)
+        return runBlocking { mermaidRenderer.render(source, widthPx, style) }
     }
 
     companion object {
@@ -89,9 +109,6 @@ class PdfExporter(
         // 1.44 × 7.65pt ≈ 11pt. Applied at the 3 coordinated px↔pt sites: measure width, draw scale,
         // page content height (all stay consistent, so block-aware pagination is unaffected).
         const val PRINT_SCALE = 1.44f
-
-        // Diagrams print in the light print colours, on the print code-block panel.
-        private val PRINT_DIAGRAM_STYLE = MermaidStyle.from(PrintCodeColorScheme)
     }
 
     /**
@@ -119,16 +136,21 @@ class PdfExporter(
      * @param fontScale Font scale multiplier
      * @return List of (top, bottom) Y-bounds in pixels for each top-level block
      */
-    fun measureBlockBounds(
+    internal fun measureBlockBounds(
         content: String,
         fontScale: Float = 1.0f,
         renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+        palette: PdfPalette = PdfPalette.PRINT,
     ): List<Pair<Int, Int>> = runCatching {
+        layoutBuilder.palette = palette
         val pageContentWidthPx = (ptToPx(PAGE_CONTENT_WIDTH_PT.toFloat()) / PRINT_SCALE).toInt()
-        val markwon = markwonRenderer.printMarkwonFor(fontScale)
+        val markwon = markwonRenderer.printMarkwonFor(fontScale, palette.code)
         val nodes = topLevelBlocksForMode(markwon, content, renderMode)
         layoutBuilder.measureBlockBounds(markwon, nodes, pageContentWidthPx, fontScale)
-    }.also { layoutBuilder.diagrams.clear() }.getOrThrow() // M-70: this singleton keeps no pictures
+    }.also {
+        layoutBuilder.diagrams.clear()
+        pictures.clear()
+    }.getOrThrow() // M-70: this singleton keeps no pictures
 
     /**
      * Helper: get the Markwon instance from the renderer singleton.
@@ -150,11 +172,19 @@ class PdfExporter(
      * @param fontScale Font scale multiplier
      * @return PdfDocument with all pages rendered
      */
-    fun paginateAndRenderStreaming(
+    internal fun paginateAndRenderStreaming(
         content: String,
         fontScale: Float = 1.0f,
         renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+        palette: PdfPalette = PdfPalette.PRINT,
+        noteUri: android.net.Uri? = null,
     ): PdfDocument = runCatching {
+        exportNoteUri = noteUri
+        layoutBuilder.palette = palette
+        val pageFill = android.graphics.Paint().apply {
+            color = palette.page.primaryBackground.toArgb()
+            style = android.graphics.Paint.Style.FILL
+        }
         val pdfDocument = PdfDocument()
         layoutBuilder.resetPeakLiveBlockViews() // measure the peak across this whole export
         val pageContentWidthPx = (ptToPx(PAGE_CONTENT_WIDTH_PT.toFloat()) / PRINT_SCALE).toInt()
@@ -164,7 +194,7 @@ class PdfExporter(
         // (per-page render), so a P-page export parses once — not P+1 times. The same node objects
         // are bound multiple times (a block spanning two pages renders on both); binding is a
         // read-only render, so it is idempotent and heights stay deterministic across passes.
-        val markwon = markwonRenderer.printMarkwonFor(fontScale)
+        val markwon = markwonRenderer.printMarkwonFor(fontScale, palette.code)
         val nodes = topLevelBlocksForMode(markwon, content, renderMode)
 
         // Pass 1: Compute block bounds (streaming, O(1) live views)
@@ -174,14 +204,10 @@ class PdfExporter(
             // Empty document: still produce a blank page
             val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH_PT, A4_HEIGHT_PT, 1).create()
             val page = pdfDocument.startPage(pageInfo)
-            val whitePaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.WHITE
-                style = android.graphics.Paint.Style.FILL
-            }
-            page.canvas.drawRect(0f, 0f, A4_WIDTH_PT.toFloat(), A4_HEIGHT_PT.toFloat(), whitePaint)
+            page.canvas.drawRect(0f, 0f, A4_WIDTH_PT.toFloat(), A4_HEIGHT_PT.toFloat(), pageFill)
             // Footer page number
             val paint = android.graphics.Paint().apply {
-                color = android.graphics.Color.BLACK
+                color = palette.pageNumber.toArgb()
                 textSize = PAGE_NUMBER_TEXT_SIZE_PT
                 textAlign = android.graphics.Paint.Align.CENTER
             }
@@ -205,17 +231,8 @@ class PdfExporter(
             val page = pdfDocument.startPage(pageInfo)
             val canvas = page.canvas
 
-            // White page background
-            canvas.drawRect(
-                0f,
-                0f,
-                A4_WIDTH_PT.toFloat(),
-                A4_HEIGHT_PT.toFloat(),
-                android.graphics.Paint().apply {
-                    color = android.graphics.Color.WHITE
-                    style = android.graphics.Paint.Style.FILL
-                },
-            )
+            // The page background, edge to edge
+            canvas.drawRect(0f, 0f, A4_WIDTH_PT.toFloat(), A4_HEIGHT_PT.toFloat(), pageFill)
 
             canvas.save()
             canvas.translate(marginPt, marginPt)
@@ -242,7 +259,7 @@ class PdfExporter(
             canvas.restore()
 
             val paint = android.graphics.Paint().apply {
-                color = android.graphics.Color.BLACK
+                color = palette.pageNumber.toArgb()
                 textSize = PAGE_NUMBER_TEXT_SIZE_PT
                 textAlign = android.graphics.Paint.Align.CENTER
             }
@@ -257,7 +274,11 @@ class PdfExporter(
         }
 
         pdfDocument
-    }.also { layoutBuilder.diagrams.clear() }.getOrThrow() // M-70: success or failure, keep no pictures
+    }.also {
+        layoutBuilder.diagrams.clear()
+        pictures.clear()
+        exportNoteUri = null // the next export names its own note
+    }.getOrThrow() // M-70: success or failure, keep no pictures
 
     /**
      * Block-aware page-start offsets (PURE + unit-testable — no View/Android deps). Given each block's
@@ -337,14 +358,19 @@ class PdfExporter(
      *
      * Uses the streaming path (paginateAndRenderStreaming) to minimize memory usage on large docs.
      */
+    @Suppress("LongParameterList") // The document, its destination and the two inputs of its colours.
     fun exportToUri(
         content: String,
         fontScale: Float,
         uri: android.net.Uri,
         renderMode: com.pilcrowmd.domain.model.RenderMode = com.pilcrowmd.domain.model.RenderMode.MARKDOWN,
+        colors: PdfColors = PdfColors.LIGHT_FOR_PRINTING,
+        theme: ThemeMode = ThemeMode.DARK,
+        noteUri: android.net.Uri? = null,
     ) {
         layoutBuilder.resetPeakLiveBlockViews()
-        val pdfDocument = paginateAndRenderStreaming(content, fontScale, renderMode)
+        val pdfDocument =
+            paginateAndRenderStreaming(content, fontScale, renderMode, PdfPalette.of(colors, theme), noteUri)
         try {
             writePdfToUri(pdfDocument, uri, context.contentResolver)
         } finally {

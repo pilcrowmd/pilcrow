@@ -18,6 +18,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.pilcrowmd.domain.markdown.Footnotes
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import com.pilcrowmd.ui.theme.DarkColorScheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.spans.CodeSpan

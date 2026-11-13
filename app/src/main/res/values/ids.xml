@@ -54,4 +54,9 @@
       RecyclerView, so the link span reaches the screen without a global callback.
     -->
     <item name="note_link_handler" type="id" />
+    <!--
+      M-76: what a tap on a footnote marker does (open the note in a sheet), on the reader's
+      RecyclerView, so the span in a block's text reaches the screen without a global callback.
+    -->
+    <item name="footnote_tap_handler" type="id" />
 </resources>

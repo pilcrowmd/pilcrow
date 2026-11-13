@@ -36,7 +36,8 @@ import com.pilcrowmd.ui.theme.mdColors
  * Search bar for in-document search.
  *
  * Layout: text field (left) → match count display → prev/next navigation arrows → close button (right).
- * Match count shows as "(current+1) / total" (human-readable, 1-indexed display).
+ * Match count shows as "(current+1) / total" (human-readable, 1-indexed display); with
+ * [matchCountCapped] (the search stopped at its cap, S8-A94) the total reads "10,000+".
  * Prev/next buttons disabled when no matches.
  * All colors from design tokens (no hardcoded hex).
  *
@@ -51,6 +52,7 @@ fun SearchBar(
     query: String = "",
     onQueryChange: (String) -> Unit = {},
     matchCount: Int = 0,
+    matchCountCapped: Boolean = false,
     currentIndex: Int = 0,
     onPrevious: () -> Unit = {},
     onNext: () -> Unit = {},
@@ -118,10 +120,11 @@ fun SearchBar(
 
         // Match count (center-right)
         Text(
-            text = if (matchCount > 0) {
-                stringResource(R.string.search_match_count, currentIndex + 1, matchCount)
-            } else {
-                stringResource(R.string.search_match_count_none)
+            text = when {
+                matchCount > 0 && matchCountCapped ->
+                    stringResource(R.string.search_match_count_capped, currentIndex + 1, matchCount)
+                matchCount > 0 -> stringResource(R.string.search_match_count, currentIndex + 1, matchCount)
+                else -> stringResource(R.string.search_match_count_none)
             },
             color = c.secondaryText,
             fontSize = 14.sp,

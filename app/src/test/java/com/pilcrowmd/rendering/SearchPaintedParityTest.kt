@@ -14,6 +14,7 @@ import com.pilcrowmd.domain.markdown.AdapterBlocks
 import com.pilcrowmd.domain.markdown.ReaderWords
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import io.noties.markwon.Markwon
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.node.Node

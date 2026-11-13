@@ -215,6 +215,15 @@ class ParseParityTest {
         MarkdownSampleProvider().values.forEach { assertParity(it.name, it.markdown, emoji) }
     }
 
+    /** S8-A88: `==marked==` is inline, so it must never change the block sequence. */
+    @Test
+    fun highlightsStayInBlockParity() {
+        assertParity("heading", "# Plan ==now==\n\nbody ==x==", markwon)
+        assertParity("table cell", "| ==a== | b |\n|---|---|\n| c | ==d== |\n\nafter", markwon)
+        assertParity("list and quote", "- ==a==\n- b\n\n> ==q== r\n", markwon)
+        assertParity("setext lookalike", "a\n===\n\n==b==\n=====\n", markwon)
+    }
+
     @Test
     fun admonitionsParseToTheSameBlockSequence() {
         // M-251: the admonition block parser is registered on BOTH parsers (CalloutPlugin and the

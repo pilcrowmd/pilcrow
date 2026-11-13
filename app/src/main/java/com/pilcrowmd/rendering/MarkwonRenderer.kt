@@ -20,6 +20,7 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.RenderProps
 import io.noties.markwon.core.CorePlugin
+import io.noties.markwon.ext.latex.JLatexMathBlock
 import io.noties.markwon.ext.latex.JLatexMathNode
 import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -79,6 +80,9 @@ class MarkwonRenderer(
     /** M-93: the note on screen, which relative image paths are read against. Set by the reader. */
     val imageBase = ImageBase()
 
+    /** S8-A89: which pictures the PDF export can print; set by the exporter. Shared by the export's instances. */
+    internal val printPictures = PrintPictures()
+
     // Lazy singleton: configure once, reuse for all renders.
     // The plugin chain is built by [buildPilcrowMarkwon] so a test can construct an identical,
     // pre-warm-free instance. Markwon's InlineProcessors are stateful and shared by every parse on an
@@ -120,22 +124,41 @@ class MarkwonRenderer(
 
     // The PDF export's instance: code in Light's code colours, whatever the app theme (M-178; see
     // [buildPrintMarkwon]). Built lazily, on the first export.
-    val printMarkwon: Markwon by lazy { buildPrintMarkwon(context, emoji = emoji, words = words) }
+    val printMarkwon: Markwon by lazy {
+        buildPrintMarkwon(context, emoji = emoji, words = words, pictures = printPictures)
+    }
 
     // M-121: the export's instance for the last non-default reading size. One is enough: an export
     // runs at one size, and the next export at that size reuses it.
     private var scaledPrint: Pair<Float, Markwon>? = null
+
+    // The export's instance for the last "Match app theme" colours and size; one is enough, as above.
+    private var themedPrint: Pair<Pair<PilcrowColorScheme, Float>, Markwon>? = null
 
     /**
      * The export's instance with its maths sized for [fontScale]. The plugin starts its own render of
      * each formula when a block is bound, and it can land after the export's synchronous one, so its
      * size must be the reading size too, or which of the two wins would decide the size in the PDF.
      */
-    fun printMarkwonFor(fontScale: Float): Markwon {
+    fun printMarkwonFor(fontScale: Float, codeColors: PilcrowColorScheme = PrintCodeColorScheme): Markwon {
+        if (codeColors !== PrintCodeColorScheme) {
+            val key = codeColors to fontScale
+            return synchronized(this) {
+                themedPrint?.takeIf { it.first == key }?.second
+                    ?: buildPrintMarkwon(context, fontScale, emoji, words, codeColors, printPictures)
+                        .also { themedPrint = key to it }
+            }
+        }
         if (fontScale == 1f) return printMarkwon
         return synchronized(this) {
             scaledPrint?.takeIf { it.first == fontScale }?.second
-                ?: buildPrintMarkwon(context, mathScale = fontScale, emoji = emoji, words = words)
+                ?: buildPrintMarkwon(
+                    context,
+                    mathScale = fontScale,
+                    emoji = emoji,
+                    words = words,
+                    pictures = printPictures,
+                )
                     .also { scaledPrint = fontScale to it }
         }
     }
@@ -269,21 +292,36 @@ class MarkwonRenderer(
  * colour comes from the export itself. Its level-1 and level-2 heading rules end at the text's edge
  * (M-191, [PrintHeadingRulePlugin]).
  */
+@Suppress("LongParameterList") // One per way the export differs: maths size, emoji, words, colours, pictures.
 internal fun buildPrintMarkwon(
     context: Context,
     mathScale: Float = 1f,
     emoji: EmojiShortcodes = EmojiShortcodes.NONE,
     // Production passes the container's words (MarkwonRenderer); English is for tests.
     words: ReaderWords = ReaderWords.ENGLISH,
+    // "Match app theme" passes the theme here. Its maths must then not be left to the library's default
+    // black, since the plugin's own render can land after the export's and would vanish on a dark page.
+    codeColors: PilcrowColorScheme = PrintCodeColorScheme,
+    // S8-A89: the export's pictures. Null (the default) prints every image as its alt text.
+    pictures: PrintPictures? = null,
 ): Markwon = buildPilcrowMarkwon(
     context,
-    PrintCodeColorScheme,
+    codeColors,
     AliasGrammarLocator(),
     mathScale,
     layoutWidthHeadingRule = true,
     emoji = emoji,
     words = words,
+    mathTextColor = codeColors.primaryText.toArgb().takeIf { codeColors !== PrintCodeColorScheme },
+    forPrint = true,
+    printPictures = pictures,
 )
+
+/**
+ * Whether [node] of the reader's tree ([MarkwonRenderer.parseForReader]) is a formula, inline or display,
+ * which the reader draws as a picture: search counts no text in it (S8-A94, it walks this tree).
+ */
+fun isReaderFormula(node: Node): Boolean = node is JLatexMathNode || node is JLatexMathBlock
 
 /**
  * Task-list boxes (M-219): fill and outline from [PilcrowColorScheme.link], tick in the page colour.
@@ -293,7 +331,8 @@ private fun taskListPlugin(colorScheme: PilcrowColorScheme): TaskListPlugin {
     return TaskListPlugin.create(link, link, colorScheme.primaryBackground.toArgb())
 }
 
-@Suppress("LongParameterList") // One per way the instances differ: theme, grammars, maths size, images, print.
+// One parameter per way the instances differ: theme, grammars, maths size, images, print.
+@Suppress("LongParameterList", "LongMethod")
 internal fun buildPilcrowMarkwon(
     context: Context,
     colorScheme: PilcrowColorScheme = DarkColorScheme,
@@ -309,6 +348,12 @@ internal fun buildPilcrowMarkwon(
     emoji: EmojiShortcodes = EmojiShortcodes.NONE,
     // Production passes the container's words (MarkwonRenderer); English is for tests.
     words: ReaderWords = ReaderWords.ENGLISH,
+    // The maths colour for the plugin's own render; null keeps the library's default.
+    mathTextColor: Int? = null,
+    // M-76: the PDF keeps superscript footnote markers; the reader draws them boxed.
+    forPrint: Boolean = false,
+    // S8-A89: set for the PDF only; images it can print become picture spans.
+    printPictures: PrintPictures? = null,
 ): Markwon {
     // Prism4j over the kapt-generated grammars, plus the diff/patch aliases unless told otherwise
     val prism4j = Prism4j(grammarLocator)
@@ -344,7 +389,7 @@ internal fun buildPilcrowMarkwon(
         .usePlugin(FrontmatterPlugin())
         // Footnote definitions: `[^label]: body` becomes a container block instead of a stray
         // paragraph (or, for a single-token body, a bogus link reference definition).
-        .usePlugin(FootnotePlugin())
+        .usePlugin(FootnotePlugin(forPrint, context.resources.displayMetrics.density))
         // M-161: GitHub alerts (`> [!NOTE]`), already turned into CalloutBlocks by ReaderDocument;
         // M-251: also registers the `!!!`/`:::` admonition block parser, which builds them directly.
         .usePlugin(CalloutPlugin(words))
@@ -371,6 +416,8 @@ internal fun buildPilcrowMarkwon(
         )
         // M-247: `:shortcode:` → emoji, a processor on `:` hooked into the inline parser above.
         .usePlugin(EmojiShortcodePlugin(emoji))
+        // S8-A88: `==marked==`, a delimiter processor on the same inline parser.
+        .usePlugin(HighlightPlugin(colorScheme))
 
     // LaTeX math rendering via JLatexMath
     // Async executor prevents main-thread ANR; error handler provides graceful fallback
@@ -388,6 +435,7 @@ internal fun buildPilcrowMarkwon(
         // the plugin's one-line placeholder, which runs off the screen.
         val mathPlugin =
             JLatexMathPlugin.create(baseFontSizePx) { jlatexBuilder ->
+                mathTextColor?.let { jlatexBuilder.theme().textColor(it) }
                 jlatexBuilder
                     .inlinesEnabled(true) // render `$$…$$` inline within a paragraph
                     .blocksEnabled(true) // Enable block $$…$$ (rendered via inline or LatexBlockEntry)
@@ -419,6 +467,7 @@ internal fun buildPilcrowMarkwon(
         .usePlugin(CodeSurfacePlugin(colorScheme))
         // S8-A48: bold in the scheme's strong-text colour (Dark and AMOLED only; Light and the PDF add nothing).
         .usePlugin(StrongTextColourPlugin(colorScheme))
+        .apply { if (printPictures != null) usePlugin(PrintPicturePlugin(printPictures)) }
         // Limited HTML (<br>, <sub>, <sup> and the like). `<details>` is NOT handled here: this plugin
         // would only strip its tags. The reader draws it as a collapsible section (M-161, DetailsState).
         .usePlugin(htmlPlugin())

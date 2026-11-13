@@ -140,6 +140,10 @@ class LocalNotesFolderRepository(
         tree.documentStats(documentUri)
     }
 
+    override suspend fun noteAnswer(documentUri: Uri): StatsAnswer = withContext(ioDispatcher) {
+        tree.documentAnswer(documentUri)
+    }
+
     // Provider failures arrive as several exception types; any of them means "could not be read".
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private fun childSource(treeUri: Uri) = ChildSource { folderId ->

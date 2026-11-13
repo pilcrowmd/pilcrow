@@ -62,6 +62,13 @@
         "foreground": "#8B7D6B",
         "fontStyle": "italic"
       }
+    },
+    {
+      "scope": ["markup.highlight", "markup.highlight.markdown"],
+      "settings": {
+        "foreground": "#8A5A00",
+        "background": "#F4DE72"
+      }
     }
   ]
 }

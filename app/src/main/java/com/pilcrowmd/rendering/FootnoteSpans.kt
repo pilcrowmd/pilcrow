@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.rendering
 
+import android.graphics.RectF
 import android.text.Layout
 import android.text.Spannable
 import android.text.Spanned
@@ -16,6 +17,8 @@ import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.recyclerview.widget.RecyclerView
 import com.pilcrowmd.R
+import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * The spans a footnote is made of on screen — the marker in prose and the definition's
@@ -39,23 +42,30 @@ const val FOOTNOTE_MARKER_SCALE: Float = 0.75f
 const val SEARCH_EXCLUDED_TAG: String = "search-excluded"
 
 /**
- * Scrolls the reader to [targetBlockIndex] — a top-level block index, which IS the RecyclerView
- * position (see `FootnoteDefinitionBlock`). Used both ways round: forward from a marker to its
- * definition, back from a definition to its first reference.
+ * The tappable part of a footnote marker. A tap opens the note in a sheet over the page (M-76); the
+ * reader itself never moves.
  *
- * It resolves the RecyclerView from the clicked TextView rather than taking a callback, because the
- * marker is emitted by the shared singleton Markwon visitor — a callback there would have to be
- * mutable process-wide state, and the PDF export uses the SAME Markwon instance, so it would point at a
- * reader that may not even be on screen. Walking up from the widget asks the only question that
- * matters at click time: which list am I in? In the PDF export there is no RecyclerView ancestor and
- * nothing is ever clicked, so this is inert there — which is the correct behaviour for print.
+ * The tap goes to the handler the reader put on its RecyclerView ([setFootnoteTapHandler]), with the
+ * definition's top-level block index. It does not take a callback directly, because the marker is
+ * emitted by the shared Markwon visitor, which the PDF export uses too: a callback there would have to
+ * be mutable process-wide state pointing at a reader that may not be on screen. Walking up from the
+ * widget asks the only question that matters at click time: which reader am I in? With no handler
+ * above it (the PDF export, a bare TextView) the tap does nothing, which is what Safeguard 3 asks of
+ * an interaction.
  *
- * The underline is suppressed (and the colour left to the caller's token) so the marker reads as a
- * typographic superscript rather than a hyperlink.
+ * The underline is suppressed (and the colour left to the caller's token) so the marker does not read
+ * as a hyperlink.
  */
-class FootnoteJumpSpan(private val targetBlockIndex: Int) : ClickableSpan() {
+class FootnoteJumpSpan(private val definitionBlockIndex: Int) : ClickableSpan() {
 
-    override fun onClick(widget: View) = widget.jumpToBlock(targetBlockIndex)
+    override fun onClick(widget: View) {
+        var view: View? = widget
+        while (view != null) {
+            @Suppress("UNCHECKED_CAST")
+            (view.getTag(R.id.footnote_tap_handler) as? (Int) -> Unit)?.let { return it(definitionBlockIndex) }
+            view = view.parent as? View
+        }
+    }
 
     override fun updateDrawState(ds: TextPaint) {
         // Deliberately NOT calling super: ClickableSpan's default paints link-blue and underlines,
@@ -64,10 +74,15 @@ class FootnoteJumpSpan(private val targetBlockIndex: Int) : ClickableSpan() {
     }
 }
 
+/** Where the reader's footnote taps go, with the definition's block index (M-76). Set on its RecyclerView. */
+fun View.setFootnoteTapHandler(handler: (definitionBlockIndex: Int) -> Unit) {
+    setTag(R.id.footnote_tap_handler, handler)
+}
+
 /**
  * Scroll the list this view belongs to so [targetBlockIndex] sits at the top of the viewport — the
- * same [smoothJumpTo] the TOC jump makes. Shared by the marker's span and the definition's back-link button,
- * so both directions of the jump are one behaviour.
+ * same call the TOC jump makes. Used by the definition's back-link button and by `#heading` links;
+ * the marker itself opens a sheet instead (M-76).
  *
  * Silently does nothing when there is no target and when there is no list (the PDF export renders
  * these same views off-screen), which is what Safeguard 3 asks of an interaction.
@@ -86,13 +101,11 @@ fun View.jumpToBlock(targetBlockIndex: Int) {
 }
 
 /**
- * How far either side of a footnote marker a tap still counts, in dp. The marker paints at
- * [FOOTNOTE_MARKER_SCALE] of body size — about 20 px wide on a phone, which measured two misses in
- * three during UAT. Widening the PAINTED marker was rejected: the ordinal's size is load-bearing
- * (search models the marker as exactly those digits) and a bigger glyph would change every footnote
- * golden. So the hit area grows and the pixels do not.
+ * Half the side of the square around a marker that still counts as a tap on it, in dp: 48 dp, a
+ * thumb (M-76). Vertical as well as horizontal, so a tap on the line above or below still finds it.
+ * The painted marker is about 20 px wide on a phone, which missed two taps in three during UAT.
  */
-private const val FOOTNOTE_TAP_SLOP_DP = 12f
+private const val FOOTNOTE_TAP_REACH_DP = 24f
 
 /**
  * Let a tap NEAR a footnote marker count as a tap ON it.
@@ -103,7 +116,7 @@ private const val FOOTNOTE_TAP_SLOP_DP = 12f
  * taps unpredictable, which is a worse bug than the one being fixed.
  */
 fun TextView.enableGenerousFootnoteTaps() {
-    val slopPx = FOOTNOTE_TAP_SLOP_DP * resources.displayMetrics.density
+    val reachPx = FOOTNOTE_TAP_REACH_DP * resources.displayMetrics.density
     setOnTouchListener { view, event ->
         if (event.action != MotionEvent.ACTION_UP) return@setOnTouchListener false
         val textView = view as? TextView ?: return@setOnTouchListener false
@@ -115,15 +128,15 @@ fun TextView.enableGenerousFootnoteTaps() {
         val y = event.y - textView.totalPaddingTop + textView.scrollY
         val layout = textView.layout ?: return@setOnTouchListener false
         val line = layout.getLineForVertical(y.toInt())
-        // ANY exact hit wins, not just a footnote's. A regular link sitting within the slop of a
+        // ANY exact hit wins, not just a footnote's. A regular link sitting within reach of a
         // marker would otherwise be swallowed: the footnote check alone would miss it, the widened
         // search would then find the neighbouring marker, and the link the reader actually tapped
-        // would never fire. Raised in review; the slop exists to rescue a MISS, never to overrule a
+        // would never fire. Raised in review; the reach exists to rescue a MISS, never to overrule a
         // hit.
         if (spanned.clickableSpanAt(layout, line, x) != null) return@setOnTouchListener false
-        val nearby = spanned.footnoteSpanNear(layout, line, x, slopPx) ?: return@setOnTouchListener false
+        val nearby = spanned.footnoteSpanNear(layout, x, y, reachPx) ?: return@setOnTouchListener false
         // Consuming the UP keeps it from the TextView, which would have cancelled the long-press it
-        // armed on DOWN; left armed, it selects a word in this block half a second after the jump.
+        // armed on DOWN; left armed, it selects a word in this block half a second after the tap.
         textView.cancelLongPress()
         nearby.onClick(textView)
         true
@@ -136,34 +149,58 @@ private fun Spanned.clickableSpanAt(layout: Layout, line: Int, x: Float): Clicka
     val lineEnd = layout.getLineEnd(line)
     if (lineStart >= lineEnd) return null
     return getSpans(lineStart, lineEnd, ClickableSpan::class.java).firstOrNull { span ->
-        val left = layout.getPrimaryHorizontal(getSpanStart(span).coerceIn(lineStart, lineEnd))
-        val right = layout.getPrimaryHorizontal(getSpanEnd(span).coerceIn(lineStart, lineEnd))
-        x >= minOf(left, right) && x <= maxOf(left, right)
+        val (left, right) = horizontalExtentOn(layout, line, getSpanStart(span), getSpanEnd(span))
+        x >= left && x <= right
     }
 }
 
 /**
- * The [FootnoteJumpSpan] on [line] whose painted extent comes within [slopPx] of [x], or null.
+ * The horizontal extent of [start, end) on [line], in layout coordinates. A span that runs past the
+ * line (a wrapping link) ends at the line's right edge: its end offset belongs to a LATER line, and
+ * measuring it there would place the right edge at that line's start, so the span would seem to run
+ * from the left margin to its own first word.
+ */
+private fun horizontalExtentOn(layout: Layout, line: Int, start: Int, end: Int): Pair<Float, Float> {
+    val left = layout.getPrimaryHorizontal(start.coerceAtLeast(layout.getLineStart(line)))
+    val right = if (layout.getLineForOffset(end) == line) {
+        layout.getPrimaryHorizontal(end)
+    } else {
+        layout.getLineRight(line)
+    }
+    return minOf(left, right) to maxOf(left, right)
+}
+
+/**
+ * Where [span]'s marker is painted, in layout coordinates: its horizontal extent on its line, and the
+ * line's height. A marker never breaks across lines in the reader (a replacement span is one unit).
+ */
+internal fun Spanned.footnoteMarkerBounds(layout: Layout, span: FootnoteJumpSpan): RectF {
+    val start = getSpanStart(span)
+    val line = layout.getLineForOffset(start)
+    val (left, right) = horizontalExtentOn(layout, line, start, getSpanEnd(span))
+    return RectF(left, layout.getLineTop(line).toFloat(), right, layout.getLineBottom(line).toFloat())
+}
+
+/**
+ * The [FootnoteJumpSpan] whose marker is nearest ([x], [y]), among those within a square of side
+ * `2 * reachPx` centred on the marker (or the marker itself, if that is bigger), or null.
  *
  * Measures the distance to each MARKER rather than converting the tap into a character offset and
  * looking there. Two earlier versions did the latter and both were wrong in ways only a test found:
- * probing the two points `x ± slopPx` misses a marker lying between them, and clamping the tap into
+ * probing the two points `x ± slop` misses a marker lying between them, and clamping the tap into
  * the line's horizontal bounds depends on `getLineLeft`/`getLineRight`, which are not dependable.
- * Asking "is the tap within slop of this marker" is the requirement stated directly, and a line
- * holds at most a handful of markers.
- *
- * With `slopPx = 0` this is the plain "is the tap ON the marker" question.
+ * Asking "is the tap within reach of this marker" is the requirement stated directly, and a
+ * paragraph holds at most a handful of markers.
  */
-private fun Spanned.footnoteSpanNear(layout: Layout, line: Int, x: Float, slopPx: Float): FootnoteJumpSpan? {
-    val lineStart = layout.getLineStart(line)
-    val lineEnd = layout.getLineEnd(line)
-    if (lineStart >= lineEnd) return null
-    return getSpans(lineStart, lineEnd, FootnoteJumpSpan::class.java).firstOrNull { span ->
-        val left = layout.getPrimaryHorizontal(getSpanStart(span).coerceIn(lineStart, lineEnd))
-        val right = layout.getPrimaryHorizontal(getSpanEnd(span).coerceIn(lineStart, lineEnd))
-        x >= minOf(left, right) - slopPx && x <= maxOf(left, right) + slopPx
-    }
-}
+private fun Spanned.footnoteSpanNear(layout: Layout, x: Float, y: Float, reachPx: Float): FootnoteJumpSpan? =
+    getSpans(0, length, FootnoteJumpSpan::class.java)
+        .map { span -> span to footnoteMarkerBounds(layout, span) }
+        .filter { (_, bounds) ->
+            abs(x - bounds.centerX()) <= maxOf(reachPx, bounds.width() / 2) &&
+                abs(y - bounds.centerY()) <= maxOf(reachPx, bounds.height() / 2)
+        }
+        .minByOrNull { (_, bounds) -> hypot(x - bounds.centerX(), y - bounds.centerY()) }
+        ?.first
 
 /** Nearest enclosing RecyclerView, or null when this view is not inside one (e.g. PDF export). */
 internal fun View.findRecyclerViewAncestor(): RecyclerView? {

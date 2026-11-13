@@ -8,7 +8,11 @@ import android.net.Uri
 import android.os.Looper
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
+import com.pilcrowmd.domain.markdown.ReaderModel
+import com.pilcrowmd.domain.model.RenderMode
 import com.pilcrowmd.domain.usecase.CountRelativeImagesUseCase
+import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
+import com.pilcrowmd.domain.usecase.PrepareReaderModelUseCase
 import com.pilcrowmd.repository.FolderAccessRepository
 import com.pilcrowmd.repository.ImageLookup
 import com.pilcrowmd.repository.NoteFolder
@@ -34,6 +38,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -126,6 +131,25 @@ class ImageFolderViewModelTest {
     /** Barrier: the ViewModel has looked at the note against exactly these grants. */
     private fun ImageFolderViewModel.awaitLookedAt(grants: List<Uri> = folders.grants.toList()) =
         awaitValue(grants.joinToString("|"), "note looked at") { state.value.accessKey }
+
+    @Test
+    @Suppress("ExplicitGarbageCollectionCall") // the property is that the model CAN be collected
+    fun `the reader model is let go once its pictures are counted`() {
+        // Holding it would keep the reader's whole tree alive while the editor is open (M-154, S8-A94).
+        val vm = vm()
+        var model: ReaderModel? = modelOf(twoPictures)
+        val held = WeakReference(model)
+        vm.onDocumentShown(noteA, model)
+        model = null
+
+        awaitValue(ImageFolderBanner.AskForFolder(2), "banner") { vm.state.value.banner }
+        val deadline = System.currentTimeMillis() + 5_000L
+        while (held.get() != null && System.currentTimeMillis() < deadline) {
+            System.gc()
+            Thread.sleep(20L)
+        }
+        assertNull("the ViewModel still holds the reader model", held.get())
+    }
 
     @Test
     fun `pictures next to the note and no grant show the banner, once per folder`() {
@@ -342,3 +366,12 @@ class ImageFolderViewModelTest {
         const val DOWNLOAD = "docs|primary:Download"
     }
 }
+
+private val parse = ParseMarkdownHeadingsUseCase()
+
+/** The reader model of [content], prepared as the ViewModel tests wire it. */
+private fun modelOf(content: String): ReaderModel =
+    PrepareReaderModelUseCase(parse::parseTree, parse).prepare(content, RenderMode.MARKDOWN)
+
+/** The note [uri] shown with [content]'s reader model. */
+private fun ImageFolderViewModel.onDocumentShown(uri: Uri?, content: String) = onDocumentShown(uri, modelOf(content))

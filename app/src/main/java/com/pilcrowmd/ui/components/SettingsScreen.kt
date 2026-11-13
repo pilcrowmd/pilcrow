@@ -84,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pilcrowmd.R
+import com.pilcrowmd.domain.model.PdfColors
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.FontSets
@@ -119,6 +120,8 @@ fun SettingsScreen(
     onFullScreenReadingChanged: (Boolean) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.DARK,
     onThemeSelected: (ThemeMode) -> Unit = {},
+    pdfColors: PdfColors = PdfColors.LIGHT_FOR_PRINTING,
+    onPdfColorsSelected: (PdfColors) -> Unit = {},
     appLanguage: AppLanguage = AppLanguage.SYSTEM,
     onAppLanguageSelected: (AppLanguage) -> Unit = {},
     appVersion: String = "",
@@ -193,6 +196,11 @@ fun SettingsScreen(
         CardGap()
         SettingsCard {
             LanguageRow(appLanguage = appLanguage, onAppLanguageSelected = onAppLanguageSelected)
+        }
+
+        CardGap()
+        SettingsCard {
+            PdfColorsRow(pdfColors = pdfColors, onPdfColorsSelected = onPdfColorsSelected)
         }
 
         CardGap()
@@ -540,6 +548,30 @@ private fun LanguageRow(appLanguage: AppLanguage, onAppLanguageSelected: (AppLan
         LanguageDialog(
             selected = appLanguage,
             onSelected = onAppLanguageSelected,
+            onDismiss = { dialogOpen = false },
+        )
+    }
+}
+
+/** The PDF colors card: the current choice, and a dialog to change it. Default light (S8-A82). */
+@Composable
+private fun PdfColorsRow(pdfColors: PdfColors, onPdfColorsSelected: (PdfColors) -> Unit) {
+    val c = mdColors()
+    var dialogOpen by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button) { dialogOpen = true },
+        verticalArrangement = Arrangement.Center,
+    ) {
+        CardTitle(stringResource(R.string.settings_pdf_colors))
+        Text(text = stringResource(pdfColors.labelRes()), color = c.secondaryText, fontSize = 12.sp)
+    }
+    if (dialogOpen) {
+        PdfColorsDialog(
+            selected = pdfColors,
+            onSelected = onPdfColorsSelected,
             onDismiss = { dialogOpen = false },
         )
     }

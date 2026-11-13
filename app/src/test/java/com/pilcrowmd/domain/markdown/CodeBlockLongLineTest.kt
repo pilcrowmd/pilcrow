@@ -5,6 +5,7 @@ package com.pilcrowmd.domain.markdown
 
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import org.commonmark.node.Document
 import org.commonmark.node.FencedCodeBlock
 import org.commonmark.node.Node

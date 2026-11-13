@@ -21,6 +21,11 @@
     <string name="main_banner_changed_edits">Questo file è appena stato modificato fuori da PilcrowMD.</string>
     <string name="main_action_reload">Ricarica</string>
     <string name="main_action_keep_mine">Mantieni le mie modifiche</string>
+    <string name="main_notice_updated">Aggiornato da un\'altra app.</string>
+    <string name="main_notice_deleted">Questo file è stato eliminato da un\'altra app.</string>
+    <string name="main_dialog_overwrite_title">Sovrascrivere l\'altra versione?</string>
+    <string name="main_dialog_overwrite_text">Un\'altra app ha modificato questo file. Sovrascrivi sostituisce quella versione con la tua.</string>
+    <string name="main_action_overwrite">Sovrascrivi</string>
     <string name="main_dialog_edit_title">Modificare questo file?</string>
     <string name="main_dialog_edit_text">L\'app che ha inviato questo file consente a PilcrowMD di aprirlo in sola lettura.</string>
     <string name="main_action_allow_editing">Consenti modifica</string>
@@ -143,6 +148,8 @@
     <string name="search_placeholder">Cerca</string>
     <string name="search_match_count">%1$d/%2$d</string>
     <string name="search_match_count_none">0/0</string>
+    <string name="search_match_count_capped">%1$d/%2$,d+</string>
+    <string name="search_out_of_memory">Memoria insufficiente per cercare in questo documento.</string>
     <string name="search_previous_match_description">Risultato precedente</string>
     <string name="search_next_match_description">Risultato successivo</string>
     <string name="search_close_description">Chiudi ricerca</string>
@@ -183,6 +190,9 @@
     <string name="settings_language">Lingua</string>
     <string name="settings_language_system">Predefinita di sistema</string>
     <string name="settings_language_cancel">Annulla</string>
+    <string name="settings_pdf_colors">Colori del PDF</string>
+    <string name="settings_pdf_colors_light">Chiaro per la stampa</string>
+    <string name="settings_pdf_colors_theme">Usa il tema dell\'app</string>
     <string name="settings_email_us">Scrivici</string>
     <string name="settings_email_us_summary">Dicci cosa realizzare</string>
     <string name="settings_report_issue">Segnala un problema su GitHub</string>
@@ -308,4 +318,6 @@
     <string name="welcome_browse_folders">Le mie cartelle</string>
     <string name="note_link_cannot_open">Impossibile aprire questo file</string>
     <string name="note_link_not_found">Nota non trovata: %1$s</string>
+    <string name="footnote_marker">Nota a piè di pagina %1$s</string>
+    <string name="footnote_sheet_close">Chiudi</string>
 </resources>

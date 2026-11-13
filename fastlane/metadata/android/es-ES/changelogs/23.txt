@@ -1,0 +1,7 @@
+- Recarga automática: si otra app cambia el archivo, se recarga solo; con cambios sin guardar, pregunta antes.
+- Las imágenes ya salen en la exportación a PDF.
+- ==Texto resaltado== en la lectura y en el PDF.
+- Nueva opción Colores del PDF: Modo claro al imprimir (predeterminado) o Usar el tema de la app.
+- Las notas al pie se abren en un panel, con números más grandes.
+- Abrir y Guardar empiezan en la última carpeta usada.
+- La búsqueda en archivos grandes ya no se queda sin memoria.

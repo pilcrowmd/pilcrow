@@ -7,7 +7,8 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 
 - **Long reading.** Scroll through Part A. Lines should be comfortable to read, with even spacing
   and no jumps while you scroll. Try **Settings → Reading & code font** and **Reading text size**.
-- **Footnotes.** Tap a raised number to jump to its note, and the arrow to jump back.
+- **Footnotes.** Tap a boxed number: its note opens in a sheet over the page, and the page stays
+  where it was.
 - **Callouts.** Five coloured boxes, each with its own icon and title.
 - **Collapsible sections.** They start closed (unless marked `open`) and open with a tap.
 - **Headings drawer.** It lists every chapter; tapping one jumps there.
@@ -16,14 +17,14 @@ tables, collapsible sections, links and quotes. The story is made up for this pa
 - **Edit and save.** Switch to Edit, change a word, save, and reopen: the file must come back
   exactly as you left it, with nothing reflowed or reformatted.
 
-**Known gaps in version 1.1.3** – we know about these, no need to report them:
+**Known gaps in version 1.1.4** – we know about these, no need to report them:
 
 - A picture in a table cell is dropped.
 - A link to another note (`./notes.md`) opens only when the note you are reading is inside a folder
   you added. Otherwise it does nothing, with no message.
 - A callout inside a list shows as a plain quote with the marker visible.
 - A callout marked as folded (`> [!TIP]-`) is always shown open.
-- `==highlight==`, `~subscript~` and `^superscript^` show as typed.
+- `~subscript~` and `^superscript^` show as typed.
 - Emoji codes like `:smile:` stay as text in the Contents list, and on phones too old to draw that
   emoji.
 - Definition lists (a term, then a line starting with `:`) are not styled.

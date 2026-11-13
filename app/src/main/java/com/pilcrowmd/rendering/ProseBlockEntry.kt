@@ -135,9 +135,12 @@ class ProseBlockEntry(
                 if (callout != null) CalloutStyle.decorateTitles(context, rendered, colorScheme, fontScale)
                 markwon.setParsedMarkdown(holder.textView, rendered)
             }
-            // A footnote marker paints at 0.75 of body size — about 20 px, which missed two taps
-            // in three during UAT. This widens the HIT AREA only; the glyph is untouched (M-06).
+            // A footnote marker is a small target: the old superscript missed two taps in three during
+            // UAT. The boxed marker is bigger, and this widens the HIT AREA further, to a thumb
+            // (M-06, M-76).
             holder.textView.enableGenerousFootnoteTaps()
+            // TalkBack: one node per marker in the text just set (M-76).
+            holder.footnoteAccessibility.invalidateRoot()
             // Prose blocks are a single TextView, so occurrenceBase is 0.
             SearchHighlighter.highlight(
                 holder.textView,
@@ -238,6 +241,9 @@ class ProseBlockEntry(
     class Holder(val textView: TextView) : MarkwonAdapter.Holder(textView) {
         /** The layout's side padding (adapter_default_prose.xml), which a callout's box replaces. */
         val pageMargin: Int = textView.paddingStart
+
+        /** M-76: each footnote marker in this block as its own "Footnote N, button" for TalkBack. */
+        val footnoteAccessibility: FootnoteMarkerAccessibility = FootnoteMarkerAccessibility.install(textView)
     }
 
     internal companion object {

@@ -39,17 +39,24 @@ import androidx.recyclerview.widget.RecyclerView
 fun TextView.enableBlockSelection() {
     setTextIsSelectable(true)
     movementMethod = ReaderMovementMethod
-    ViewCompat.setAccessibilityDelegate(this, NoClickWithoutListener)
+    // A prose block already has FootnoteMarkerAccessibility, which applies the same rule; replacing it
+    // here would silently take away every marker's TalkBack button (M-76).
+    if (!ViewCompat.hasAccessibilityDelegate(this)) ViewCompat.setAccessibilityDelegate(this, NoClickWithoutListener)
+}
+
+/** Drops the click action a selectable block would announce, unless [host] really has a click. */
+internal fun AccessibilityNodeInfoCompat.dropClickWithoutListener(host: View) {
+    if (!host.hasOnClickListeners()) {
+        removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+        isClickable = false
+    }
 }
 
 /** Hides the click action a selectable block would otherwise announce, unless the view has a click. */
 private object NoClickWithoutListener : AccessibilityDelegateCompat() {
     override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
         super.onInitializeAccessibilityNodeInfo(host, info)
-        if (!host.hasOnClickListeners()) {
-            info.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
-            info.isClickable = false
-        }
+        info.dropClickWithoutListener(host)
     }
 }
 

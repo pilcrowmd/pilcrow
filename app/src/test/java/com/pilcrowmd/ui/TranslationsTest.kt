@@ -125,6 +125,7 @@ class TranslationsTest {
             "app_name" to setOf(ALL), "settings_theme_amoled" to setOf(ALL),
             "settings_credit_fonts" to setOf(ALL), "settings_about_version" to setOf(ALL),
             "search_match_count" to setOf(ALL), "search_match_count_none" to setOf(ALL),
+            "search_match_count_capped" to setOf(ALL),
             "main_pane_title" to setOf(ALL), "editor_accessibility_name_with_file" to setOf(ALL),
             "preview_scroll_percent" to setOf(ALL), "settings_percent" to setOf(ALL),
             "licenses_version_and_license" to setOf(ALL), "files_mark_new_letter" to setOf(ALL),

@@ -7,6 +7,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-13
+
+### Added
+
+- **Live reload of the open file.** While a file is on screen, the app checks every 5 seconds, and when you come back to it, whether another app changed it, with no time limit; nothing runs in the background. With no unsaved edits the new version opens by itself at the same reading position, with a small "Updated by another app" notice. With unsaved edits nothing is replaced: the banner offers Reload or Keep mine, and any Save asks whether to save a copy or overwrite the other version. A file deleted by another app shows a notice and its text stays on screen; a cloud app that is offline is not taken for a delete. Any file whose app reports a date or a size is checked, not only folder notes. Cloud folders show a change only once their app tells Android.
+- **Pictures in PDF export.** Pictures your note can show now print in the PDF: embedded `data:` images, `content://` pictures and relative paths in a folder you have given access to. They print at their natural size, never larger than the text column, centred when alone in a paragraph, and a very tall one is shrunk to fit one page instead of being cut. Colours are untouched in both PDF colour options. A picture that cannot print (a web address, no folder access, broken, or over 50 MB) prints its alt text as before, and the export never asks for anything or uses the network.
+- **Highlighted text.** `==text==` now shows the text on a soft highlight colour with the markers hidden, in the reader and in PDF export. The editor still shows the markers, coloured. `a == b` with spaces stays plain, and your file is saved exactly as you wrote it.
+- **PDF colors setting.** Settings, PDF colors: **Light for printing** (the default, the same PDF as before) or **Match app theme**, which gives the PDF the colours of the theme you read in.
+
+### Changed
+
+- **Search in large documents no longer runs out of memory.** Search now uses the document the reader has already prepared instead of reading it a second time, and stops at 10,000 matches, shown as "10,000+". In a task list, search no longer matches the hidden `[ ]` and `[x]` marks.
+- **Spanish wording improved, thanks to a volunteer.** 24 texts read more naturally, including Limpiar for clearing the Recent list.
+- **Footnotes open in a sheet.** A tap on a footnote number shows the note over the page instead of jumping to the end, and the numbers are bigger and easier to tap.
+- **Open and Save start in the last folder used.** Open file, Browse all files, Save As and Export as PDF open Android's file picker in the folder of your latest file that the app still has permission for. With none, the picker opens wherever Android chooses.
+- **Clearer translated words.** German and Spanish now call the Contents panel "Inhaltsverzeichnis" and "Índice"; the Ukrainian PDF export label is "Експорт у PDF".
+- **Contents panel title stays whole.** A long translated title no longer breaks mid-word; the Collapse all button moves to its own line when both do not fit.
+
 ## [1.1.3] - 2026-11-05
 
 ### Added

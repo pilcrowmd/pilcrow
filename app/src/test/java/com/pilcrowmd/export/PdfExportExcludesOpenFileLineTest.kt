@@ -103,7 +103,7 @@ class PdfExportExcludesOpenFileLineTest {
 
         viewModel.exportPdf(Uri.parse("content://t/out.pdf"))
         val exported = slot<String>()
-        verify(timeout = 5_000L) { exporter.exportToUri(capture(exported), any(), any(), any()) }
+        verify(timeout = 5_000L) { exporter.exportToUri(capture(exported), any(), any(), any(), any(), any(), any()) }
 
         assertEquals(noteText, exported.captured)
         assertFalse(exported.captured.contains("quarterly-plan-draft"))

@@ -4,6 +4,7 @@
 package com.pilcrowmd.rendering
 
 import android.content.Context
+import android.graphics.Typeface
 import android.util.Log
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -65,10 +66,7 @@ class FootnoteBlockEntry(
         holder.marker.setTextSize(TypedValue.COMPLEX_UNIT_SP, noteSize)
         holder.marker.typeface = readingFont
 
-        holder.body.setTextColor(colorScheme.secondaryText.toArgb())
-        holder.body.setTextSize(TypedValue.COMPLEX_UNIT_SP, noteSize)
-        holder.body.setLineSpacing(0f, PreviewLineHeightMultiplier)
-        holder.body.typeface = readingFont
+        holder.body.styleAsFootnoteBody(colorScheme, fontScale, readingFont)
 
         holder.backLink.setColorFilter(colorScheme.footnoteMarker.toArgb())
         // The back-link scales with the reader's zoom like everything else on the page: a fixed-dp
@@ -124,8 +122,7 @@ class FootnoteBlockEntry(
 
         try {
             holder.body.setTextColor(colorScheme.secondaryText.toArgb())
-            val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.footnoteMarker.toArgb())
-            markwon.setParsedMarkdown(holder.body, rendered)
+            markwon.setParsedMarkdown(holder.body, renderFootnoteBody(markwon, node, colorScheme))
             SearchHighlighter.highlight(
                 holder.body,
                 searchHighlight,
@@ -151,5 +148,38 @@ class FootnoteBlockEntry(
         val marker: TextView = itemView.findViewById(R.id.footnote_marker)
         val body: TextView = itemView.findViewById(R.id.footnote_body)
         val backLink: ImageView = itemView.findViewById(R.id.footnote_back_link)
+    }
+}
+
+/** The note body's text style, shared by this entry and the footnote sheet so the two read alike (M-76). */
+private fun TextView.styleAsFootnoteBody(colorScheme: PilcrowColorScheme, fontScale: Float, readingFont: Typeface?) {
+    setTextColor(colorScheme.secondaryText.toArgb())
+    setTextSize(TypedValue.COMPLEX_UNIT_SP, PilcrowTypography.FOOTNOTE_FONT_SIZE_SP * fontScale)
+    setLineSpacing(0f, PreviewLineHeightMultiplier)
+    typeface = readingFont
+}
+
+private fun renderFootnoteBody(markwon: Markwon, note: FootnoteDefinitionBlock, colorScheme: PilcrowColorScheme) =
+    tintFootnoteMarkers(markwon.render(note), colorScheme.footnoteMarker.toArgb())
+
+/**
+ * Show [note]'s body in this TextView exactly as [FootnoteBlockEntry] shows it at the end of the
+ * document: same Markwon, same text style, so bold, links and maths keep working. Used by the
+ * footnote sheet (M-76). A note that fails to render shows the prose lane's fallback (Safeguard 3).
+ */
+@Suppress("TooGenericExceptionCaught") // Safeguard 3: a bad note must degrade, never crash
+fun TextView.showFootnoteNote(
+    markwon: Markwon,
+    note: FootnoteDefinitionBlock,
+    colorScheme: PilcrowColorScheme,
+    fontScale: Float,
+    fontSet: FontSet,
+) {
+    styleAsFootnoteBody(colorScheme, fontScale, ResourcesCompat.getFont(context, fontSet.readingRegular))
+    try {
+        markwon.setParsedMarkdown(this, renderFootnoteBody(markwon, note, colorScheme))
+    } catch (e: Exception) {
+        Log.e("FootnoteBlockEntry", "footnote render failed: ${e.message}", e)
+        text = ProseBlockEntry.RENDER_FALLBACK_TEXT
     }
 }

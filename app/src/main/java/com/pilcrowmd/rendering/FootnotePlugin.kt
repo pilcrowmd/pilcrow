@@ -25,14 +25,24 @@ import org.commonmark.parser.Parser
  * per-block `beforeRender` hook cannot see, so they run as a post-parse pass at the parse sites
  * (`Footnotes.transform`) — see `Footnotes.kt`.
  */
-class FootnotePlugin : AbstractMarkwonPlugin() {
+class FootnotePlugin(
+    /**
+     * True for the PDF export's instance, which keeps the superscript digits (the export must not
+     * change); false for the reader's, which draws the boxed marker (M-76). Stated by the builder of
+     * each instance rather than guessed from the thread or the colours.
+     */
+    private val forPrint: Boolean,
+    /** Screen density, for the reader marker's dp padding. Unused for print. */
+    private val density: Float,
+) : AbstractMarkwonPlugin() {
 
     override fun configureParser(builder: Parser.Builder) {
         builder.customBlockParserFactory(FootnoteBlockParserFactory())
     }
 
     /**
-     * Paint a resolved reference as its ordinal, superscript and small, and make it tappable.
+     * Paint a resolved reference as its ordinal and make it tappable: a small raised box in the
+     * reader, small superscript digits in print.
      *
      * The emitted text is the ordinal ALONE — `SearchMarkdownUseCase` models the node as exactly
      * those digits, and search's per-block text has to match what is painted.
@@ -45,14 +55,12 @@ class FootnotePlugin : AbstractMarkwonPlugin() {
         builder.on(FootnoteReference::class.java) { visitor, node ->
             val start = visitor.length()
             visitor.builder().append(node.ordinal.toString())
-            visitor.setSpans(
-                start,
-                arrayOf<Any>(
-                    SuperscriptSpan(),
-                    RelativeSizeSpan(FOOTNOTE_MARKER_SCALE),
-                    FootnoteJumpSpan(node.definitionBlockIndex),
-                ),
-            )
+            val look = if (forPrint) {
+                arrayOf<Any>(SuperscriptSpan(), RelativeSizeSpan(FOOTNOTE_MARKER_SCALE))
+            } else {
+                arrayOf<Any>(FootnoteMarkerSpan(density))
+            }
+            visitor.setSpans(start, look + FootnoteJumpSpan(node.definitionBlockIndex))
         }
     }
 }

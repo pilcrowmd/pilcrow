@@ -8,12 +8,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.pilcrowmd.di.AppContainer
+import com.pilcrowmd.domain.markdown.ReaderModel
 import com.pilcrowmd.domain.usecase.CountRelativeImagesUseCase
 import com.pilcrowmd.repository.FolderAccessRepository
 import com.pilcrowmd.repository.NoteFolder
 import com.pilcrowmd.storage.StorageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -69,7 +71,12 @@ class ImageFolderViewModel(
     private val countRelativeImages: CountRelativeImagesUseCase,
 ) : ViewModel() {
 
-    private data class Shown(val uri: Uri, val content: String)
+    // Only the count is kept, never the reader model it was taken from: holding the model here would
+    // keep the reader's whole tree alive after the reader lets it go for the editor (M-154).
+    private data class Shown(val uri: Uri, val pictures: Int)
+
+    // The count in progress for the note last shown with its model.
+    private var counting: Job? = null
 
     private data class Facts(val uri: Uri, val pictures: Int, val folder: NoteFolder, val grants: List<Uri>)
 
@@ -96,10 +103,28 @@ class ImageFolderViewModel(
      */
     val pickFolder: SharedFlow<Uri?> = pickFolderEvents.asSharedFlow()
 
-    /** The reader shows [uri] with [content]; null when no document is shown. */
-    fun onDocumentShown(uri: Uri?, content: String) {
+    /**
+     * The reader shows [uri] with [model], the reader model of its text; null [uri] when no document is
+     * shown. The pictures are counted in the model's blocks, off the main thread, never in a parse of
+     * their own (large-documents spec, Rule 5). A null [model] means the reader is still preparing it:
+     * the same note keeps its count, another note has none until its model is ready.
+     */
+    fun onDocumentShown(uri: Uri?, model: ReaderModel?) {
         if (uri != missedPick.value) missedPick.value = null
-        shown.value = uri?.let { Shown(it, content) }
+        when {
+            uri != null && model != null -> {
+                counting?.cancel()
+                counting = viewModelScope.launch {
+                    val pictures = withContext(Dispatchers.Default) { picturesIn(model) }
+                    shown.value = Shown(uri, pictures)
+                }
+            }
+            uri != null && shown.value?.uri == uri -> Unit
+            else -> {
+                counting?.cancel()
+                shown.value = null
+            }
+        }
     }
 
     /** Look at the grants again — after a pick, and when the app comes back to the front. */
@@ -167,9 +192,20 @@ class ImageFolderViewModel(
     }
 
     private suspend fun factsFor(note: Shown): Facts {
-        val pictures = withContext(Dispatchers.Default) { countRelativeImages(note.content) }
+        val pictures = note.pictures
         if (pictures == 0) return Facts(note.uri, 0, NoteFolder.Unknown, folders.grantedFolders())
         return Facts(note.uri, pictures, folders.folderFor(note.uri), folders.grantedFolders())
+    }
+
+    /**
+     * Rule 7 (large-documents spec): the count is one computation whose result can be thrown away, so
+     * running out of memory in it counts nothing, and no banner shows; the reader is unaffected.
+     */
+    private fun picturesIn(model: ReaderModel): Int = try {
+        countRelativeImages(model)
+    } catch (e: OutOfMemoryError) {
+        android.util.Log.e("ImageFolderViewModel", "picture count ran out of memory", e)
+        0
     }
 
     private fun uiFor(facts: Facts?, dismissed: Set<String>, missed: Uri?): ImageFolderUi {

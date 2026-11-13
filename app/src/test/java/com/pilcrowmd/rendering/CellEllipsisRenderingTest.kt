@@ -9,6 +9,7 @@ import com.pilcrowmd.domain.markdown.ReaderDocument
 import com.pilcrowmd.domain.markdown.TableSplitter
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
+import com.pilcrowmd.domain.usecase.findSearchMatches
 import io.noties.markwon.Markwon
 import org.commonmark.ext.gfm.tables.TableCell
 import org.commonmark.node.AbstractVisitor

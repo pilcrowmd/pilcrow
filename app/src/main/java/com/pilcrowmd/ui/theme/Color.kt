@@ -26,6 +26,9 @@ data class PilcrowColorScheme(
     // Bold (`**…**`) in the reader (S8-A48): brighter than [primaryText] in Dark and AMOLED, equal to
     // it in Light and Print, which draw bold exactly as before.
     val strongText: Color,
+    // Marked text (`==x==`, S8-A88): the fill behind it. Soft yellow in Light and Print, muted amber in
+    // Dark and AMOLED; the body text colour stays on top, so it stays readable.
+    val highlight: Color,
     val secondaryText: Color,
     val editorText: Color,
     val lineNumbers: Color,
@@ -186,6 +189,7 @@ val DarkColorScheme = PilcrowColorScheme(
     lightBorder = Color(0xFF525252),
     primaryText = Color(0xFFE4E1DC),
     strongText = Color(0xFFFFFFFF), // S8-A48: bold stands out on the dark page
+    highlight = Color(0xFF6B5416), // S8-A88: muted amber, 5.4:1 under the body text
     secondaryText = Color(0xFFB4B4B4),
     editorText = Color(0xFFD6D6D6),
     lineNumbers = Color(0xFF7A7A7A),
@@ -232,6 +236,7 @@ val AmoledColorScheme = PilcrowColorScheme(
     lightBorder = DarkColorScheme.lightBorder,
     primaryText = Color(0xFFD0CBC4), // M-92: warm off-white, 13.02:1 on the page
     strongText = Color(0xFFFFFFFF), // S8-A48: bold stands out on the black page
+    highlight = DarkColorScheme.highlight, // S8-A88: same amber on black
     secondaryText = Color(0xFFB8B4AF), // M-92: 10.19:1 on the page
     editorText = Color(0xFFC5C1BC), // M-92: code / monospace text, 10.16:1 on the code surface
     lineNumbers = Color(0xFFA8A5A1), // M-92: the disabled-text role, 8.07:1 on the gutter
@@ -277,6 +282,7 @@ val LightColorScheme = PilcrowColorScheme(
     lightBorder = Color(0xFFE2D9C5),
     primaryText = Color(0xFF33302A),
     strongText = Color(0xFF33302A), // S8-A48: the primary text colour, bold unchanged
+    highlight = Color(0xFFF4DE72), // S8-A88: soft yellow, 9:1 under the body text
     secondaryText = Color(0xFF6E6555),
     editorText = Color(0xFF3A352C),
     lineNumbers = Color(0xFFA99F88),
@@ -319,6 +325,7 @@ val PrintColorScheme = PilcrowColorScheme(
     lightBorder = Color(0xFFE8E8E8), // Slightly lighter gray
     primaryText = Color(0xFF1A1A1A), // Near-black text (not pure black to avoid harsh edges)
     strongText = Color(0xFF1A1A1A), // S8-A48: the primary text colour, so the PDF's bold is unchanged
+    highlight = Color(0xFFFFF176), // S8-A88: print yellow, light enough to photocopy
     secondaryText = Color(0xFF4A4A4A), // Medium-dark gray for secondary text
     editorText = Color(0xFF2A2A2A), // Dark gray for code content
     lineNumbers = Color(0xFF888888), // Medium gray for line numbers (subtle in print)

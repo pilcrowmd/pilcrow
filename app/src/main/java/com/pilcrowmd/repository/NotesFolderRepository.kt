@@ -66,4 +66,8 @@ interface NotesFolderRepository {
 
     /** The note's current date and size, off the main thread (M4); null when the provider cannot answer. */
     suspend fun noteStats(documentUri: Uri): DocumentStats?
+
+    /** S8-A90: the open file's date and size, or whether the provider says it is gone ([StatsAnswer]). */
+    suspend fun noteAnswer(documentUri: Uri): StatsAnswer =
+        noteStats(documentUri)?.let { StatsAnswer.Known(it) } ?: StatsAnswer.Unknown
 }

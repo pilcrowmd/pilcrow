@@ -3,6 +3,7 @@
 
 package com.pilcrowmd.viewmodel
 
+import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,8 +12,9 @@ import com.pilcrowmd.domain.markdown.ReaderModel
 import com.pilcrowmd.domain.model.DocumentKind
 import com.pilcrowmd.domain.model.EditorSupport
 import com.pilcrowmd.domain.model.HeadingNode
+import com.pilcrowmd.domain.model.PdfColors
 import com.pilcrowmd.domain.model.RenderMode
-import com.pilcrowmd.domain.model.SearchMatch
+import com.pilcrowmd.domain.model.SearchMatches
 import com.pilcrowmd.domain.model.ThemeMode
 import com.pilcrowmd.domain.usecase.ParseMarkdownHeadingsUseCase
 import com.pilcrowmd.domain.usecase.PrepareReaderModelUseCase
@@ -24,6 +26,7 @@ import com.pilcrowmd.repository.Draft
 import com.pilcrowmd.repository.DraftInfo
 import com.pilcrowmd.repository.DraftRepository
 import com.pilcrowmd.repository.FileRepository
+import com.pilcrowmd.repository.StatsAnswer
 import com.pilcrowmd.repository.StrandedSlot
 import com.pilcrowmd.storage.AppLanguageStore
 import com.pilcrowmd.storage.RecentFile
@@ -44,6 +47,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -157,8 +161,8 @@ constructor(
         PrepareReaderModelUseCase(parseHeadingsUseCase::parseTree, parseHeadingsUseCase),
     /** Where unsaved text is kept between keystrokes and a save, so a kill does not lose it. */
     private val drafts: DraftRepository = DraftRepository.None,
-    /** S8-A46: whether a file opened from an added folder changes outside the app soon after. */
-    private val changeCheck: OpenFileChangeCheck = OpenFileChangeCheck(stats = { null }),
+    /** S8-A90: whether the open file changes outside the app while it is on screen (live reload). */
+    private val changeCheck: OpenFileChangeCheck = OpenFileChangeCheck(answer = { StatsAnswer.Unknown }),
     /** The app's own language choice (languages spec D1). */
     private val appLanguageStore: AppLanguageStore = AppLanguageStore.None,
 ) : ViewModel() {
@@ -169,8 +173,38 @@ constructor(
     // S8-A46 (see [startChangeCheck]). Before the startup restore below, which may publish inline.
     private val _changedOutside = MutableStateFlow(false)
 
-    /** The open file changed on another device after it was opened: the reload banner shows. */
+    /** The open file changed outside the app while it had unsaved edits: the reload banner shows. */
     val changedOutside: StateFlow<Boolean> = _changedOutside.asStateFlow()
+
+    // S8-A90: the notices of the live reload, and the Keep mine answer the next Save asks about.
+    private val _updatedOutside = MutableStateFlow(false)
+    private val _goneOutside = MutableStateFlow(false)
+    private val _otherVersion = MutableStateFlow(false)
+
+    /** The open file was reloaded by itself after another app changed it: the small notice shows. */
+    val updatedOutside: StateFlow<Boolean> = _updatedOutside.asStateFlow()
+
+    /** The open file was deleted by another app: a notice shows, and the text stays on screen. */
+    val goneOutside: StateFlow<Boolean> = _goneOutside.asStateFlow()
+
+    /**
+     * Another app changed the file since its text on screen was read, and nothing has replaced either
+     * since: the next Save of it asks before it writes over that version (Keep mine, or the banner
+     * still showing, or a reload by itself that typing stopped).
+     */
+    val otherVersion: StateFlow<Boolean> = _otherVersion.asStateFlow()
+
+    // S8-A90: which Save is waiting for the answer to "write over the other version?"; null when none.
+    private val _overwriteQuestion = MutableStateFlow<OverwriteFor?>(null)
+
+    /** A Save asked first, because another app's version is on disk ([otherVersion]). */
+    val overwriteQuestion: StateFlow<OverwriteFor?> = _overwriteQuestion.asStateFlow()
+
+    // ON_STOP to ON_START: no checks run; a check asked for meanwhile starts on the way back.
+    private var inBackground = false
+
+    // The file a reload by itself is reading; its publish shows [updatedOutside].
+    private var reloadingByItself: Uri? = null
 
     private var changeCheckJob: Job? = null
 
@@ -306,8 +340,13 @@ constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _searchMatches = MutableStateFlow<List<SearchMatch>>(emptyList())
-    val searchMatches: StateFlow<List<SearchMatch>> = _searchMatches.asStateFlow()
+    // At most SearchMatches.MAX_MATCHES, in document order; [SearchMatches.capped] when there are more.
+    private val _searchMatches = MutableStateFlow(SearchMatches.EMPTY)
+    val searchMatches: StateFlow<SearchMatches> = _searchMatches.asStateFlow()
+
+    // Rule 7 (large-documents spec): a search that ran out of memory found nothing, and the screen says why.
+    private val _searchOutOfMemory = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val searchOutOfMemory: kotlinx.coroutines.flow.SharedFlow<Unit> = _searchOutOfMemory
 
     private val _currentMatchIndex = MutableStateFlow(0)
     val currentMatchIndex: StateFlow<Int> = _currentMatchIndex.asStateFlow()
@@ -481,6 +520,17 @@ constructor(
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    val pdfColors: StateFlow<PdfColors> = storage.pdfColors
+        .stateIn(viewModelScope, SharingStarted.Eagerly, PdfColors.LIGHT_FOR_PRINTING)
+
+    /**
+     * M-162a: where the Open and Save pickers start. The newest recent file that still has a
+     * permission (recents are newest first), whose folder the system picker opens; null when no
+     * recent has one, which leaves the picker at its own default. A function and not a state: a grant
+     * can go away with no change to recents, so it is read when the picker launches.
+     */
+    fun pickerStartUri(): Uri? = recentFiles.value.firstOrNull { repository.hasPersistedPermission(it.uri) }?.uri
+
     // PDF export state for progress/error UI feedback
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
     val exportState: StateFlow<ExportState> = _exportState.asStateFlow()
@@ -587,6 +637,7 @@ constructor(
     private fun open(uri: Uri, policy: ReplacePolicy, takePermission: Boolean = false) {
         val claim = slot.claim()
         _lastFileNotReopened.value = false
+        reloadingByItself = null // an open the user started is never "updated by another app"
         viewModelScope.launch {
             restoreJob.cancel()
             if (takePermission) repository.takePersistableUriPermission(uri)
@@ -711,7 +762,9 @@ constructor(
         // published, and — unless the user chose Discard — only if the document on screen has no
         // unsaved edits. Text typed while this load ran is never replaced silently (M-180): the
         // load stands down and the existing Save/Discard prompt asks instead.
+        // S8-A90: a reload by itself never moves the reader into the editor ("open in edit mode").
         val publication = prepareLoad(uri, content, notUtf8 = !file.isUtf8)
+            .let { if (uri == reloadingByItself) it.copy(switchToEditor = false) else it }
         when (slot.publish(claim, publication, policy)) {
             PublishOutcome.PUBLISHED -> {
                 // Before anything suspends: from here a keystroke could start overwriting the draft.
@@ -951,8 +1004,9 @@ constructor(
      * typed), so the open stands down and the prompt comes back, instead of dropping the keystroke
      * or marking it saved (M-152).
      */
-    fun saveAndOpenPending() {
+    fun saveAndOpenPending(overwriteConfirmed: Boolean = false) {
         val uri = _pendingOpenUri.value ?: return
+        if (asksOverwrite(OverwriteFor.OPEN_PENDING, overwriteConfirmed)) return
         viewModelScope.launch {
             withWriteClaim {
                 val doc = slot.document.value
@@ -1033,7 +1087,8 @@ constructor(
      * [ReplacePolicy.IF_CLEAN]. The write did succeed, so "Saved" is reported (C4) — explicitly,
      * because a completed close reports `Idle` — and the close prompt comes back for the rest.
      */
-    fun saveAndClose() {
+    fun saveAndClose(overwriteConfirmed: Boolean = false) {
+        if (asksOverwrite(OverwriteFor.CLOSE, overwriteConfirmed)) return
         viewModelScope.launch {
             withWriteClaim {
                 val doc = slot.document.value ?: return@withWriteClaim
@@ -1329,48 +1384,130 @@ constructor(
         searchJob = viewModelScope.launch {
             _searchQuery.emit(query)
             if (query.isNotEmpty()) {
-                val content = slot.document.value?.content ?: return@launch
-                val renderMode = slot.renderMode.value
-                // The model, only if it is the one for this text and mode (a toggle re-runs search
-                // before the new model exists).
-                val model = _readerModel.value?.takeIf { it.content === content && it.renderMode == renderMode }
-                // Search parses + scans the whole document — run it off the main thread so a
-                // large file (or a common term with thousands of hits) can't freeze the UI / ANR.
-                // Shown as plain (the mode, or past the Markdown ceiling): the visible text IS the
-                // literal source, so match over the chunks the reader paints (positions align) —
-                // the model's own when there is one, so a huge file is not chunked a second time.
-                val matches = withContext(cpuDispatcher) {
-                    scanOrNothing {
-                        when {
-                            model is ReaderModel.Plain ->
-                                searchUseCase.findPlainSearchMatches(content, model.chunkLiterals, query)
-                            model == null && prepareReaderModel.showsAsPlain(content, renderMode) ->
-                                searchUseCase.findPlainSearchMatches(content, PlainTextChunks.split(content), query)
-                            else -> searchUseCase.findSearchMatches(content, query)
+                // S8-A95: typing starts one search per key; wait for a pause so a word is one scan.
+                // Waited off Main, on the scan's own dispatcher, like the scan.
+                withContext(cpuDispatcher) { kotlinx.coroutines.delay(SEARCH_DEBOUNCE_MS) }
+                val target = searchTarget() ?: return@launch
+                // The scan walks the whole document — run it off the main thread so a large file (or a
+                // common term with thousands of hits) can't freeze the UI / ANR. It walks the reader's own
+                // blocks (large-documents spec, Rule 1): no second parse. One scan at a time ([search]):
+                // a cancelled scan stops at its next block, and the next one starts only after that,
+                // so two scans never hold their memory side by side (S8-A95).
+                val matches = search.withLock {
+                    withContext(cpuDispatcher) {
+                        val scope = this
+                        val cancelled = { !scope.isActive }
+                        scanOrNothing {
+                            when (val model = target.model) {
+                                null -> scanText(target.doc.content, target.renderMode, query, cancelled)
+                                else -> scanModel(model, query, cancelled)
+                            }
                         }
                     }
                 }
-                // No re-check needed here: the scan does not stop when cancelled, but withContext
-                // throws on return once this job is cancelled, so its result is never published.
+                if (searchRanOutOfMemory) {
+                    // Said here, after the scan's memory is free, not in the catch (S8-A95).
+                    searchRanOutOfMemory = false
+                    android.util.Log.e("MarkdownViewModel", "search ran out of memory")
+                    _searchOutOfMemory.emit(Unit)
+                }
+                // withContext throws on return once this job is cancelled, so a stale result is never published.
                 _searchMatches.emit(matches)
                 _currentMatchIndex.emit(0) // Focus first match
             } else {
-                _searchMatches.emit(emptyList())
+                _searchMatches.emit(SearchMatches.EMPTY)
                 _currentMatchIndex.emit(0)
             }
         }
     }
 
     /**
+     * What search walks for the current document and render mode (Rule 1): the reader model on screen,
+     * or, in the reader, the one being prepared, which is waited for rather than parsed a second time
+     * beside it; meanwhile the old matches are cleared, since they point into the old tree. In the
+     * editor after an edit there is no model (it is released while typing, M-154): [SearchFor.model]
+     * is null and [scanText] works from the text. Null: no document.
+     */
+    private suspend fun searchTarget(): SearchFor? {
+        val flow = kotlinx.coroutines.flow.combine(
+            slot.document,
+            slot.renderMode,
+            slot.mode,
+            _readerModel,
+        ) { doc, renderMode, mode, model ->
+            val current = model?.takeIf { doc != null && it.content === doc.content && it.renderMode == renderMode }
+            SearchTarget(doc, renderMode, current, waits = doc != null && current == null && mode == ViewMode.READER)
+        }
+        if (flow.first().waits) _searchMatches.emit(SearchMatches.EMPTY)
+        val ready = flow.first { !it.waits }
+        val doc = ready.doc ?: return null
+        return SearchFor(doc, ready.renderMode, ready.model)
+    }
+
+    /** The matches in [model]: its chunks when shown as plain (the visible text IS the source), else its blocks. */
+    private fun scanModel(model: ReaderModel, query: String, cancelled: () -> Boolean): SearchMatches = when (model) {
+        is ReaderModel.Plain ->
+            searchUseCase.findPlainSearchMatches(model.content, model.chunkLiterals, query, isCancelled = cancelled)
+        is ReaderModel.Markdown ->
+            searchUseCase.findSearchMatches(model.content, model.blocks, query, isCancelled = cancelled)
+    }
+
+    /**
+     * Search with no reader model (the editor after an edit): the text shown as plain is scanned in the
+     * chunks the reader would show; otherwise a model is prepared for this scan alone and dropped after
+     * it, the only tree in memory then. Run one at a time ([search]): a parse cannot be cancelled,
+     * so fast typing would otherwise start one per key, side by side.
+     */
+    private fun scanText(
+        content: String,
+        renderMode: RenderMode,
+        query: String,
+        cancelled: () -> Boolean,
+    ): SearchMatches = if (prepareReaderModel.showsAsPlain(content, renderMode)) {
+        searchUseCase.findPlainSearchMatches(content, PlainTextChunks.split(content), query, isCancelled = cancelled)
+    } else {
+        scanModel(prepareReaderModel.prepare(content, renderMode), query, cancelled)
+    }
+
+    // One search scan (or editor parse) at a time, whatever it walks.
+    private val search = kotlinx.coroutines.sync.Mutex()
+
+    // Set by [scanOrNothing]'s out-of-memory catch, which must allocate nothing; read after the scan.
+    @Volatile
+    private var searchRanOutOfMemory = false
+
+    private class SearchTarget(
+        val doc: Document?,
+        val renderMode: RenderMode,
+        val model: ReaderModel?,
+        val waits: Boolean,
+    )
+
+    /** The document a search runs on, its render mode, and its reader model when there is one. */
+    private class SearchFor(val doc: Document, val renderMode: RenderMode, val model: ReaderModel?)
+
+    /**
      * M-401: the last line, not the fix. A search scan that throws anyway finds nothing, so typing a
      * query can never crash the app. The scan never suspends, so no cancellation passes through here.
+     * Rule 7: the scan is one computation whose result can be thrown away, so running out of memory
+     * in it finds nothing too, and the screen says so ([searchOutOfMemory]).
      */
-    @Suppress("TooGenericExceptionCaught") // any scan failure, whatever its type, must stop here
-    private fun scanOrNothing(scan: () -> List<SearchMatch>): List<SearchMatch> = try {
+    // Any scan failure, whatever its type, must stop here; the out-of-memory one is kept as a flag only,
+    // since logging it would allocate (S8-A95).
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    private fun scanOrNothing(scan: () -> SearchMatches): SearchMatches = try {
+        // A scan that ran out of memory and was then cancelled never reached the reset after it; its
+        // flag must not be read as this scan's. Scans run one at a time ([search]), so this is safe.
+        searchRanOutOfMemory = false
         scan()
     } catch (e: RuntimeException) {
         android.util.Log.e("MarkdownViewModel", "search scan threw", e)
-        emptyList()
+        SearchMatches.EMPTY
+    } catch (e: OutOfMemoryError) {
+        // S8-A95: nothing here may allocate (no log, no stack trace, no emit): the heap is full, and a
+        // second OutOfMemoryError thrown from this handler is uncaught and kills the app.
+        searchRanOutOfMemory = true
+        SearchMatches.EMPTY
     }
 
     fun nextMatch() {
@@ -1418,7 +1555,7 @@ constructor(
         // Exiting search clears its state. The preview observes the now-empty
         // matches and re-binds without highlight spans — no stale highlights linger.
         _searchQuery.emit("")
-        _searchMatches.emit(emptyList())
+        _searchMatches.emit(SearchMatches.EMPTY)
         _currentMatchIndex.emit(0)
     }
 
@@ -1508,7 +1645,8 @@ constructor(
         }
     }
 
-    fun saveFile() {
+    fun saveFile(overwriteConfirmed: Boolean = false) {
+        if (asksOverwrite(OverwriteFor.SAVE, overwriteConfirmed)) return
         viewModelScope.launch {
             withWriteClaim {
                 // Guard against a concurrent save (e.g. double-tap) — two simultaneous writes to
@@ -1944,21 +2082,60 @@ constructor(
     // A save over the file the banner warned about is the user's answer to it: the banner goes.
     private suspend fun saveTracked(uri: Uri, content: String): Result<Unit> =
         changeCheck.saving { repository.saveFile(uri, content) }.also {
-            if (it.isSuccess && checkedDocument?.second == uri) _changedOutside.value = false
+            if (it.isSuccess && checkedDocument?.second == uri) {
+                _changedOutside.value = false
+                _otherVersion.value = false
+            }
         }
 
     /**
      * [read] is the file's text as read, exactly as on disk, when it is UTF-8: its size is then the
      * number of bytes read (strict UTF-8 round-trips byte for byte). Null skips that comparison.
+     * Any file whose provider states a date or size is checked (S8-A90); others are not.
      */
     private fun startChangeCheck(document: Document, read: String?) {
+        val byItself = reloadingByItself
+        reloadingByItself = null
         endChangeCheck()
         val uri = document.uri ?: return
-        if (!OpenFileChangeCheck.isFolderNote(uri)) return
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) return
+        if (byItself == uri) _updatedOutside.value = true
         checkedDocument = document.id to uri
+        // A reload by itself skips the size comparison: Drive may still hand over the copy it read
+        // the first time, and comparing again would reload it again, without end.
+        val compared = read.takeIf { byItself != uri && OpenFileChangeCheck.isFolderNote(uri) }
+        watchForChange(uri) {
+            compared?.let { withContext(cpuDispatcher) { it.toByteArray(Charsets.UTF_8).size.toLong() } }
+        }
+    }
+
+    private fun watchForChange(uri: Uri, resume: Boolean = false, readSize: suspend () -> Long? = { null }) {
+        changeCheckJob?.cancel()
+        changeCheckJob = null
+        if (inBackground) return // [resumeChangeCheck] starts it on the way back
         changeCheckJob = viewModelScope.launch {
-            val readSize = read?.let { withContext(cpuDispatcher) { it.toByteArray(Charsets.UTF_8).size.toLong() } }
-            if (changeCheck.changed(uri, readSize)) _changedOutside.value = true
+            when (changeCheck.watch(uri, readSize(), resume)) {
+                OpenFileChangeCheck.Event.CHANGED -> onChangedOutside(uri)
+                OpenFileChangeCheck.Event.GONE -> _goneOutside.value = true
+                null -> Unit
+            }
+        }
+    }
+
+    /**
+     * With no unsaved edits the file is read again by itself, at the reading position, and the small
+     * notice says so. With edits, or while a save holds the claim, the banner asks instead: text the
+     * user typed is never replaced without asking.
+     */
+    private fun onChangedOutside(uri: Uri) {
+        _otherVersion.value = true
+        watchForChange(uri) // goes on from the version now on disk, whatever happens next
+        val doc = slot.document.value
+        if (doc != null && !doc.dirty && !_writeInFlight.value) {
+            _updatedOutside.value = false
+            reload(discardEdits = false, byItself = true)
+        } else {
+            _changedOutside.value = true
         }
     }
 
@@ -1967,12 +2144,51 @@ constructor(
         changeCheckJob = null
         checkedDocument = null
         _changedOutside.value = false
+        _updatedOutside.value = false
+        _goneOutside.value = false
+        _otherVersion.value = false
+        _overwriteQuestion.value = null
     }
 
-    /** The app went to the background: no more checks for this open. A banner already shown stays. */
+    /** The app went to the background: no checks there. The values seen so far are kept. */
     fun stopChangeCheck() {
+        inBackground = true
         changeCheckJob?.cancel()
         changeCheckJob = null
+    }
+
+    /** Back in the app: ask at once whether the file changed meanwhile, then every few seconds again. */
+    fun resumeChangeCheck() {
+        inBackground = false
+        val uri = checkedDocument?.second ?: return
+        if (changeCheckJob?.isActive == true) return
+        watchForChange(uri, resume = true)
+    }
+
+    /**
+     * S8-A90: every in-place Save of a file another app changed since its text was read asks first
+     * (Save a copy / Overwrite / Cancel), whichever button started it: true, with the question
+     * published, when it must wait for the answer; the answer calls the same Save confirmed.
+     */
+    private fun asksOverwrite(save: OverwriteFor, confirmed: Boolean): Boolean {
+        val asks = !confirmed && _otherVersion.value
+        _overwriteQuestion.value = save.takeIf { asks }
+        return asks
+    }
+
+    /** The overwrite question was answered Cancel or Save a copy: nothing is written in place. */
+    fun dismissOverwriteQuestion() {
+        _overwriteQuestion.value = null
+    }
+
+    /** Close on the "updated by another app" notice. */
+    fun closeUpdatedNotice() {
+        _updatedOutside.value = false
+    }
+
+    /** Close on the "deleted by another app" notice. */
+    fun closeGoneNotice() {
+        _goneOutside.value = false
     }
 
     /**
@@ -1983,8 +2199,12 @@ constructor(
      * edits also removes their stored draft once the new text is published, instead of offering it
      * back (S8-A75); a read that fails keeps it.
      */
-    fun reloadChangedFile(discardEdits: Boolean) {
+    fun reloadChangedFile(discardEdits: Boolean) = reload(discardEdits, byItself = false)
+
+    // [byItself]: the live reload's own, which keeps the view mode and shows [updatedOutside].
+    private fun reload(discardEdits: Boolean, byItself: Boolean) {
         if (_writeInFlight.value) return
+        reloadingByItself = slot.document.value?.uri.takeIf { byItself }
         val uri = slot.document.value?.uri ?: return
         val claim = slot.claim()
         viewModelScope.launch {
@@ -1998,8 +2218,13 @@ constructor(
         }
     }
 
-    /** The banner's Keep mine: the user's text stays, and a save writes it over the other version. */
-    fun keepMyVersion() = endChangeCheck()
+    /**
+     * The banner's Keep mine: the user's text stays, and the next Save asks before it writes over the
+     * other version ([otherVersion]). The check already goes on from the version now on disk.
+     */
+    fun keepMyVersion() {
+        _changedOutside.value = false
+    }
 
     override fun onCleared() {
         draftKeeper.flush()
@@ -2099,6 +2324,10 @@ constructor(
 
     fun setFormattingBarEnabled(enabled: Boolean) {
         viewModelScope.launch { storage.setFormattingBarEnabled(enabled) }
+    }
+
+    fun setPdfColors(colors: PdfColors) {
+        viewModelScope.launch { storage.setPdfColors(colors) }
     }
 
     fun setThemeMode(mode: ThemeMode) {
@@ -2218,7 +2447,17 @@ constructor(
             // A failed export (large/odd content, write error) must surface an error,
             // never crash. The atomic write deletes the partial file on failure.
             runCatching {
-                pdfExporter.exportToUri(markdownContent, previewFontScale.value, uri, slot.renderMode.value)
+                // Read from storage, not the StateFlows: they hold their defaults until the first load lands.
+                pdfExporter.exportToUri(
+                    markdownContent,
+                    previewFontScale.value,
+                    uri,
+                    slot.renderMode.value,
+                    storage.pdfColors.first(),
+                    storage.themeMode.first(),
+                    // The note's own address, so its relative pictures resolve whichever mode is on screen.
+                    slot.document.value?.uri,
+                )
             }.onSuccess {
                 _exportState.value = ExportState.Success()
             }.onFailure { e ->
@@ -2288,7 +2527,7 @@ constructor(
                         pdfExporter = container.pdfExporter,
                         appInfo = container.appInfo,
                         drafts = container.draftRepository,
-                        changeCheck = OpenFileChangeCheck(container.notesFolderRepository::noteStats),
+                        changeCheck = OpenFileChangeCheck(container.notesFolderRepository::noteAnswer),
                         appLanguageStore = container.appLanguageStore,
                         prepareReaderModel = PrepareReaderModelUseCase(
                             parse = container.markwonRenderer::parseForReader,
@@ -2309,12 +2548,18 @@ constructor(
  */
 const val NEW_DOCUMENT_NAME = "Untitled.md"
 
+/** How long a search query must stay unchanged before it is scanned (S8-A95). */
+private const val SEARCH_DEBOUNCE_MS = 200L
+
 /** Whether [uri] is empty, as a file the picker has just created is. False if it cannot be read. */
 private suspend fun FileRepository.isNewEmptyFile(uri: Uri): Boolean =
     readFile(uri).getOrNull()?.content?.isEmpty() == true
 
 /** Whether [uri] reads as UTF-8, as an empty new file does. False if it cannot be read. */
 private suspend fun FileRepository.readsAsUtf8(uri: Uri): Boolean = readFile(uri).getOrNull()?.isUtf8 == true
+
+/** S8-A90: the Save that asked whether to write over another app's version. */
+enum class OverwriteFor { SAVE, CLOSE, OPEN_PENDING }
 
 enum class ViewMode {
     READER,

@@ -12,6 +12,7 @@ import com.pilcrowmd.domain.usecase.SearchMarkdownUseCase
 import com.pilcrowmd.export.PdfExporter
 import com.pilcrowmd.rendering.EmojiGlyphs
 import com.pilcrowmd.rendering.MarkwonRenderer
+import com.pilcrowmd.rendering.isReaderFormula
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.rendering.mermaid.WebViewMermaidRenderer
 import com.pilcrowmd.rendering.readerWords
@@ -144,7 +145,7 @@ class DefaultAppContainer(private val appContext: Context) : AppContainer {
      * Built once and reused for all exports.
      */
     override val pdfExporter: PdfExporter by lazy {
-        PdfExporter(appContext, markwonRenderer, mermaidRenderer)
+        PdfExporter(appContext, markwonRenderer, mermaidRenderer, folderAccessRepository)
     }
 
     /**
@@ -156,12 +157,12 @@ class DefaultAppContainer(private val appContext: Context) : AppContainer {
     }
 
     /**
-     * Domain UseCase for searching markdown content.
-     * Depends on parseMarkdownHeadingsUseCase for block offset computation.
+     * Domain UseCase for searching markdown content: it walks the reader's own blocks (no parse of its
+     * own), so it is told which of their nodes are the reader's formulas.
      * Stateless; built once and reused.
      */
     override val searchMarkdownUseCase: SearchMarkdownUseCase by lazy {
-        SearchMarkdownUseCase(parseMarkdownHeadingsUseCase, readerWords, emojiShortcodes)
+        SearchMarkdownUseCase(readerWords, emojiShortcodes, isFormula = ::isReaderFormula)
     }
 
     /**

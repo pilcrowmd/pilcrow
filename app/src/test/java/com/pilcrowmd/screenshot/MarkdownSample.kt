@@ -52,6 +52,13 @@ class MarkdownSampleProvider : PreviewParameterProvider<MarkdownSample> {
                 "Body text under it.",
         ),
         MarkdownSample(
+            name = "highlight",
+            markdown = "# Marked ==heading==\n\n" +
+                "A paragraph with ==a whole marked phrase that runs on across more than one line of the page== " +
+                "and then ==**bold** and [a link](https://example.org)== inside the marks, with a == b left alone, " +
+                "`==code==` kept, and ==\$x^2\$ maths== too.",
+        ),
+        MarkdownSample(
             name = "paragraph_emphasis",
             markdown = "A paragraph with **bold**, *italic*, ~~strikethrough~~, and `inline code` " +
                 "to verify body typography, line-height, and inline spans.",

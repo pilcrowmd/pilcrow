@@ -2746,6 +2746,9 @@
 					"include": "#strikethrough"
 				},
 				{
+					"include": "#highlight"
+				},
+				{
 					"include": "#escape"
 				},
 				{
@@ -2843,6 +2846,9 @@
 				},
 				{
 					"include": "#strikethrough"
+				},
+				{
+					"include": "#highlight"
 				}
 			]
 		},
@@ -3000,6 +3006,9 @@
 				},
 				{
 					"include": "#strikethrough"
+				},
+				{
+					"include": "#highlight"
 				}
 			]
 		},
@@ -3052,6 +3061,9 @@
 						},
 						{
 							"include": "#strikethrough"
+						},
+						{
+							"include": "#highlight"
 						},
 						{
 							"include": "#image-inline"
@@ -3131,6 +3143,9 @@
 							"include": "#strikethrough"
 						},
 						{
+							"include": "#highlight"
+						},
+						{
 							"include": "#image-inline"
 						}
 					]
@@ -3198,6 +3213,18 @@
 			},
 			"match": "(`+)((?:[^`]|(?!(?<!`)\\1(?!`))`)*+)(\\1)",
 			"name": "markup.inline.raw.string.markdown"
+		},
+		"highlight": {
+			"captures": {
+				"1": {
+					"name": "punctuation.definition.highlight.markdown"
+				},
+				"3": {
+					"name": "punctuation.definition.highlight.markdown"
+				}
+			},
+			"match": "(?<![\\\\=])(==)(?=[^\\s=])((?:[^=\\n]|=(?!=))*?)(?<=[^\\s=])(==)(?!=)",
+			"name": "markup.highlight.markdown"
 		},
 		"strikethrough": {
 			"captures": {
