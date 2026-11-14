@@ -325,8 +325,12 @@ class MarkdownViewModelChangedOutsideTest {
         vm.updateContent(vm.currentDocument.value!!.id, "mine\n")
         changeOnAnotherDevice()
         awaitValue(true, "the banner shows") { vm.changedOutside.value }
+        // The check began afresh when the banner showed, and reads its new baseline on another
+        // thread. A second change made before that read would be the baseline, and never a change.
+        val asked = provider.statsAsked.get()
         vm.keepMyVersion()
         assertEquals(false, vm.changedOutside.value)
+        awaitValue(true, "the check has its new baseline") { provider.statsAsked.get() > asked }
 
         provider.stats[note] = DocumentStats(lastModified = 3_000L, size = 40L)
 
