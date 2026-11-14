@@ -99,6 +99,17 @@ class EditorLineRevealTest {
         return SettledReveal(editor, line = 0, reveal = { count[0]++ }) to count
     }
 
+    // Sora builds its wrap layout on its own thread pool once the editor has a size; an insert before
+    // that is done lands on an empty line table (AIOOBE in LineBreakLayout.afterInsert, S8-A100).
+    private fun awaitEditable(editor: io.github.rosemoe.sora.widget.CodeEditor) {
+        val deadline = System.currentTimeMillis() + EDITABLE_WAIT_MILLIS
+        while (!editor.isEditable && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(2)
+        }
+        assertTrue("precondition: the editor must accept input", editor.isEditable)
+    }
+
     private fun SettledReveal.editor() = javaClass.getDeclaredField("editor").apply { isAccessible = true }
         .get(this) as io.github.rosemoe.sora.widget.CodeEditor
 
@@ -194,6 +205,7 @@ class EditorLineRevealTest {
     @Test
     fun `an edit or a tap in the text stops it`() {
         val (typing, typingCount) = revealCount()
+        awaitEditable(typing.editor())
         typing.start()
         compose.runOnUiThread { typing.editor().text.insert(0, 0, "x") }
         typing.editor().setLayoutBusy(true)
@@ -201,6 +213,7 @@ class EditorLineRevealTest {
         assertEquals("typing stops it", 1, typingCount[0])
 
         val (tapping, tapCount) = revealCount()
+        awaitEditable(tapping.editor())
         tapping.start()
         tapping.editor().setSelection(0, 0)
         tapping.editor().setLayoutBusy(true)
@@ -280,5 +293,6 @@ class EditorLineRevealTest {
         const val TEN_SECONDS_MILLIS = 10_000L
         const val SETTLE_STEP_MILLIS = 100L
         const val SETTLE_STEPS = 5
+        const val EDITABLE_WAIT_MILLIS = 30_000L
     }
 }

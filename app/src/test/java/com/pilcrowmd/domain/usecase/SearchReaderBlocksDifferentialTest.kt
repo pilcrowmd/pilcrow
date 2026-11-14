@@ -111,6 +111,12 @@ class SearchReaderBlocksDifferentialTest {
         assertTrue("test packs are in it", names.count { it.startsWith("pack:") } >= 16)
         assertTrue("the 1.9 MB test pack is in it", names.contains("pack:pilcrow-test-big-file.md"))
         assertEquals(4, names.count { it.startsWith("generated:") })
+        val repoEntries = if (File("../DECISIONS.md").isFile) 1 else 0
+        assertEquals(
+            "DECISIONS.md is in it where the checkout has it",
+            repoEntries,
+            names.count { it.startsWith("repo:") },
+        )
     }
 
     @Test
@@ -158,7 +164,13 @@ class SearchReaderBlocksDifferentialTest {
             .map { "pack:${it.name}" to it.readText().replace("\r\n", "\n") }
         // DECISIONS.md is append-only, so its first megabyte is a fixed real-world document; a file
         // edited anywhere (README, CHANGELOG) would make the corpus drift under the test.
-        val repo = listOf("repo:DECISIONS.md" to File("../DECISIONS.md").readText().take(REPO_CHARS))
+        // The public mirror does not ship DECISIONS.md, so there the corpus goes without it.
+        val decisions = File("../DECISIONS.md")
+        val repo = if (decisions.isFile) {
+            listOf("repo:DECISIONS.md" to decisions.readText().take(REPO_CHARS))
+        } else {
+            emptyList()
+        }
         (samples + packs + repo + generated()).toList()
     }
 
