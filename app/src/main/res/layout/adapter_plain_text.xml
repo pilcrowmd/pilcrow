@@ -5,7 +5,7 @@
     a forced split of a run with no blank line, gets its bottom padding at bind time
     (PlainTextBlockEntry.seamBottomPadding).
 -->
-<TextView
+<com.pilcrowmd.rendering.ReaderTextView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/text_view"
     android:layout_width="match_parent"
