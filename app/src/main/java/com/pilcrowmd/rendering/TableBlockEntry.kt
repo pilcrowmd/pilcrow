@@ -172,7 +172,7 @@ class TableBlockEntry(
 
     private fun buildCell(markwon: Markwon, cell: TableCell, header: Boolean, mathBudget: MathBudget): TextView {
         val serif = ResourcesCompat.getFont(context, fontSet.readingRegular)
-        return TextView(context).apply {
+        return ReaderTextView(context).apply {
             // As prose sets its text (ProseBlockEntry): through setParsedMarkdown, so a link gets its
             // movement method and the plugins' after-set hooks run, then the wider footnote hit area.
             markwon.setParsedMarkdown(this, renderCell(markwon, cell, mathBudget))

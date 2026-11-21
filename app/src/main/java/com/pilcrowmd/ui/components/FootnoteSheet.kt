@@ -3,7 +3,6 @@
 
 package com.pilcrowmd.ui.components
 
-import android.widget.TextView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.pilcrowmd.R
 import com.pilcrowmd.domain.markdown.FootnoteDefinitionBlock
+import com.pilcrowmd.rendering.ReaderTextView
 import com.pilcrowmd.rendering.showFootnoteNote
 import com.pilcrowmd.ui.theme.FontSet
 import com.pilcrowmd.ui.theme.PilcrowTypography
@@ -90,7 +90,7 @@ internal fun FootnoteSheet(
                     },
                 )
                 AndroidView(
-                    factory = { TextView(it) },
+                    factory = { ReaderTextView(it) },
                     update = { it.showFootnoteNote(markwon, note, c, fontScale, fontSet) },
                     modifier = Modifier.weight(1f),
                 )
