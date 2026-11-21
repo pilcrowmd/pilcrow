@@ -37,7 +37,8 @@ import org.robolectric.util.ReflectionHelpers
 import java.time.Duration
 
 /**
- * M-157: long-press selects inside one block, and the reader's taps survive it.
+ * M-157: long-press selects, and the reader's taps survive it. Since M-163 the list's
+ * [ReaderSelection] does the selecting, so long-presses go to the list.
  *
  * The row's done-rule is "test the three together" — link taps, footnote taps (exact and near-miss)
  * and pinch — so every test here runs in the PRODUCTION adapter, in an Activity, and asserts on what
@@ -71,6 +72,7 @@ class BlockSelectionTest {
         val list = RecyclerView(activity)
         list.layoutManager = ReaderLayoutManager(activity)
         list.addOnItemTouchListener(SecondFingerEndsSelection)
+        list.installReaderSelection { null }
         list.setTag(R.id.details_state, state)
         applyReaderBottomSpacer(list)
         val adapter = RecyclerAdapterEntries.buildMarkdownAdapter(activity, markwon, details = state)
@@ -125,6 +127,12 @@ class BlockSelectionTest {
         send(view, MotionEvent.ACTION_UP, down, x, y)
         idle()
     }
+
+    /** A long-press on [tv] at ([x], [y]) in its own coordinates, sent to the list as the window does. */
+    private fun longPress(list: RecyclerView, tv: TextView, x: Float, y: Float) =
+        longPress(list, tv.left + x, tv.top + y)
+
+    private fun selected(list: RecyclerView) = list.readerSelection()!!.range != null
 
     private fun longPress(view: View, x: Float, y: Float) {
         val down = SystemClock.uptimeMillis()
@@ -191,10 +199,11 @@ class BlockSelectionTest {
 
     @Test
     fun `a long-press on a link does not open it`() {
-        val tv = reader(linkDoc).text(0)
+        val r = reader(linkDoc)
+        val tv = r.text(0)
         val (x, y) = spanCentre<URLSpan>(tv)
-        longPress(tv, x, y)
-        assertTrue("the long-press must select: that is the feature", tv.hasSelection())
+        longPress(r.list, tv, x, y)
+        assertTrue("the long-press must select: that is the feature", selected(r.list))
         assertNull("a long-press selects; it must never open the link under the finger", startedUrl())
     }
 
@@ -238,8 +247,8 @@ class BlockSelectionTest {
     fun `a long-press near a marker does not open the note`() {
         val r = reader(noteDoc)
         val (x, y) = nearMarker(r.text(0))
-        longPress(r.text(0), x, y)
-        assertTrue("the long-press must select: that is the feature", r.text(0).hasSelection())
+        longPress(r.list, r.text(0), x, y)
+        assertTrue("the long-press must select: that is the feature", selected(r.list))
         assertTrue("nothing may open", r.opened.isEmpty())
     }
 
@@ -275,8 +284,8 @@ class BlockSelectionTest {
     fun `a long-press on a marker does not open the note`() {
         val r = reader(noteDoc)
         val (x, y) = spanCentre<FootnoteJumpSpan>(r.text(0))
-        longPress(r.text(0), x, y)
-        assertTrue("the long-press must select: that is the feature", r.text(0).hasSelection())
+        longPress(r.list, r.text(0), x, y)
+        assertTrue("the long-press must select: that is the feature", selected(r.list))
         assertTrue("nothing may open", r.opened.isEmpty())
     }
 
