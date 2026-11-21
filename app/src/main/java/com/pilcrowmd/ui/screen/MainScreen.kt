@@ -875,6 +875,7 @@ fun MainScreen(
                 // still offers Allow editing / Save a copy (S8-A55); only this button follows it.
                 saveEnabled = currentDocument.value?.hasSomethingToSave == true,
                 onOpenFiles = notesFoldersViewModel?.let { { showFiles = true } },
+                onOpenSettings = { showSettings = true },
                 onUndo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.undo() }) else null,
                 onRedo = if (mode.value == ViewMode.EDITOR) ({ soraCodeEditor.redo() }) else null,
                 undoRedo = undoRedo.value,
@@ -914,8 +915,9 @@ fun MainScreen(
                     )
                 }
                 // Toolbar only when a file is open — the welcome screen has its own Open
-                // action, so toggle/save/close would be no-ops there. Files covers it (M-162b).
-                if (currentDocument.value != null && !showFiles) {
+                // action, so toggle/save/close would be no-ops there. Files (M-162b), Settings and Licenses cover it.
+                val documentCovered = showFiles || showSettings || showLicenses
+                if (currentDocument.value != null && !documentCovered) {
                     if (!readingBarsOn) toolbar()
 
                     // Transient (read-only "Open with") banner: opened from another app, no

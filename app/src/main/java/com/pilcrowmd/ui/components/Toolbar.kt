@@ -95,6 +95,8 @@ fun PilcrowToolbar(
     onShowFolderPictures: (() -> Unit)? = null,
     // M-162b: opens the Files screen; no menu item when null.
     onOpenFiles: (() -> Unit)? = null,
+    // Opens Settings over the document; no menu item when null.
+    onOpenSettings: (() -> Unit)? = null,
     // S8-A43: told when the ⋮ menu opens or closes, so full-screen reading keeps the bar while it is open.
     onMenuOpenChanged: (Boolean) -> Unit = {},
 ) {
@@ -188,9 +190,9 @@ fun PilcrowToolbar(
                     onTogglePlainView = onTogglePlainView,
                     onShowFolderPictures = onShowFolderPictures,
                     onOpenFiles = onOpenFiles,
+                    onOpenSettings = onOpenSettings,
                     onOpenChanged = onMenuOpenChanged,
                 )
-                // Settings moved off the toolbar to the Welcome screen.
                 // Close (X) — always the rightmost action.
                 ActionIcon(
                     icon = Icons.Outlined.Close,
@@ -322,10 +324,10 @@ private fun PopupWindowTitle(title: String) {
 }
 
 /**
- * Toolbar overflow (⋮) menu. Owns its own expanded state; hosts "Save a copy" (Save-As) and — for
- * `.txt` documents only ([plainToggleLabel] non-null) — the quiet render-mode toggle
- * ("View as Markdown" ⇄ "View as plain text"). A 42dp target / 22dp glyph to match the
- * neighbouring [ActionIcon]s; the menu anchors to it.
+ * Toolbar overflow (⋮) menu. Owns its own expanded state; hosts "Save a copy" (Save-As), for
+ * `.txt` documents only ([plainToggleLabel] non-null) the quiet render-mode toggle
+ * ("View as Markdown" ⇄ "View as plain text"), and the optional items, Settings last.
+ * A 42dp target / 22dp glyph to match the neighbouring [ActionIcon]s; the menu anchors to it.
  */
 @Suppress("LongParameterList") // one optional item per parameter
 @Composable
@@ -336,6 +338,7 @@ private fun OverflowMenu(
     onTogglePlainView: () -> Unit = {},
     onShowFolderPictures: (() -> Unit)? = null,
     onOpenFiles: (() -> Unit)? = null,
+    onOpenSettings: (() -> Unit)? = null,
     onOpenChanged: (Boolean) -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -394,6 +397,15 @@ private fun OverflowMenu(
                     onClick = {
                         expanded = false
                         onOpenFiles()
+                    },
+                )
+            }
+            if (onOpenSettings != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.settings_title)) },
+                    onClick = {
+                        expanded = false
+                        onOpenSettings()
                     },
                 )
             }
