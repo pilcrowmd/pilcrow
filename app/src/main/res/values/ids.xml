@@ -59,4 +59,9 @@
       RecyclerView, so the span in a block's text reaches the screen without a global callback.
     -->
     <item name="footnote_tap_handler" type="id" />
+    <!--
+      What a tap on a task-list box does (a TaskToggleHandler), on the reader's RecyclerView, so the
+      span in a block's text reaches the screen without a global callback.
+    -->
+    <item name="task_toggle_handler" type="id" />
 </resources>

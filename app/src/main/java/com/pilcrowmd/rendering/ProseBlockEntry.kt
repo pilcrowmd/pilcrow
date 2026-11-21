@@ -132,6 +132,7 @@ class ProseBlockEntry(
                 bindDetailsHeader(holder, detailsHeader)
             } else {
                 val rendered = tintFootnoteMarkers(markwon.render(node), colorScheme.footnoteMarker.toArgb())
+                addTaskToggles(rendered)
                 if (callout != null) CalloutStyle.decorateTitles(context, rendered, colorScheme, fontScale)
                 markwon.setParsedMarkdown(holder.textView, rendered)
             }
