@@ -717,7 +717,7 @@ fun WelcomeScreen(
             }
         }
 
-        // Settings entry: app-wide settings live here, reachable only from home.
+        // Settings entry: app-wide settings, also in the document toolbar's ⋮ menu.
         // Drawn last so it sits above the scrollable content and stays tappable.
         IconButton(
             onClick = onOpenSettings,
