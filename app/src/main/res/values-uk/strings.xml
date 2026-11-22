@@ -214,7 +214,7 @@
     <string name="settings_credit_prism4j">Prism4j: підсвічування синтаксису (Apache-2.0)</string>
     <string name="settings_credit_sora">Sora Editor: редактор коду (LGPL-2.1)</string>
     <string name="settings_credit_jlatexmath">JLatexMath: відображення формул (GPL w/ classpath)</string>
-    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible, JetBrains Mono, IBM Plex Mono (OFL)</string>
+    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible Next, JetBrains Mono, IBM Plex Mono (OFL)</string>
     <string name="settings_open_source_licenses">Ліцензії відкритого коду</string>
     <string name="licenses_title">Ліцензії відкритого коду</string>
     <string name="licenses_pane_title">Ліцензії відкритого коду</string>

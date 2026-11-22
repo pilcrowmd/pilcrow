@@ -212,7 +212,7 @@
     <string name="settings_credit_prism4j">Prism4j: resaltado de sintaxis (Apache-2.0)</string>
     <string name="settings_credit_sora">Sora Editor: editor de código (LGPL-2.1)</string>
     <string name="settings_credit_jlatexmath">JLatexMath: renderizado de fórmulas (GPL con classpath)</string>
-    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible, JetBrains Mono, IBM Plex Mono (OFL)</string>
+    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible Next, JetBrains Mono, IBM Plex Mono (OFL)</string>
     <string name="settings_open_source_licenses">Licencias de código abierto</string>
     <string name="licenses_title">Licencias de código abierto</string>
     <string name="licenses_pane_title">Licencias de código abierto</string>

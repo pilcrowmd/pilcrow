@@ -516,7 +516,7 @@ fun loadDependencies(context: Context): List<License> {
         License(name = "JetBrains Mono", license = "OFL-1.1"),
         License(name = "IBM Plex Mono", license = "OFL-1.1"),
         License(name = "Merriweather", license = "OFL-1.1"),
-        License(name = "Atkinson Hyperlegible", license = "OFL-1.1"),
+        License(name = "Atkinson Hyperlegible Next", license = "OFL-1.1"),
         // M-197: the Greek and Cyrillic letters inside \text{} in formulas. A renamed subset, so its
         // notice carries the original copyright lines and Reserved Font Name.
         License(

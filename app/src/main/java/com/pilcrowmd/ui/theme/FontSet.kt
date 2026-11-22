@@ -63,8 +63,8 @@ object FontSets {
     val MODERN = FontSet(
         id = "modern",
         displayNameRes = R.string.render_font_set_modern,
-        readingRegular = R.font.atkinson_hyperlegible_regular,
-        readingBold = R.font.atkinson_hyperlegible_bold,
+        readingRegular = R.font.atkinson_hyperlegible_next_regular,
+        readingBold = R.font.atkinson_hyperlegible_next_bold,
         monoRegular = R.font.jetbrains_mono_regular,
         monoBold = R.font.jetbrains_mono_bold,
     )
