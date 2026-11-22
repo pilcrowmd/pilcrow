@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.widget.TextView
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.fadeIn
@@ -93,10 +94,13 @@ import com.pilcrowmd.rendering.cancelReaderJump
 import com.pilcrowmd.rendering.clearReaderHighlight
 import com.pilcrowmd.rendering.documentOverflowsViewport
 import com.pilcrowmd.rendering.endBlockSelection
+import com.pilcrowmd.rendering.installReaderSelection
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRenderer
 import com.pilcrowmd.rendering.mermaid.MermaidDiagramRequest
 import com.pilcrowmd.rendering.mermaid.MermaidStyle
+import com.pilcrowmd.rendering.readerBlockText
 import com.pilcrowmd.rendering.readerBodyLineHeightPx
+import com.pilcrowmd.rendering.readerSelection
 import com.pilcrowmd.rendering.revealBlockInViewport
 import com.pilcrowmd.rendering.scrollToDocumentEnd
 import com.pilcrowmd.rendering.setFootnoteTapHandler
@@ -247,6 +251,10 @@ fun MarkdownPreview(
 
     // Handle to the RecyclerView so the jump-to-top/bottom controls can scroll it.
     val recyclerView = remember { mutableStateOf<RecyclerView?>(null) }
+    // M-163: text is selected, so Back ends the selection before it closes anything.
+    val selectionActive = remember { mutableStateOf(false) }
+    BackHandler(enabled = selectionActive.value) { recyclerView.value?.readerSelection()?.clear() }
+    DisposableEffect(Unit) { onDispose { recyclerView.value?.readerSelection()?.clear() } }
     // Only show the jump controls when the content overflows the viewport (not on short docs).
     val canScroll = remember { mutableStateOf(false) }
     // M-195: the jump controls show only while the list is being scrolled (see [JumpControls]).
@@ -449,6 +457,12 @@ fun MarkdownPreview(
                             scaleDetector.onTouchEvent(e)
                         }
                     })
+                    // M-163: touch selection, across blocks. A block off screen has its text rendered again.
+                    installReaderSelection { block ->
+                        val node = currentModel.value?.blocks?.getOrNull(block)
+                        val hidden = node == null || detailsState.isHidden(block)
+                        if (hidden) null else readerBlockText(renderer.markwonFor(c), node)
+                    }.onActiveChanged = { selectionActive.value = it }
                 }.let { list -> ReaderFrame(context, list) } // the list, with the open-file line over its top
             },
             update = { frame ->

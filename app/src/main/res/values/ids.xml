@@ -59,4 +59,6 @@
       RecyclerView, so the span in a block's text reaches the screen without a global callback.
     -->
     <item name="footnote_tap_handler" type="id" />
+    <!-- M-163: the reader's ReaderSelection, on its RecyclerView, so a pinch can end it. -->
+    <item name="reader_selection" type="id" />
 </resources>

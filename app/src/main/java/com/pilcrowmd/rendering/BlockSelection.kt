@@ -20,8 +20,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 /**
- * M-157: long-press selects text inside ONE reader block, with the platform's handles and copy menu.
- * Selection across blocks is M-163 and is not this.
+ * M-157: a reader block's text is selectable, with the platform's selection, for TalkBack and keyboards.
+ * Touch selection, which may run across blocks, is [ReaderSelection] (M-163): the block's own
+ * long-press is turned off so only that one shows.
  *
  * Call at the END of a bind, after the text, the footnote tap target and the search highlight are in
  * place. Every bind calls it, so a recycled holder is selectable whatever it showed before.
@@ -39,6 +40,8 @@ import androidx.recyclerview.widget.RecyclerView
 fun TextView.enableBlockSelection() {
     setTextIsSelectable(true)
     movementMethod = ReaderMovementMethod
+    // After the movement method, which turns it back on.
+    isLongClickable = false
     // A prose block already has FootnoteMarkerAccessibility, which applies the same rule; replacing it
     // here would silently take away every marker's TalkBack button (M-76).
     if (!ViewCompat.hasAccessibilityDelegate(this)) ViewCompat.setAccessibilityDelegate(this, NoClickWithoutListener)
@@ -106,13 +109,20 @@ object ReaderMovementMethod : ArrowKeyMovementMethod() {
 }
 
 /**
- * End any text selection under [root], and any long-press still waiting to start one.
+ * End any text selection under [root], the list's [ReaderSelection] too, and any long-press still
+ * waiting to start one.
  *
  * Called when a second finger lands and when a pinch begins. Long-press must not eat a pinch: two
  * fingers held still for half a second would otherwise select a word under the first. And a block
  * left mid-selection is a view carrying gesture state into the pinch's re-bind (see M-106).
  */
 internal fun endBlockSelection(root: View) {
+    (root as? RecyclerView)?.readerSelection()?.clear()
+    endPlatformSelection(root)
+}
+
+/** End the platform's selection in every block under [root], and any long-press waiting to start one. */
+internal fun endPlatformSelection(root: View) {
     if (root is TextView) {
         root.cancelLongPress()
         if (root.hasSelection()) {
@@ -121,7 +131,7 @@ internal fun endBlockSelection(root: View) {
         }
     }
     if (root is ViewGroup) {
-        for (i in 0 until root.childCount) endBlockSelection(root.getChildAt(i))
+        for (i in 0 until root.childCount) endPlatformSelection(root.getChildAt(i))
     }
 }
 
