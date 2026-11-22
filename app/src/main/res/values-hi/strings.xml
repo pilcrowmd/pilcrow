@@ -210,7 +210,7 @@
     <string name="settings_credit_prism4j">Prism4j: सिंटैक्स हाइलाइटिंग (Apache-2.0)</string>
     <string name="settings_credit_sora">Sora Editor: कोड एडिटर (LGPL-2.1)</string>
     <string name="settings_credit_jlatexmath">JLatexMath: गणित रेंडरिंग (GPL w/ classpath)</string>
-    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible, JetBrains Mono, IBM Plex Mono (OFL)</string>
+    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible Next, JetBrains Mono, IBM Plex Mono (OFL)</string>
     <string name="settings_open_source_licenses">ओपन सोर्स लाइसेंस</string>
     <string name="licenses_title">ओपन सोर्स लाइसेंस</string>
     <string name="licenses_pane_title">ओपन सोर्स लाइसेंस</string>

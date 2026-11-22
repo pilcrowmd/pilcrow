@@ -208,7 +208,7 @@
     <string name="settings_credit_prism4j">Prism4j：语法高亮（Apache-2.0）</string>
     <string name="settings_credit_sora">Sora Editor：代码编辑器（LGPL-2.1）</string>
     <string name="settings_credit_jlatexmath">JLatexMath：数学公式渲染（GPL w/ classpath）</string>
-    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible, JetBrains Mono, IBM Plex Mono (OFL)</string>
+    <string name="settings_credit_fonts">Source Serif 4, Merriweather, Atkinson Hyperlegible Next, JetBrains Mono, IBM Plex Mono (OFL)</string>
     <string name="settings_open_source_licenses">开源许可</string>
     <string name="licenses_title">开源许可</string>
     <string name="licenses_pane_title">开源许可</string>

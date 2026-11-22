@@ -93,8 +93,9 @@ internal fun seamBottomPadding(
 ): Int {
     val height = fm.descent - fm.ascent
     val pitch = height + (height * (lineSpacingMultiplier - 1f) + ROUND_HALF_UP).toInt()
-    // Without font padding the block's last line ends at `descent`; with it, at `bottom`.
-    val lastLineEnd = if (continuesPrevious) fm.descent else fm.bottom
+    // Without font padding the block's last line ends at `descent`; with it, at `bottom`, or at
+    // `descent` still in a font whose `bottom` is the shallower of the two (Atkinson Hyperlegible Next).
+    val lastLineEnd = if (continuesPrevious) fm.descent else maxOf(fm.bottom, fm.descent)
     val padding = when {
         continuesNext -> pitch + fm.ascent - lastLineEnd
         continuesPrevious -> fm.bottom - fm.descent
