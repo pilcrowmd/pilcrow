@@ -72,8 +72,8 @@ that looks designed rather than dumped.
   is closed or crashes before you save, it offers to put your text back the next time you open the
   file.
 - **Adjustable type** – independent font scaling for reader and editor.
-- **Eight languages** – English, German, French, Spanish, Chinese (Simplified), Italian, Ukrainian and
-  Hindi. Pick one under Settings, Language, or let the app follow your phone.
+- **Nine languages** – English, German, French, Spanish, Chinese (Simplified), Italian, Ukrainian,
+  Hindi and Polish. Pick one under Settings, Language, or let the app follow your phone.
 - **Mermaid diagrams, offline** – drawn on the phone, following the app's theme, and in
   PDF exports too. Nothing is sent anywhere. See [why there is a WebView](#why-there-is-a-webview-and-only-one).
 - **Graceful by design** – unsupported syntax, and any diagram that cannot be drawn, degrade to
