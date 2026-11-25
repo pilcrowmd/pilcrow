@@ -110,6 +110,7 @@ class TranslationsTest {
             "values-it" to listOf("one", "many", "other"),
             "values-uk" to listOf("one", "few", "many", "other"),
             "values-hi" to listOf("one", "other"),
+            "values-pl" to listOf("one", "few", "many", "other"),
         )
 
         const val ALL = "*"
