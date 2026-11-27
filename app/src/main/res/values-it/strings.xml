@@ -187,6 +187,8 @@
     <string name="settings_full_screen_reading">Lettura a schermo intero</string>
     <string name="settings_full_screen_reading_summary">Nascondi la barra superiore e la barra di navigazione durante la lettura</string>
     <string name="settings_full_screen_reading_hint">Scorri dal bordo superiore o inferiore per farle riapparire per qualche secondo.</string>
+    <string name="settings_confirm_before_exit">Conferma prima di uscire</string>
+    <string name="settings_confirm_before_exit_summary">Richiede una seconda pressione di Indietro per uscire dall’app dalla schermata iniziale</string>
     <string name="settings_language">Lingua</string>
     <string name="settings_language_system">Predefinita di sistema</string>
     <string name="settings_language_cancel">Annulla</string>

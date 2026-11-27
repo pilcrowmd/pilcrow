@@ -187,6 +187,8 @@
     <string name="settings_full_screen_reading">Lectura a pantalla completa</string>
     <string name="settings_full_screen_reading_summary">Oculta la barra superior y la de navegación al leer</string>
     <string name="settings_full_screen_reading_hint">Desliza desde el borde superior o inferior para mostrarlas unos segundos.</string>
+    <string name="settings_confirm_before_exit">Confirmar antes de salir</string>
+    <string name="settings_confirm_before_exit_summary">Exige una segunda pulsación de Atrás para salir de la app desde la pantalla de inicio</string>
     <string name="settings_language">Idioma</string>
     <string name="settings_language_system">Predeterminado del sistema</string>
     <string name="settings_language_cancel">Cancelar</string>

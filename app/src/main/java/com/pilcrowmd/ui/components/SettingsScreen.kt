@@ -118,6 +118,8 @@ fun SettingsScreen(
     onFormattingBarChanged: (Boolean) -> Unit = {},
     fullScreenReading: Boolean = false,
     onFullScreenReadingChanged: (Boolean) -> Unit = {},
+    confirmBeforeExit: Boolean = true,
+    onConfirmBeforeExitChanged: (Boolean) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.DARK,
     onThemeSelected: (ThemeMode) -> Unit = {},
     pdfColors: PdfColors = PdfColors.LIGHT_FOR_PRINTING,
@@ -410,6 +412,43 @@ fun SettingsScreen(
                 }
                 Switch(
                     checked = fullScreenReading,
+                    onCheckedChange = null,
+                    modifier = Modifier.scale(0.8f),
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = c.primaryText,
+                        checkedTrackColor = c.accent,
+                        uncheckedThumbColor = c.secondaryText,
+                        uncheckedTrackColor = c.secondarySurface,
+                    ),
+                )
+            }
+        }
+
+        CardGap()
+        // Confirm before exit: ON by default (double-Back); OFF exits on a single root Back.
+        SettingsCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(
+                        value = confirmBeforeExit,
+                        role = Role.Switch,
+                        onValueChange = onConfirmBeforeExitChanged,
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    CardTitle(stringResource(R.string.settings_confirm_before_exit))
+                    Text(
+                        text = stringResource(R.string.settings_confirm_before_exit_summary),
+                        color = c.secondaryText,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(
+                    checked = confirmBeforeExit,
                     onCheckedChange = null,
                     modifier = Modifier.scale(0.8f),
                     colors = SwitchDefaults.colors(

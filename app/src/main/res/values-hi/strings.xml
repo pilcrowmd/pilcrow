@@ -185,6 +185,8 @@
     <string name="settings_full_screen_reading">फ़ुल-स्क्रीन रीडिंग</string>
     <string name="settings_full_screen_reading_summary">पढ़ते समय टॉप बार और नेविगेशन बार छिपाएं</string>
     <string name="settings_full_screen_reading_hint">ऊपर या नीचे के किनारे से स्वाइप करें, तो वे कुछ सेकंड के लिए फिर दिखेंगे.</string>
+    <string name="settings_confirm_before_exit">बाहर निकलने से पहले पुष्टि करें</string>
+    <string name="settings_confirm_before_exit_summary">होम स्क्रीन से ऐप छोड़ने के लिए बैक को दूसरी बार दबाना होगा</string>
     <string name="settings_language">भाषा</string>
     <string name="settings_language_system">सिस्टम डिफ़ॉल्ट</string>
     <string name="settings_language_cancel">रद्द करें</string>

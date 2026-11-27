@@ -183,6 +183,8 @@
     <string name="settings_full_screen_reading">全屏阅读</string>
     <string name="settings_full_screen_reading_summary">阅读时隐藏顶部栏和导航栏</string>
     <string name="settings_full_screen_reading_hint">从屏幕顶部或底部边缘滑入，可让它们重新显示几秒钟。</string>
+    <string name="settings_confirm_before_exit">退出前确认</string>
+    <string name="settings_confirm_before_exit_summary">在主屏幕需再按一次返回键才会退出应用</string>
     <string name="settings_language">语言</string>
     <string name="settings_language_system">系统默认</string>
     <string name="settings_language_cancel">取消</string>
