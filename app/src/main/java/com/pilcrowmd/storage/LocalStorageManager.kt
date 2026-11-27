@@ -119,6 +119,7 @@ class LocalStorageManager(
     private val fontSetIdKey = stringPreferencesKey("font_set_id")
     private val wrapCodeLinesKey = booleanPreferencesKey("wrap_code_lines")
     private val fullScreenReadingKey = booleanPreferencesKey("full_screen_reading")
+    private val confirmBeforeExitKey = booleanPreferencesKey("confirm_before_exit")
     private val formattingBarEnabledKey = booleanPreferencesKey("formatting_bar_enabled")
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val pdfColorsKey = stringPreferencesKey("pdf_colors")
@@ -182,6 +183,10 @@ class LocalStorageManager(
     override val fullScreenReading: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[fullScreenReadingKey] ?: false // Default: OFF (S8-A41)
     }
+
+    override val confirmBeforeExit: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[confirmBeforeExitKey] ?: true // Default: ON — double-Back to leave from home
+    }.distinctUntilChanged()
 
     override val formattingBarEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[formattingBarEnabledKey] ?: true // Default: ON (M-217)
@@ -324,6 +329,10 @@ class LocalStorageManager(
 
     override suspend fun setFullScreenReading(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[fullScreenReadingKey] = enabled }
+    }
+
+    override suspend fun setConfirmBeforeExit(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[confirmBeforeExitKey] = enabled }
     }
 
     override suspend fun setFormattingBarEnabled(enabled: Boolean) {

@@ -55,6 +55,16 @@ class SettingsTidyTest {
     }
 
     @Test
+    fun `confirm before exit switch sits after full-screen reading and before Feedback`() {
+        setSettings()
+        val fullScreen = top("Full-screen reading")
+        val confirmExit = top("Confirm before exit")
+        val feedback = top("FEEDBACK")
+        assertTrue("confirm before exit after full-screen reading", confirmExit > fullScreen)
+        assertTrue("confirm before exit before Feedback", confirmExit < feedback)
+    }
+
+    @Test
     fun `there is no Rendering heading`() {
         setSettings()
         composeRule.onAllNodesWithText("RENDERING", useUnmergedTree = true).assertCountEquals(0)

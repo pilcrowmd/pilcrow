@@ -189,6 +189,8 @@
     <string name="settings_full_screen_reading">Читання на весь екран</string>
     <string name="settings_full_screen_reading_summary">Ховати верхню та навігаційну панелі під час читання</string>
     <string name="settings_full_screen_reading_hint">Проведіть пальцем від верхнього або нижнього краю, щоб на кілька секунд повернути їх.</string>
+    <string name="settings_confirm_before_exit">Підтверджувати перед виходом</string>
+    <string name="settings_confirm_before_exit_summary">Щоб вийти з програми з головного екрана, потрібно натиснути Назад вдруге</string>
     <string name="settings_language">Мова</string>
     <string name="settings_language_system">Мова системи</string>
     <string name="settings_language_cancel">Скасувати</string>

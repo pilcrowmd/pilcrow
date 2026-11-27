@@ -178,6 +178,7 @@ fun MainScreen(
     val lineNumbersEnabled = viewModel.lineNumbersEnabled.collectAsStateWithLifecycle()
     val openInEditMode = viewModel.openInEditMode.collectAsStateWithLifecycle()
     val fullScreenReading = viewModel.fullScreenReading.collectAsStateWithLifecycle()
+    val confirmBeforeExit = viewModel.confirmBeforeExit.collectAsStateWithLifecycle()
     val appLanguageTag = viewModel.appLanguageTag.collectAsStateWithLifecycle()
     // Separate preview/editor scales and selected font set.
     val previewFontScale = viewModel.previewFontScale.collectAsStateWithLifecycle()
@@ -430,6 +431,7 @@ fun MainScreen(
                 exitArmed = exitArmed,
                 isSaving = writeInFlight.value, // M-148: the same gate the toolbar X uses
                 canGoBackLink = canGoBackLink?.value == true,
+                confirmBeforeExit = confirmBeforeExit.value,
             ),
         )
         when (intent) {
@@ -1030,6 +1032,8 @@ fun MainScreen(
                         onFormattingBarChanged = { viewModel.setFormattingBarEnabled(it) },
                         fullScreenReading = fullScreenReading.value,
                         onFullScreenReadingChanged = { viewModel.setFullScreenReading(it) },
+                        confirmBeforeExit = confirmBeforeExit.value,
+                        onConfirmBeforeExitChanged = { viewModel.setConfirmBeforeExit(it) },
                         themeMode = themeMode.value,
                         onThemeSelected = { viewModel.setThemeMode(it) },
                         pdfColors = pdfColors.value,

@@ -188,6 +188,15 @@ interface StorageManager {
     suspend fun setFullScreenReading(enabled: Boolean)
 
     /**
+     * Flow of the "Confirm before exit" setting. Default: true — root Back requires a second
+     * press within [com.pilcrowmd.ui.screen.EXIT_CONFIRM_WINDOW_MS] before the Activity finishes.
+     */
+    val confirmBeforeExit: Flow<Boolean>
+
+    /** Persist the confirm-before-exit setting. */
+    suspend fun setConfirmBeforeExit(enabled: Boolean)
+
+    /**
      * Flow of the selected theme mode. Default: ThemeMode.DARK (ensures Dark remains default).
      * v1: DataStore. vNext: could sync across devices.
      */

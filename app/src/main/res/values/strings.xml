@@ -407,6 +407,11 @@
     <!-- SettingsScreen: second switch subtitle, how the hidden bars come back (sentence). -->
     <string name="settings_full_screen_reading_hint">Swipe in from the top or bottom edge to bring them back for a few seconds.</string>
 
+    <!-- SettingsScreen: switch title (noun phrase). When on, root Back needs a second press to leave. -->
+    <string name="settings_confirm_before_exit">Confirm before exit</string>
+    <!-- SettingsScreen: switch subtitle, describes what the switch does (sentence). -->
+    <string name="settings_confirm_before_exit_summary">Require a second Back press to leave the app from the home screen</string>
+
     <!-- Language (languages spec D1) -->
     <!-- SettingsScreen: card title and dialog title for choosing the app language (noun). -->
     <string name="settings_language">Language</string>

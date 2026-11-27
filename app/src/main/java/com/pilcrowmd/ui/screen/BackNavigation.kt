@@ -13,6 +13,8 @@ package com.pilcrowmd.ui.screen
  * Precedence (most specific first) mirrors the visible z-order in [MainScreen]:
  * Files → search bar → TOC drawer → Licenses → Settings → open document → root.
  * Files (M-162b) comes first because it covers everything else, the reader's search bar included.
+ * At root, [BackNavState.confirmBeforeExit] (default true) gates exit: when false, a single Back
+ * finishes the Activity; when true, the existing double-Back arm/exit window applies.
  * (Compose [androidx.compose.material3.AlertDialog]s consume Back in their own window, so the
  * unsaved-close / stranded-slot dialogs are handled by the framework before this runs.)
  */
@@ -79,6 +81,11 @@ data class BackNavState(
     val exitArmed: Boolean,
     /** K10 (M-160): the open note was opened by a followed link, and Back returns to the note it was in. */
     val canGoBackLink: Boolean = false,
+    /**
+     * When true (default), root Back arms then exits on a second press.
+     * When false, root Back exits immediately (single-Back leave).
+     */
+    val confirmBeforeExit: Boolean = true,
 )
 
 /** Resolve the single [BackIntent] for a Back press given the current [state]. */
@@ -103,6 +110,8 @@ private fun documentIntent(state: BackNavState): BackIntent = when {
     state.hasDocument && state.canGoBackLink -> BackIntent.LinkBack
     state.hasDocument && state.documentDirty -> BackIntent.PromptUnsavedClose
     state.hasDocument -> BackIntent.CloseFile
+    // Confirm-before-exit OFF: leave immediately, before the double-Back arm/exit window.
+    !state.confirmBeforeExit -> BackIntent.Exit
     state.exitArmed -> BackIntent.Exit
     else -> BackIntent.ArmExit
 }

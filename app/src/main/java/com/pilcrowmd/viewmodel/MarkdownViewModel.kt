@@ -504,6 +504,10 @@ constructor(
     val fullScreenReading: StateFlow<Boolean> = storage.fullScreenReading
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    // Require a second root Back before finishing the Activity (default on).
+    val confirmBeforeExit: StateFlow<Boolean> = storage.confirmBeforeExit
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     // The app's own language: a BCP-47 tag, or null for the system language (languages spec D1).
     val appLanguageTag: StateFlow<String?> = appLanguageStore.languageTag
 
@@ -2314,6 +2318,10 @@ constructor(
 
     fun setFullScreenReading(enabled: Boolean) {
         viewModelScope.launch { storage.setFullScreenReading(enabled) }
+    }
+
+    fun setConfirmBeforeExit(enabled: Boolean) {
+        viewModelScope.launch { storage.setConfirmBeforeExit(enabled) }
     }
 
     /** Applies the language app-wide; AppCompat recreates the open activities (languages spec D1). */

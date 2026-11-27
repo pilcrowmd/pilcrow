@@ -88,6 +88,19 @@ class BackNavigationTest {
     }
 
     @Test
+    fun rootBackExitsImmediatelyWhenConfirmBeforeExitIsOff() {
+        assertEquals(
+            BackIntent.Exit,
+            resolveBackIntent(root.copy(confirmBeforeExit = false)),
+        )
+        // Armed state is irrelevant when confirmation is disabled.
+        assertEquals(
+            BackIntent.Exit,
+            resolveBackIntent(root.copy(confirmBeforeExit = false, exitArmed = true)),
+        )
+    }
+
+    @Test
     fun openCleanDocumentClosesToHome() {
         assertEquals(BackIntent.CloseFile, resolveBackIntent(root.copy(hasDocument = true)))
     }

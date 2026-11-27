@@ -185,6 +185,8 @@
     <string name="settings_full_screen_reading">Vollbild-Lesen</string>
     <string name="settings_full_screen_reading_summary">Obere Leiste und Navigationsleiste beim Lesen ausblenden</string>
     <string name="settings_full_screen_reading_hint">Wischen Sie vom oberen oder unteren Rand herein, um sie für ein paar Sekunden wieder einzublenden.</string>
+    <string name="settings_confirm_before_exit">Vor dem Beenden bestätigen</string>
+    <string name="settings_confirm_before_exit_summary">Zum Verlassen der App vom Startbildschirm muss Zurück zweimal gedrückt werden</string>
     <string name="settings_language">Sprache</string>
     <string name="settings_language_system">Systemstandard</string>
     <string name="settings_language_cancel">Abbrechen</string>

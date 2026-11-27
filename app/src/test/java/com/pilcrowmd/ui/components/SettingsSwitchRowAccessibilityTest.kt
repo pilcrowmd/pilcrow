@@ -64,6 +64,8 @@ class SettingsSwitchRowAccessibilityTest {
                         onFormattingBarChanged = { toggled[FORMATTING_BAR] = it },
                         fullScreenReading = false,
                         onFullScreenReadingChanged = { toggled[FULL_SCREEN] = it },
+                        confirmBeforeExit = true,
+                        onConfirmBeforeExitChanged = { toggled[CONFIRM_EXIT] = it },
                         appVersion = "1.0.0",
                     )
                 }
@@ -103,10 +105,13 @@ class SettingsSwitchRowAccessibilityTest {
     fun formattingBarRowIsOneLabelledSwitch() = assertRowToggles(FORMATTING_BAR, FORMATTING_BAR, expected = false)
 
     @Test
+    fun confirmBeforeExitRowIsOneLabelledSwitch() = assertRowToggles(CONFIRM_EXIT, CONFIRM_EXIT, expected = false)
+
+    @Test
     fun noToggleableNodeLacksALabel() {
         show()
         val nodes = composeRule.onAllNodes(isToggleable()).fetchSemanticsNodes()
-        assertEquals("one toggleable node per switch setting", 5, nodes.size)
+        assertEquals("one toggleable node per switch setting", 6, nodes.size)
         nodes.forEach { node ->
             val label = node.config.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }.orEmpty()
             assertTrue("toggleable node ${node.id} has no label", label.isNotBlank())
@@ -119,5 +124,6 @@ class SettingsSwitchRowAccessibilityTest {
         const val WRAP = "Wrap long lines in code blocks"
         const val FORMATTING_BAR = "Show formatting bar"
         const val FULL_SCREEN = "Full-screen reading"
+        const val CONFIRM_EXIT = "Confirm before exit"
     }
 }
